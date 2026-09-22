@@ -1,0 +1,27 @@
+# Build output
+build/
+
+# Static dependencies: the source archives are vendored, what they unpack and
+# compile into is not.
+third_party/build/
+third_party/sysroot/
+third_party/zlib-*/
+third_party/libpng-*/
+third_party/freetype-*/
+
+# The Main_MiSTer fork is cloned by whoever builds it, not carried here.
+# What this project actually owns is patches/0001-autostart-gui.patch.
+third_party/Main_MiSTer/
+
+# Proof-of-concept binaries; the sources next to them are the point.
+poc/fbhello
+poc/fpgaprobe
+poc/hello_dynamic
+poc/hello_static
+poc/loadcore
+poc/startscreen
+
+.DS_Store
+
+# Claude Code session state — local to whoever is running it, not part of the project.
+.claude/

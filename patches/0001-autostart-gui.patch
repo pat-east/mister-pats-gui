@@ -1,0 +1,229 @@
+diff --git a/Makefile b/Makefile
+index 233c5e5..c83032c 100644
+--- a/Makefile
++++ b/Makefile
+@@ -7,6 +7,9 @@ MAKEFLAGS += "-j $(shell nproc)"
+ BASE    = arm-none-linux-gnueabihf
+ 
+ CC      = $(BASE)-gcc
++# Linking through g++ so -static-libstdc++ takes effect: our toolchain's libstdc++ is
++# newer than the device's (GLIBCXX_3.4.28), so it must not be linked dynamically.
++CXX     = $(BASE)-g++
+ LD      = $(BASE)-ld
+ STRIP   = $(BASE)-strip
+ 
+@@ -16,6 +19,10 @@ else
+ 	Q := @
+ endif
+ 
++# The stock toolchain defaults to ARMv7-A with NEON; ours does not, which would
++# compile the unmaintained scalar paths instead.
++ARCH_FLAGS = -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard
++
+ INCLUDE	= -I./
+ INCLUDE	+= -I./lib/libco
+ INCLUDE	+= -I./lib/miniz
+@@ -50,8 +57,8 @@ OBJ	= $(C_SRC:%.c=$(BUILDDIR)/%.c.o) $(CPP_SRC:%.cpp=$(BUILDDIR)/%.cpp.o) $(IMG:
+ DEP	= $(C_SRC:%.c=$(BUILDDIR)/%.c.d) $(CPP_SRC:%.cpp=$(BUILDDIR)/%.cpp.d)
+ 
+ DFLAGS	= $(INCLUDE) -D_7ZIP_ST -DPACKAGE_VERSION=\"1.3.3\" -DHAVE_LROUND -DHAVE_STDINT_H -DHAVE_STDLIB_H -DHAVE_SYS_PARAM_H -DENABLE_64_BIT_WORDS=0 -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE -DVDATE=\"`date +"%y%m%d"`\"
+-CFLAGS	= $(DFLAGS) -Wall -Wextra -Wno-strict-aliasing -Wno-stringop-overflow -Wno-stringop-truncation -Wno-format-truncation -Wno-psabi -Wno-restrict -c
+-LFLAGS	= -lc -lstdc++ -lm -lrt $(IMLIB2_LIB) -Llib/bluetooth -lbluetooth -lpthread
++CFLAGS	= $(ARCH_FLAGS) $(DFLAGS) -Wall -Wextra -Wno-strict-aliasing -Wno-stringop-overflow -Wno-stringop-truncation -Wno-format-truncation -Wno-psabi -Wno-restrict -c
++LFLAGS	= $(ARCH_FLAGS) -static-libstdc++ -static-libgcc -lc -lm -lrt $(IMLIB2_LIB) -Llib/bluetooth -lbluetooth -lpthread
+ 
+ OUTPUT_FILTER = sed -e 's/\(.[a-zA-Z]\+\):\([0-9]\+\):\([0-9]\+\):/\1(\2,\ \3):/g'
+ 
+@@ -67,7 +74,7 @@ endif
+ 
+ $(BUILDDIR)/$(PRJ): $(OBJ)
+ 	$(Q)$(info $@)
+-	$(Q)$(CC) -o $@ $+ $(LFLAGS)
++	$(Q)$(CXX) -o $@ $+ $(LFLAGS)
+ 	$(Q)cp $@ $@.elf
+ ifneq ($(DEBUG),1)
+ 	$(Q)$(STRIP) $@
+diff --git a/cfg.cpp b/cfg.cpp
+index d192471..3c4b795 100644
+--- a/cfg.cpp
++++ b/cfg.cpp
+@@ -139,6 +139,7 @@ static const ini_var_t ini_vars[] =
+ 	{ "DEBUG", (void *)(&(cfg.debug)), UINT8, 0, 2 },
+ 	{ "LOOKAHEAD", (void *)(&(cfg.lookahead)), UINT8, 0, 1 },
+ 	{ "MAIN", (void*)(&(cfg.main)), STRING, 0, sizeof(cfg.main) - 1 },
++	{ "GUI", (void*)(&(cfg.gui)), STRING, 0, sizeof(cfg.gui) - 1 },
+ 	{ "VFILTER_INTERLACE_DEFAULT", (void*)(&(cfg.vfilter_interlace_default)), STRING, 0, sizeof(cfg.vfilter_interlace_default) - 1 },
+ 	{ "AUTOFIRE_RATES", (void *)(&(cfg.autofire_rates)), STRING, 0, sizeof(cfg.autofire_rates) - 1 },
+ 	{ "AUTOFIRE_ON_DIRECTIONS", (void *)(&(cfg.autofire_on_directions)), UINT8, 0, 1 },
+diff --git a/cfg.h b/cfg.h
+index 640929d..0739bc8 100644
+--- a/cfg.h
++++ b/cfg.h
+@@ -106,6 +106,7 @@ typedef struct {
+ 	char debug;
+ 	uint8_t lookahead;
+ 	char main[1024];
++	char gui[1024];
+ 	char vfilter_interlace_default[1023];
+ 	char autofire_rates[3072];
+ 	uint8_t autofire_on_directions;
+diff --git a/menu.cpp b/menu.cpp
+index 9577174..7f7cf29 100644
+--- a/menu.cpp
++++ b/menu.cpp
+@@ -1167,6 +1167,84 @@ void HandleUI(void)
+ 	static pid_t ttypid = 0;
+ 	static int ttystatus = 0;
+ 	static int has_fb_terminal = 0;
++
++	// Releasing the menu button switches the framebuffer overlay off (see the KEY_F12
++	// handler): the OSD is drawn by the core and would otherwise sit underneath. With a
++	// replacement GUI that leaves it running invisibly, so the overlay is restored as soon
++	// as the OSD closes again.
++	if (cfg.gui[0] && ttypid && !user_io_osd_is_visible() && !video_fb_state())
++	{
++		video_fb_enable(1);
++	}
++
++	// Holding the menu button inside a running core returns to the main menu, where the
++	// replacement GUI starts again. Without it there is no quick way back from a game — the
++	// stock OSD only offers the reset entry, which is far from obvious.
++	if (cfg.gui[0] && !is_menu())
++	{
++		static unsigned long gui_exit_at = 0;
++		const bool menu_held = menu_key && !(menu_key & UPSTROKE) && (menu_key & 0xFFFF) == KEY_MENU;
++
++		if (!menu_held)
++		{
++			gui_exit_at = 0;
++		}
++		else if (!gui_exit_at)
++		{
++			gui_exit_at = GetTimer(1500);
++		}
++		else if (CheckTimer(gui_exit_at))
++		{
++			gui_exit_at = 0;
++			printf("Menu button held, returning to the menu core\n");
++			fpga_load_rbf("menu.rbf");
++		}
++	}
++
++	// Start the configured replacement GUI, and bring it back if it ever goes away while the
++	// menu core is up. This mirrors MENU_SCRIPTS_FB: only that path enables the framebuffer
++	// overlay the GUI draws into. The cooldown keeps a GUI that fails to run from spinning.
++	{
++		static unsigned long gui_next_try = 0;
++		static bool gui_first = true;
++		static bool gui_missing = false;
++
++		if (cfg.gui[0] && is_menu() && cfg.fb_terminal && !ttypid && !gui_missing &&
++		    (gui_first || CheckTimer(gui_next_try)))
++		{
++			const char *gui_path = getFullPath(cfg.gui);
++			if (!FileExists(gui_path))
++			{
++				gui_missing = true;
++				printf("GUI not found: %s\n", gui_path);
++			}
++			else
++			{
++				gui_first = false;
++				gui_next_try = GetTimer(5000);
++				printf("Starting GUI: %s\n", gui_path);
++
++				static char gui_cmd[1024 * 2];
++				sprintf(gui_cmd, "#!/bin/bash\nexport LC_ALL=en_US.UTF-8\nexport HOME=/root\n%s\n", gui_path);
++
++				video_chvt(2);
++				video_fb_enable(1);
++				vga_nag();
++
++				unlink("/tmp/script");
++				FileSave("/tmp/script", gui_cmd, strlen(gui_cmd));
++				ttystatus = 0;
++				ttypid = fork();
++				if (!ttypid)
++				{
++					execl("/sbin/agetty", "/sbin/agetty", "-a", "root", "-l", "/tmp/script",
++					      "--nohostname", "-L", "tty2", "linux", NULL);
++					exit(0);
++				}
++				menustate = MENU_SCRIPTS_FB2;
++			}
++		}
++	}
+ 	static unsigned long flash_timer = 0;
+ 	static int flash_state = 0;
+ 	static uint32_t dip_submenu;
+diff --git a/video.cpp b/video.cpp
+index 7f464da..cea2d7f 100644
+--- a/video.cpp
++++ b/video.cpp
+@@ -1936,6 +1936,32 @@ int video_get_edid(uint8_t **buf, int *size)
+ 	return edid_version;
+ }
+ 
++// Works out from the EDID whether the display speaks HDMI or plain DVI.
++//
++// Upstream decides this inside get_edid_vmode(), which only runs while the video mode is
++// itself being derived from the EDID. Setting video_mode in the INI therefore switches the
++// DVI detection off as a side effect, and a monitor on a DVI adapter is then sent HDMI
++// signalling with audio packets and stays dark. The two settings have nothing to do with
++// each other, so this decides it on its own.
++//
++// Returns true when the answer is DVI and the ADV7513 has to be told about it.
++static bool detect_dvi_mode()
++{
++	if (cfg.dvi_mode != 2) return false;   // the INI already says which one
++
++	if (!is_edid_valid())
++	{
++		cfg.dvi_mode = 0;                  // no EDID: HDMI is the safer assumption
++		return false;
++	}
++
++	// A CEA-861 extension block advertising basic audio is what makes a sink HDMI.
++	// A display with no extension block at all - a DVI monitor - fails this and is DVI.
++	cfg.dvi_mode = (edid[0x80] == 2 && edid[0x81] == 3 && (edid[0x83] & 0x40)) ? 0 : 1;
++	printf("EDID: %s display detected.\n", cfg.dvi_mode == 1 ? "DVI" : "HDMI");
++	return cfg.dvi_mode == 1;
++}
++
+ static int get_edid_vmode(vmode_custom_t *v)
+ {
+ 	read_edid();
+@@ -1953,11 +1979,7 @@ static int get_edid_vmode(vmode_custom_t *v)
+ 		return 0;
+ 	}
+ 
+-	if (cfg.dvi_mode == 2)
+-	{
+-		cfg.dvi_mode = (edid[0x80] == 2 && edid[0x81] == 3 && (edid[0x83] & 0x40)) ? 0 : 1;
+-		if (cfg.dvi_mode == 1) printf("EDID: using DVI mode.\n");
+-	}
++	detect_dvi_mode();
+ 
+ 	unsigned char flags = x[17];
+ 	if (flags & 0x80)
+@@ -2695,6 +2717,10 @@ void video_init()
+ 	hdmi_config_init();
+ 	read_edid(true);
+ 
++	// hdmi_config_init() already wrote the HDMI/DVI register, and it had to guess before the
++	// EDID was readable. If the display turns out to be DVI, that register needs rewriting.
++	if (detect_dvi_mode()) hdmi_config_audio();
++
+ 	hdmi_config_set_hdr();
+ 	video_mode_load();
+ 
+@@ -2720,6 +2746,9 @@ void video_reinit()
+ 
+ 	printf("*** Video re-initialization.\n");
+ 
++	// The EDID is already in hand here, so the right mode can be chosen before the register
++	// is written rather than corrected afterwards.
++	detect_dvi_mode();
+ 	hdmi_config_init();
+ 	// re-init resets 0x17/0x3B/0x3C - re-apply, or video stays black if any of them changed
+ 	hdmi_invalidate_mode_cache();

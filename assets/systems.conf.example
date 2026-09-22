@@ -1,0 +1,35 @@
+# Per-system loader slot overrides
+#
+# Copy to /media/fat/mister-pat/systems.conf. Read at startup; "Reload library" in the
+# settings screen picks up changes without a restart.
+#
+# Format:   <system name>  <index>  [f|s]
+#
+#   system name  exactly as it appears in ConsoleMode's section files, e.g. "NINTENDO 64"
+#   index        number of the file option in the core's own menu
+#   f | s        f = file (default), s = disk slot, used by CD-based systems
+#
+# Most systems do not need an entry here: the values are built in, read from each core's
+# CONF_STR. This file exists for cores that are missing from that table and for unusual
+# setups.
+#
+# Already set as defaults (listed for reference, no need to enter them):
+#
+#   NES, SNES, NINTENDO 64 and the other cartridge systems   1   f
+#   PLAYSTATION                                              1   s
+#   NEO GEO CD                                               1   s
+#   SATURN, SEGA CD, TURBOGRAFX-16 CD, 3DO                   0   s
+#   TURBOGRAFX-16                                            0   f
+#
+# Still unknown - fill in here once you have tested them:
+# CD-I                1   s
+# JAGUAR CD           1   s
+#
+# How to work one out: change the value, choose "Reload library" in the settings, start a
+# game. To check without taking over the television:
+#
+#   mister-gui --no-input --frames 1 --tab games --system NAME --launch-now --dry-run
+#
+# If a real launch does nothing, the slot matches none of the core's F/S options; the MGL
+# playback then aborts silently and the core sits in its own menu. The slot each core
+# expects is listed in POC.md.

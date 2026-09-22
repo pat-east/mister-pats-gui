@@ -1,0 +1,44 @@
+MiSTer Pat's GUI
+Copyright (C) 2026 the MiSTer Pat's GUI contributors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. See LICENSE for the full text.
+
+
+Third-party components
+======================
+
+third_party/Main_MiSTer/
+    A fork of Main_MiSTer, the MiSTer FPGA main binary.
+    https://github.com/MiSTer-devel/Main_MiSTer
+    Licensed under the GNU General Public License v3.0.
+    Modified for this project: see patches/0001-autostart-gui.patch, which adds
+    a "gui=" INI key and starts the configured frontend.
+
+assets/icons/
+    Console icons from "retro-game-console-icons" by KyleBing.
+    https://github.com/KyleBing/retro-game-console-icons
+    Copyright (C) 2024-2025 KyleBing
+    Licensed under the GNU General Public License v3.0.
+    Redistributed unmodified. Upstream distributes PNG files only; no layered or
+    vector sources are published, so the PNGs are the form received.
+
+    Note on trademarks: these icons depict hardware and wordmarks belonging to
+    third parties. The upstream GPL grant is a copyright license and conveys no
+    trademark rights.
+
+third_party/zlib-1.3.1, libpng-1.6.43, freetype-2.13.2, libjpeg-turbo-3.0.4
+    Built as static libraries at development time and linked into the binary.
+    zlib license, libpng license, FreeType License (FTL/GPLv2), and for
+    libjpeg-turbo the IJG License / BSD-3-Clause / zlib License respectively.
+    Source archives are included in third_party/.
+
+
+Fonts
+=====
+
+The Akrobat typeface is not distributed with this project. The application looks
+for it in an existing ConsoleMode installation, or in its own fonts/ directory if
+you place it there yourself, and falls back to DejaVu Sans when neither is found.
