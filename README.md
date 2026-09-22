@@ -57,6 +57,8 @@ toolkits and rules in careful, measured software rendering — see
 - **Its own game database.** A scan works out which systems are installed and what is in
   them, and writes one index file per system. Opening a console reads that one file and
   nothing else.
+- **Its own box art scraper**, from Settings — fetches box art and background images from the
+  libretro thumbnail server, no separate tool required.
 - **Console icons** for systems without art.
 - **Manage systems**, in Settings — hide the systems you do not use from the Systems tab, and
   toggle the Games tab off entirely for a library large enough that browsing it flat stops
@@ -72,38 +74,32 @@ toolkits and rules in careful, measured software rendering — see
 - A MiSTer (Terasic DE10-Nano) with a working SD card setup
 - SSH access to the device
 - Your game library on a single USB volume, wherever the MiSTer already finds it
-- Console Mode, if you want box art — see the next section
+- Console Mode, only if you want its typeface — see the next section
 - To build it yourself: macOS or Linux with an `arm-unknown-linux-gnueabihf` cross-toolchain
 
-## Console Mode comes first
+## Console Mode is now optional
 
-This GUI finds your systems and games by itself — the first time it starts, a wizard offers
-to scan your drives and build its own database. What it does **not** do yet is fetch artwork
-or ship a typeface, so it still leans on
-[Console Mode](https://github.com/Retro-Remake/ConsoleMode_Distribution) by Retro Remake for
-two things:
+This GUI finds your systems and games itself, and fetches its own box art and background
+images from the libretro thumbnail server — from Settings, once the database is built. The
+one thing it still borrows is a typeface, from
+[Console Mode](https://github.com/Retro-Remake/ConsoleMode_Distribution) by Retro Remake:
 
 | What | Where it comes from |
 | --- | --- |
 | The catalogue of systems | **built by this GUI** |
 | The index of games | **built by this GUI** |
-| Box art and background images | scraped by Console Mode into a `media/` folder beside each system's games |
+| Box art and background images | **fetched by this GUI** — Settings → *Fetch box art* |
 | Fonts | shipped with Console Mode |
 
-So the order still matters if you want artwork. **Set up Console Mode first:**
-
-1. Install Console Mode and boot into it.
-2. Run its box art scraper and let it finish.
-3. Then install this GUI and let the wizard build the database.
-
-Skip the scraper and everything works, it just looks plain: games are listed by name with no
-box art. Skip Console Mode entirely and you additionally get the built-in fallback typeface.
+So Console Mode is optional, and nothing about the order matters anymore. Skip it entirely and
+everything still works, box art included — you just get the built-in fallback typeface instead
+of Console Mode's.
 
 Once installed, this GUI takes over the boot path and Console Mode no longer starts. Only its
-files are still read.
+font files are still read, if present.
 
-Shipping a typeface and scraping artwork are both on the [roadmap](#roadmap), and with those
-two the dependency is gone.
+Shipping a typeface of its own is the one thing left on the [roadmap](#roadmap) between this
+project and not touching Console Mode at all.
 
 ## Installation
 
@@ -232,8 +228,8 @@ dated commitment.
 - [ ] Ship the fonts, rather than borrowing Console Mode's
 - [ ] Loader slots for the remaining CD-based cores (CD-i, Jaguar CD)
 
-With *box art scraping* below, this is what it takes to drop the Console Mode dependency
-entirely.
+Fonts are the one thing left standing between this project and not touching Console Mode at
+all — see [Console Mode is now optional](#console-mode-is-now-optional).
 
 ### Controllers
 
