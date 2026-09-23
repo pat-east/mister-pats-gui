@@ -6,9 +6,17 @@
 
 #include "Alphabet.h"
 #include "Canvas.h"
+#include "Input.h"   // nowMs
+#include "LoadingIndicator.h"
 #include "Tile.h"
 
 namespace {
+
+// How long buildStep() is allowed to spend resolving artwork paths each frame. Long enough
+// that a big system finishes in a handful of seconds rather than tens of them; short enough
+// that the screen stays responsive to input and the loading count keeps visibly moving
+// instead of the frame stalling on it.
+constexpr int kBuildBudgetMs = 12;
 
 struct ViewSpec {
     int targetTileWidth;   // design pixels
@@ -68,31 +76,71 @@ void GamesScreen::showAllGames() {
 
 void GamesScreen::reload() {
     entries_.clear();
+    focus_.clear();
     cursor_ = 0;
     scrollRow_ = 0;
+    pending_.clear();
+    pendingIndex_ = 0;
+    loading_ = false;
 
+    // A handful of entries at most, and resolving each one straight away is what lets the
+    // detail panel show something the instant favourites opens — nothing here is worth
+    // spreading across frames.
     if (favoritesMode_) {
         for (const FavoriteEntry &favorite : context_.favorites.entries()) {
             const GameSystem *system = context_.library.findSystem(favorite.system);
             if (!system) continue;
             entries_.push_back({system, Library::makeGame(*system, favorite.path)});
         }
-    } else if (allMode_) {
-        for (const GameSystem &system : context_.library.systems())
-            for (Game &game : context_.library.gamesOf(system))
-                entries_.push_back({&system, std::move(game)});
-
-        // Each system's list arrives sorted, but they have to be merged into one order or
-        // the letter jump would restart at A on every system boundary.
-        std::sort(entries_.begin(), entries_.end(), [](const Entry &a, const Entry &b) {
-            return strcasecmp(a.game.name.c_str(), b.game.name.c_str()) < 0;
-        });
-    } else if (system_) {
-        for (Game &game : context_.library.gamesOf(*system_))
-            entries_.push_back({system_, std::move(game)});
+        focus_.assign(entries_.size(), 0.0f);
+        std::printf("games: %zu entries for %s\n", entries_.size(), title_.c_str());
+        return;
     }
 
-    focus_.assign(entries_.size(), 0.0f);
+    // Only the cheap part happens here — the paths, not the artwork lookups that make each
+    // one expensive. buildStep() works through this list a slice at a time from update().
+    bool preSorted = false;
+    if (allMode_) {
+        for (const GameSystem &system : context_.library.systems())
+            for (const std::string &path : context_.library.pathsOf(system))
+                pending_.push_back({&system, path, std::string()});
+    } else if (system_) {
+        for (const std::string &path : context_.library.pathsOf(*system_))
+            pending_.push_back({system_, path, std::string()});
+        preSorted = context_.library.pathsPreSorted(*system_);
+    }
+
+    // Merging several systems' worth of paths (or a source that was never sorted by display
+    // name to begin with) means whatever order they arrived in is not the display order. The
+    // name a path will get costs no I/O — see Library::nameFor — so the whole list can be put
+    // in its final order right here, before any of the expensive work starts, and every entry
+    // can be shown the moment it resolves instead of waiting for the slowest one to arrive so
+    // everything can be sorted and revealed together.
+    if (!preSorted) {
+        for (PendingItem &item : pending_) item.sortKey = Library::nameFor(*item.system, item.path);
+        std::sort(pending_.begin(), pending_.end(), [](const PendingItem &a, const PendingItem &b) {
+            return strcasecmp(a.sortKey.c_str(), b.sortKey.c_str()) < 0;
+        });
+    }
+
+    loading_ = !pending_.empty();
+    if (!loading_) std::printf("games: 0 entries for %s\n", title_.c_str());
+}
+
+void GamesScreen::buildStep() {
+    if (!loading_) return;
+
+    const int64_t deadline = nowMs() + kBuildBudgetMs;
+    while (pendingIndex_ < pending_.size() && nowMs() < deadline) {
+        const PendingItem &item = pending_[pendingIndex_++];
+        entries_.push_back({item.system, Library::makeGame(*item.system, item.path)});
+        focus_.push_back(0.0f);
+    }
+
+    if (pendingIndex_ < pending_.size()) return;
+
+    pending_.clear();
+    loading_ = false;
     std::printf("games: %zu entries for %s\n", entries_.size(), title_.c_str());
 }
 
@@ -185,6 +233,8 @@ void GamesScreen::handle(Action action) {
 }
 
 void GamesScreen::update(float deltaSeconds) {
+    buildStep();
+
     const float speed = std::min(1.0f, deltaSeconds * 9.0f);
     for (size_t i = 0; i < focus_.size(); ++i) {
         const float target = (int(i) == cursor_) ? 1.0f : 0.0f;
@@ -206,11 +256,13 @@ void GamesScreen::renderHeader(Canvas &canvas, const Rect &area) {
     theme.bold().draw(canvas, area.x, area.y, title_, theme.sizeHeading(), theme.textPrimary);
 
     // The position, not just the total: in a list of a few thousand it is the only cue for
-    // how far along the alphabet the cursor sits.
+    // how far along the alphabet the cursor sits. While still loading, pending_ already
+    // knows the final count — showing that instead of the still-growing entries_.size()
+    // means the total does not visibly climb as more of it resolves.
+    const int total = loading_ ? int(pending_.size()) : int(entries_.size());
     char info[96];
-    std::snprintf(info, sizeof(info), "%d / %d  ·  %s",
-                  entries_.empty() ? 0 : cursor_ + 1, int(entries_.size()),
-                  specFor(view_).name);
+    std::snprintf(info, sizeof(info), "%d / %d  ·  %s", entries_.empty() ? 0 : cursor_ + 1,
+                  total, specFor(view_).name);
     const int width = theme.regular().measure(info, theme.sizeBody());
     theme.regular().draw(canvas, area.right() - width, area.y + theme.px(10), info,
                          theme.sizeBody(), theme.textMuted.withAlpha(160));
@@ -390,6 +442,21 @@ void GamesScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*/) 
     const Rect body{area.x, area.y + headerHeight, area.w, area.h - headerHeight};
 
     renderHeader(canvas, header);
+
+    if (entries_.empty() && loading_) {
+        // Only reached while merging several systems (or another source that arrives
+        // unsorted) — a single database-backed system reveals entries as they resolve and
+        // never has an empty, still-loading grid to report on.
+        const int panelWidth = std::min(body.w, theme.px(700));
+        const Rect panel{body.x + (body.w - panelWidth) / 2, body.y + body.h / 2 - theme.px(70),
+                         panelWidth, theme.px(200)};
+        const float fraction =
+            pending_.empty() ? 0.0f : float(pendingIndex_) / float(pending_.size());
+        char counts[64];
+        std::snprintf(counts, sizeof(counts), "%zu of %zu games", pendingIndex_, pending_.size());
+        LoadingIndicator::draw(canvas, theme, panel, title_, fraction, std::string(), counts);
+        return;
+    }
 
     if (entries_.empty()) {
         const char *text = favoritesMode_

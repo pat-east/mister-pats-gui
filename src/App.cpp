@@ -96,7 +96,7 @@ void App::reloadLibrary() {
     homeScreen_->refresh();
     favoritesScreen_->showFavorites();
     allGamesScreen_->showAllGames();
-    if (!gamesScreen_->empty()) gamesScreen_->reload();
+    if (!gamesScreen_->empty() || gamesScreen_->loading()) gamesScreen_->reload();
 }
 
 void App::openScan(bool firstRun) {
@@ -163,8 +163,11 @@ void App::selectTab(Tab tab) {
     if (tab == Tab::Home) homeScreen_->refresh();
     if (tab == Tab::Favorites) favoritesScreen_->showFavorites();
     // The whole library is a lot to gather, so it is built when the tab is opened and then
-    // kept; a library reload is what throws it away again.
-    if (tab == Tab::Games && allGamesScreen_->empty()) allGamesScreen_->showAllGames();
+    // kept; a library reload is what throws it away again. Checking loading() too matters
+    // here specifically: switching away mid-build and back before it finishes must not
+    // restart it, or leaving the tab becomes a way to make it never finish.
+    if (tab == Tab::Games && allGamesScreen_->empty() && !allGamesScreen_->loading())
+        allGamesScreen_->showAllGames();
     tab_ = tab;
 }
 

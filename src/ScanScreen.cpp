@@ -1,10 +1,10 @@
 #include "ScanScreen.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdio>
 
 #include "Canvas.h"
+#include "LoadingIndicator.h"
 
 ScanScreen::ScanScreen(Context &context, LibraryScan &scan, MediaScraper &scraper,
                        std::function<void()> onFinished, std::function<void()> onClose)
@@ -64,9 +64,7 @@ void ScanScreen::handle(Action action) {
     }
 }
 
-void ScanScreen::update(float deltaSeconds) {
-    spinner_ += deltaSeconds;
-
+void ScanScreen::update(float /*deltaSeconds*/) {
     if (page_ == Page::Working && scan_.finished()) {
         if (!reported_) {
             reported_ = true;
@@ -143,43 +141,13 @@ void ScanScreen::renderIntro(Canvas &canvas, const Rect &panel) {
     drawParagraph(canvas, body, footer, theme.sizeSmall(), theme.textMuted.withAlpha(170), y);
 }
 
-void ScanScreen::renderProgress(Canvas &canvas, const Rect &body, const std::string &title,
-                                float fraction, const std::string &status,
-                                const std::string &counts) {
-    Theme &theme = context_.theme;
-
-    theme.bold().draw(canvas, body.x, body.y, title, theme.sizeTitle(), theme.textPrimary);
-
-    const int barY = body.y + theme.px(110);
-    const Rect track{body.x, barY, body.w, theme.px(14)};
-    canvas.fillRoundedRect(track, theme.px(7), theme.surface);
-
-    const int filled = int(float(track.w) * std::min(1.0f, std::max(0.0f, fraction)));
-    if (filled > 0)
-        canvas.fillRoundedRect({track.x, track.y, std::max(filled, theme.px(14)), track.h},
-                               theme.px(7), theme.accent);
-
-    int y = barY + theme.px(40);
-    theme.regular().draw(canvas, body.x, y,
-                         theme.regular().elide(status, theme.sizeBody(), body.w),
-                         theme.sizeBody(), theme.textPrimary);
-
-    y += theme.regular().lineHeight(theme.sizeBody()) + theme.px(18);
-    theme.regular().draw(canvas, body.x, y, counts, theme.sizeBody(), theme.textMuted);
-
-    // A moving dot, because a bar that sits still on a big directory looks stuck.
-    const int dotX = body.x + int((std::sin(spinner_ * 3.0f) * 0.5f + 0.5f) * theme.px(40));
-    canvas.fillRoundedRect({dotX, body.bottom() - theme.px(24), theme.px(8), theme.px(8)},
-                           theme.px(4), theme.accent.withAlpha(200));
-}
-
 void ScanScreen::renderWorking(Canvas &canvas, const Rect &panel) {
     Theme &theme = context_.theme;
     char counts[96];
     std::snprintf(counts, sizeof(counts), "%zu systems  ·  %zu games", scan_.systemsFound(),
                   scan_.gamesFound());
-    renderProgress(canvas, panel.inset(theme.px(44)), "Reading your library", scan_.progress(),
-                   scan_.statusLine(), counts);
+    LoadingIndicator::draw(canvas, theme, panel.inset(theme.px(44)), "Reading your library",
+                           scan_.progress(), scan_.statusLine(), counts);
 }
 
 void ScanScreen::renderArtworkOffer(Canvas &canvas, const Rect &panel) {
@@ -215,8 +183,8 @@ void ScanScreen::renderArtworkWorking(Canvas &canvas, const Rect &panel) {
     char counts[128];
     std::snprintf(counts, sizeof(counts), "%zu fetched  ·  %zu already there  ·  %zu not found",
                   scraper_.fetched(), scraper_.skipped(), scraper_.missing());
-    renderProgress(canvas, panel.inset(theme.px(44)), "Fetching box art", scraper_.progress(),
-                   scraper_.statusLine(), counts);
+    LoadingIndicator::draw(canvas, theme, panel.inset(theme.px(44)), "Fetching box art",
+                           scraper_.progress(), scraper_.statusLine(), counts);
 }
 
 void ScanScreen::renderDone(Canvas &canvas, const Rect &panel) {

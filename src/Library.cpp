@@ -378,12 +378,8 @@ bool Library::load(const std::string &sectionDir) {
     return !systems_.empty();
 }
 
-Game Library::makeGame(const GameSystem &system, const std::string &path) {
-    Game game;
-    game.path = path;
-
+std::string Library::nameFor(const GameSystem &system, const std::string &path) {
     const std::string filename = lastComponent(path);
-    game.name = filename;
 
     // Cut off the extension — but on a disc system the entry is normally a folder, and
     // folder names carry dots as readily as any title does: "Capcom vs. SNK - Millennium
@@ -392,9 +388,15 @@ Game Library::makeGame(const GameSystem &system, const std::string &path) {
     const size_t dot = filename.find_last_of('.');
     if (dot != std::string::npos && dot > 0) {
         const std::string extension = filename.substr(dot + 1);
-        if (!system.discBased || isDiscExtension(extension))
-            game.name = filename.substr(0, dot);
+        if (!system.discBased || isDiscExtension(extension)) return filename.substr(0, dot);
     }
+    return filename;
+}
+
+Game Library::makeGame(const GameSystem &system, const std::string &path) {
+    Game game;
+    game.path = path;
+    game.name = nameFor(system, path);
 
     // Artwork sits next to the game itself. Deriving it from the game's own directory keeps
     // it right no matter which volume the game came from — a system's directories can span
@@ -462,6 +464,33 @@ const GameSystem *Library::systemForPath(const std::string &path) const {
     }
 
     return best;
+}
+
+std::vector<std::string> Library::pathsOf(const GameSystem &system) const {
+    if (!system.dbKey.empty()) return database_.pathsFor(system.dbKey);
+
+    if (const std::vector<std::string> *paths = index_.pathsFor(system.name)) return *paths;
+
+    std::vector<std::string> paths;
+    if (!scanningAllowed_) return paths;
+
+    for (const std::string &dir : system.romDirs) {
+        DIR *d = opendir(dir.c_str());
+        if (!d) continue;
+
+        while (dirent *entry = readdir(d)) {
+            const std::string filename = entry->d_name;
+            if (filename[0] == '.') continue;
+
+            bool match = hasSuffix(filename, ".zip");
+            for (const std::string &ext : system.romExts)
+                if (hasSuffix(filename, ext)) match = true;
+
+            if (match) paths.push_back(dir + "/" + filename);
+        }
+        closedir(d);
+    }
+    return paths;
 }
 
 std::vector<Game> Library::gamesOf(const GameSystem &system) const {

@@ -4,6 +4,7 @@
 #include <cstdio>
 
 #include "Canvas.h"
+#include "LoadingIndicator.h"
 
 namespace {
 
@@ -100,10 +101,25 @@ void SystemsScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
     const Rect body{area.x, area.y + headerHeight, area.w, area.h - headerHeight};
 
     if (systems_.empty()) {
-        bold.drawCentered(canvas, area,
-                          scanning() ? "Reading library …"
-                                     : "No systems with games found",
-                          theme.sizeHeading(), theme.textMuted);
+        // The dot animates every frame regardless of anything this screen itself tracks, so
+        // — unlike the grid below, which restores only the region it is about to repaint —
+        // this whole area has to be wiped first every time or each frame's text and dot paint
+        // over the last one instead of replacing it.
+        if (context_.background) canvas.restoreFrom(*context_.background, area);
+
+        if (scanning()) {
+            const int panelWidth = std::min(area.w, theme.px(700));
+            const Rect panel{area.x + (area.w - panelWidth) / 2,
+                             area.y + area.h / 2 - theme.px(70), panelWidth, theme.px(200)};
+            const float fraction = total_ ? float(scanned_) / float(total_) : 0.0f;
+            char counts[64];
+            std::snprintf(counts, sizeof(counts), "%zu of %zu systems", scanned_, total_);
+            LoadingIndicator::draw(canvas, theme, panel, "Reading your library", fraction,
+                                   std::string(), counts);
+        } else {
+            bold.drawCentered(canvas, area, "No systems with games found", theme.sizeHeading(),
+                              theme.textMuted);
+        }
         return;
     }
 

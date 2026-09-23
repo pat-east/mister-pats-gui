@@ -59,6 +59,9 @@ toolkits and rules in careful, measured software rendering — see
   nothing else.
 - **Its own box art scraper**, from Settings — fetches box art and background images from the
   libretro thumbnail server, no separate tool required.
+- **Opens instantly, even at 10,000+ games.** A system's list — or the whole library, merged
+  and sorted, in the Games tab — fills in progressively rather than blocking on every game's
+  artwork before showing anything.
 - **Console icons** for systems without art.
 - **Manage systems**, in Settings — hide the systems you do not use from the Systems tab, and
   toggle the Games tab off entirely for a library large enough that browsing it flat stops
@@ -240,7 +243,10 @@ dated commitment.
 
 ### Presentation and speed
 
-- [ ] Load artwork on a background thread — a stalling filesystem currently stalls the UI
+- [x] Opening a system or the whole library no longer stalls the UI — resolving artwork paths
+      happens a slice per frame, the same budgeted way image decoding already did, rather than
+      all at once before the first frame can render. Not a background thread — a single
+      frame loop stays simpler — but the practical effect is the same: nothing blocks.
 - [ ] Three-tier artwork loading (thumbnail → medium → full) with a cross-fade
 - [x] Read JPEG as well as PNG, decided by file content rather than by extension — artwork
       on a MiSTer is routinely a JPEG named `.png`

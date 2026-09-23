@@ -54,6 +54,17 @@ public:
     const std::vector<GameSystem> &systems() const { return systems_; }
     std::vector<Game> gamesOf(const GameSystem &system) const;
 
+    // Just the paths, without the per-game artwork resolution `gamesOf`/`makeGame` do — that
+    // is the expensive part (up to four `stat()` calls each), and a screen that wants to
+    // spread it across frames needs the cheap list first. Already sorted by display name when
+    // it comes from our own database (one file, written that way); not sorted otherwise, since
+    // sorting needs each name and getting that is exactly the part being deferred.
+    std::vector<std::string> pathsOf(const GameSystem &system) const;
+
+    // True for the case above: the caller can append entries in this order as it resolves
+    // them and never needs to re-sort once every path has been turned into a Game.
+    bool pathsPreSorted(const GameSystem &system) const { return !system.dbKey.empty(); }
+
     // Stops at the first match, so filtering the system list stays cheap.
     bool hasGames(const GameSystem &system) const;
 
@@ -71,6 +82,11 @@ public:
 
     // Rebuilds a game entry from a stored path, e.g. when restoring favourites.
     static Game makeGame(const GameSystem &system, const std::string &path);
+
+    // Just the display name makeGame() would give a path, without any of the I/O that also
+    // does — pure string work, safe to call for every candidate up front when their order
+    // needs deciding before anything about them has actually been resolved.
+    static std::string nameFor(const GameSystem &system, const std::string &path);
 
     static constexpr const char *kDefaultSectionDir =
         "/media/fat/ConsoleMode/themeconfig/section_groups";

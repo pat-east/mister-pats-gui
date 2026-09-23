@@ -5,6 +5,37 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-09-23
+
+### Added
+
+- A shared `LoadingIndicator` — title, progress bar, status/count line, a moving dot so a big
+  directory never looks stuck — now used everywhere a wait is unavoidable: the database scan,
+  the box art scraper, opening a large system, and the "Games" tab. One look instead of a
+  different ad-hoc message per screen.
+
+### Changed
+
+- **Opening a system or the "Games" tab no longer blocks.** Resolving a game's artwork paths
+  costs real `stat()` calls — thousands of them for a big system, tens of thousands for the
+  whole library at once — and doing all of it before the first frame could render is what made
+  opening NES (2,882 games) or Mega Drive (976) look like a hang. It now happens a slice at a
+  time across frames, the same way image decoding already did.
+- **"Games" reveals entries as they resolve, already in the right order**, rather than showing
+  a loading screen until every system has been merged and sorted. The display name a path will
+  get costs no I/O — see `Library::nameFor` — so the whole list can be put in its final order
+  up front, cheaply, before any of the expensive work starts. The header's count reflects the
+  final total immediately too, instead of climbing as more of the list resolves.
+
+### Fixed
+
+- The loading indicator's moving dot was pinned to the bottom of its drawing area, which
+  collided with the count line whenever a screen (Systems, Games) didn't also have a status
+  line above it. It is now placed a fixed distance below whatever text was drawn last.
+- `SystemsScreen`'s new loading panel never cleared the canvas before drawing over it — each
+  frame's text and dot painted on top of the last instead of replacing it, smearing into an
+  unreadable mess while a scan was in progress.
+
 ## [0.1.2] - 2026-09-23
 
 ### Fixed

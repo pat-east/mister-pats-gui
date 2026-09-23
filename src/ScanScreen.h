@@ -37,8 +37,6 @@ private:
     void renderArtworkOffer(Canvas &canvas, const Rect &panel);
     void renderArtworkWorking(Canvas &canvas, const Rect &panel);
     void renderDone(Canvas &canvas, const Rect &panel);
-    void renderProgress(Canvas &canvas, const Rect &body, const std::string &title,
-                        float fraction, const std::string &status, const std::string &counts);
     void drawParagraph(Canvas &canvas, const Rect &area, const std::vector<std::string> &lines,
                        int size, Color color, int &y) const;
 
@@ -57,6 +55,5 @@ private:
     // — a scan's leftover state (or its absence) from earlier in the session, not anything
     // that happened just now.
     bool scanRan_ = false;
-    float spinner_ = 0.0f;
     std::vector<std::string> roots_;
 };
