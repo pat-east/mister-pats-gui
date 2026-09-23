@@ -10,28 +10,34 @@ This sets up MiSTer Pat's GUI so that the device boots straight into it.
 ## Requirements
 
 - A MiSTer with a working SD card setup and SSH access
-- **Console Mode, fully set up before you start** — see the next section
 - To build from source: macOS or Linux with the cross-toolchain, see
   [README.md](README.md#building-from-source)
 
-## Step 0 — Box art, if you want it
+Console Mode is **not required**, for anything. If you already have it installed, this GUI
+picks up its typeface automatically and nothing further needs doing. If you do not, see
+[Step 0](#step-0--the-typeface-if-you-want-it) below for the one manual step that replaces it.
 
-This GUI builds its own catalogue of systems and its own index of games; a wizard does that
-on first start (see [Step 5](#step-5--build-the-game-database)). What it does not do yet is
-fetch artwork, so box art still comes from Console Mode's scraper.
+## Step 0 — The typeface, if you want it
 
-If you want box art, do this before installing:
+This GUI builds its own catalogue of systems, its own index of games, and fetches its own box
+art — a wizard walks through the first two on first start (see
+[Step 5](#step-5--build-the-game-database)), and box art is a button in Settings once the
+database exists (**Settings → Fetch box art**). None of that needs Console Mode.
 
-1. Install Console Mode and boot into it.
-2. Run its box art scraper and let it complete.
-3. Check that the artwork arrived — there should be a `media/` folder beside your games, for
-   example `/media/usb0/games/SNES/media/`.
+The one thing still outside the GUI is its typeface, Akrobat. It cannot be bundled here —
+Fontfabric's free-font licence permits using it in your own designs but not redistributing the
+font files themselves — so getting it is a manual, one-time step:
 
-Without it everything still works; the tiles just show titles instead of covers. Console Mode
-also supplies the typeface, and without that the GUI falls back to a built-in one.
+1. Download it from Fontfabric directly: <https://www.fontfabric.com/fonts/akrobat/>
+2. Copy `Akrobat-Bold.ttf` and `Akrobat-SemiBold.ttf` onto the device:
+   ```sh
+   scp Akrobat-Bold.ttf Akrobat-SemiBold.ttf root@<ip>:/media/fat/mister-pat/fonts/
+   ```
+   (`mkdir -p /media/fat/mister-pat/fonts` first if the directory does not exist yet.)
 
-Once this GUI is installed, Console Mode no longer starts. Only its files are read.
-[More on that](#why-console-mode-is-still-worth-having).
+Skip this and everything still works — the GUI falls back to a built-in typeface. If Console
+Mode happens to be on the same SD card, its own copy of Akrobat is found automatically and
+this step is not needed either way.
 
 Replace `<ip>` with your MiSTer's address in every command below.
 
@@ -162,29 +168,26 @@ The device then boots exactly as it did before. Nothing else was modified.
 | Controller moves two positions per press | A mirror input device is being read as well. It should be filtered by name; check with `grep input:` in the GUI's output. |
 | Menu button does not open the OSD | The GUI is running with `--exclusive`. Start it without that option. |
 | No games listed | The database has not been built. Settings → Build game database. |
-| No box art | Console Mode's scraper has not run, or ran on a different drive. Look for a `media/` folder beside the games. |
-| Text renders as boxes | No font was found. Put `Akrobat-Bold.ttf` and `Akrobat-SemiBold.ttf` into `/media/fat/mister-pat/fonts/`. |
+| No box art | The scraper has not run yet, or has not reached that system. Settings → Fetch box art. |
+| Text looks like a blocky, all-caps placeholder font | No Akrobat file was found, so the built-in fallback typeface is drawing instead — this is a working state, not a bug. See [Step 0](#step-0--the-typeface-if-you-want-it) if you want the real typeface. |
 | Games on a CD-based core do not start | The core expects a different loader slot. See the table in [POC.md](POC.md) and `assets/systems.conf.example`. |
 
 A reboot is always the safe way back, and removing the two INI lines always returns the
 device to its stock behaviour.
 
-## Why Console Mode is still worth having
+## Console Mode is not required
 
-Two of the four things the GUI needs are now its own:
+All four things the GUI needs are covered without it:
 
 | What | Where |
 | --- | --- |
 | System catalogue | **built here**, `/media/fat/mister-pat/gamesdb/catalog.tsv` |
 | Game index | **built here**, one `<System>.tsv` per system |
-| Box art and backgrounds | scraped by Console Mode into `media/` beside each system's games, e.g. `/media/usb0/games/SNES/media/<title>.png` and `<title>-BG.png` |
-| Fonts | `/media/fat/ConsoleMode/themeconfig/resources/Akrobat-*.ttf`, with a built-in fallback |
+| Box art and backgrounds | **fetched here** — Settings → Fetch box art |
+| Fonts | downloaded once by hand — [Step 0](#step-0--the-typeface-if-you-want-it) — or the built-in fallback if you skip that |
 
-Neither remaining item stops the GUI from working. Without the artwork the tiles show titles;
-without the typeface it uses its own.
-
-Console Mode itself no longer runs: `main=` sends the boot path to the patched binary instead.
-Only its files are read.
-
-A scraper of our own and a bundled typeface are both on the
-[roadmap](README.md#roadmap). With those two, Console Mode is no longer needed at all.
+If Console Mode happens to already be on the SD card, its copy of Akrobat is picked up
+automatically and nothing changes; if it is not, nothing is missing that this GUI cannot get
+on its own. Console Mode itself never runs either way once this GUI is installed: `main=`
+sends the boot path to the patched binary instead, and only Console Mode's font file, if it is
+there, is ever read.

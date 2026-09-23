@@ -6,17 +6,20 @@
 
 namespace {
 
-// ConsoleMode ships these; the rest are common locations so the app also runs on a plain box.
+// Console Mode's own copy first, so an existing install needs nothing further; then a copy
+// placed by hand (see INSTALL.md). Nothing beyond that is worth listing — MiSTer's own OSD
+// draws from a bitmap font compiled into its binary, not a loose TTF on disk, so there is no
+// third system location to reliably find one at. If neither candidate opens, Font::load()
+// reports it and every caller falls back to the built-in bitmap face, which needs no file at
+// all and is the one fallback actually guaranteed to be there.
 const std::vector<std::string> kBoldCandidates = {
     "/media/fat/ConsoleMode/themeconfig/resources/Akrobat-Bold.ttf",
     MISTER_PAT_ROOT "/fonts/Akrobat-Bold.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
 };
 
 const std::vector<std::string> kRegularCandidates = {
     "/media/fat/ConsoleMode/themeconfig/resources/Akrobat-SemiBold.ttf",
     MISTER_PAT_ROOT "/fonts/Akrobat-SemiBold.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
 };
 
 } // namespace

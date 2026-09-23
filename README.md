@@ -74,32 +74,30 @@ toolkits and rules in careful, measured software rendering — see
 - A MiSTer (Terasic DE10-Nano) with a working SD card setup
 - SSH access to the device
 - Your game library on a single USB volume, wherever the MiSTer already finds it
-- Console Mode, only if you want its typeface — see the next section
+- Console Mode is not required for anything — see the next section
 - To build it yourself: macOS or Linux with an `arm-unknown-linux-gnueabihf` cross-toolchain
 
-## Console Mode is now optional
+## Console Mode is not required
 
 This GUI finds your systems and games itself, and fetches its own box art and background
-images from the libretro thumbnail server — from Settings, once the database is built. The
-one thing it still borrows is a typeface, from
-[Console Mode](https://github.com/Retro-Remake/ConsoleMode_Distribution) by Retro Remake:
+images from the libretro thumbnail server — from Settings, once the database is built.
+[Console Mode](https://github.com/Retro-Remake/ConsoleMode_Distribution) by Retro Remake is not
+a dependency for any of that:
 
 | What | Where it comes from |
 | --- | --- |
 | The catalogue of systems | **built by this GUI** |
 | The index of games | **built by this GUI** |
 | Box art and background images | **fetched by this GUI** — Settings → *Fetch box art* |
-| Fonts | shipped with Console Mode |
+| Fonts | downloaded once by hand — see [INSTALL.md](INSTALL.md#step-0--the-typeface-if-you-want-it) — or the built-in fallback if you skip that |
 
-So Console Mode is optional, and nothing about the order matters anymore. Skip it entirely and
-everything still works, box art included — you just get the built-in fallback typeface instead
-of Console Mode's.
+The typeface, Akrobat, can't be bundled here — Fontfabric's free-font licence allows using it
+in your own designs but not redistributing the font files — so getting it stays a one-time
+manual step instead of something this GUI fetches for you. Skip it and everything still works;
+you get the built-in fallback typeface instead.
 
 Once installed, this GUI takes over the boot path and Console Mode no longer starts. Only its
 font files are still read, if present.
-
-Shipping a typeface of its own is the one thing left on the [roadmap](#roadmap) between this
-project and not touching Console Mode at all.
 
 ## Installation
 
@@ -225,11 +223,11 @@ dated commitment.
 - [x] Its own catalogue of systems and its own game index, written by a scan of the drives
       and stored one file per system. Verified on hardware against a 10,500-game library
       across two drives.
-- [ ] Ship the fonts, rather than borrowing Console Mode's
+- [x] Independence from Console Mode for the typeface. Not by bundling it — Fontfabric's
+      free-font licence does not permit redistributing Akrobat itself — but by pointing
+      straight at the official download instead of requiring Console Mode as a middleman.
+      See [Console Mode is not required](#console-mode-is-not-required).
 - [ ] Loader slots for the remaining CD-based cores (CD-i, Jaguar CD)
-
-Fonts are the one thing left standing between this project and not touching Console Mode at
-all — see [Console Mode is now optional](#console-mode-is-now-optional).
 
 ### Controllers
 
@@ -275,6 +273,9 @@ all — see [Console Mode is now optional](#console-mode-is-now-optional).
 - [ ] Search
 - [ ] Localisation. Everything is English today, with the strings still inline; extracting
       them is the prerequisite.
+- [ ] A default presentation (list, large/small box art, grid, compact), settable from
+      Settings, plus an option to remember the last one chosen separately for each tab —
+      Home, Favorites, Systems and Games — instead of one view following you everywhere.
 
 ### Ideas, not committed
 
