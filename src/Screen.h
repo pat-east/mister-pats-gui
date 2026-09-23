@@ -52,7 +52,14 @@ public:
     virtual ~Screen() = default;
 
     virtual void update(float deltaSeconds) = 0;
-    virtual void render(Canvas &canvas, const Rect &area) = 0;
+
+    // `fullRedraw` is true when the caller has already wiped the whole area back to the
+    // background this frame — a tab switch, returning from a detail view, anything that
+    // invalidates whatever a screen thinks is still on screen. A screen that skips its own
+    // repaint when nothing it tracks has changed must still repaint when this is true, or it
+    // leaves the canvas showing whatever the wipe left behind: nothing.
+    virtual void render(Canvas &canvas, const Rect &area, bool fullRedraw) = 0;
+
     virtual void handle(Action action) = 0;
 
     // Button legend for the bottom bar.

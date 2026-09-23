@@ -1,4 +1,5 @@
 #include "App.h"
+#include "Version.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -230,10 +231,19 @@ void App::renderBottomBar(const Rect &area) {
     theme.regular().draw(canvas, area.x + theme.marginX(), y, hints, theme.sizeSmall(),
                          theme.textMuted.withAlpha(110));
 
+    // Small and out of the way in the corner — a build identifier for bug reports, not
+    // something meant to draw the eye.
+    const std::string version = std::string("v") + kAppVersion;
+    const int versionWidth = theme.regular().measure(version, theme.sizeSmall());
+    theme.regular().draw(canvas, area.right() - theme.marginX() - versionWidth, y, version,
+                         theme.sizeSmall(), theme.textMuted.withAlpha(90));
+
     if (context_->messageTimer > 0.0f && !context_->message.empty()) {
+        // Sits to the left of the version string so the two never overlap.
         const int width = theme.regular().measure(context_->message, theme.sizeSmall());
         const uint8_t alpha = uint8_t(std::min(1.0f, context_->messageTimer) * 235);
-        theme.regular().draw(canvas, area.right() - theme.marginX() - width, y,
+        const int reserved = versionWidth + theme.gap();
+        theme.regular().draw(canvas, area.right() - theme.marginX() - reserved - width, y,
                              context_->message, theme.sizeSmall(),
                              theme.accent.withAlpha(alpha));
     }
@@ -327,7 +337,7 @@ int App::run() {
         renderBottomBar(bottom);
         const int64_t t2 = nowMs();
 
-        screen->render(*canvas_, content);
+        screen->render(*canvas_, content, full);
         const int64_t t3 = nowMs();
 
         if (full) framebuffer_.present(*canvas_);

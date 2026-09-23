@@ -91,7 +91,7 @@ void SystemsScreen::handle(Action action) {
     }
 }
 
-void SystemsScreen::render(Canvas &canvas, const Rect &area) {
+void SystemsScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
     Theme &theme = context_.theme;
     Font &bold = theme.bold();
 
@@ -146,8 +146,10 @@ void SystemsScreen::render(Canvas &canvas, const Rect &area) {
     // this frame rather than waiting until the next one.
     const uint64_t imagesBefore = context_.images.generation();
 
-    // Work out what actually changed since the last frame.
-    const bool layoutChanged = scrollRow_ != paintedScrollRow_ ||
+    // Work out what actually changed since the last frame. `fullRedraw` covers a wipe the
+    // caller already did for a reason of its own — a tab switch, returning from a detail
+    // view — which our own tracking below has no way to see for itself.
+    const bool layoutChanged = fullRedraw || scrollRow_ != paintedScrollRow_ ||
                                systems_.size() != paintedCount_ ||
                                paintedFocus_.size() != focus_.size() ||
                                imagesBefore != paintedImages_;

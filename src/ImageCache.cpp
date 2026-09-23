@@ -4,6 +4,16 @@
 
 #include "Input.h"   // nowMs
 
+namespace {
+
+// How long a miss sticks before it is worth trying again. Long enough that scrolling past a
+// game with genuinely no artwork does not retry it every frame; short enough that a drive
+// still settling right after boot recovers within a few seconds rather than for the rest of
+// the session. ~3 s at the app's ~30 fps frame pace.
+constexpr uint64_t kFailureRetryTicks = 90;
+
+} // namespace
+
 void ImageCache::beginFrame(int budgetMs) {
     ++tick_;
     budgetMs_ = budgetMs;
@@ -26,8 +36,12 @@ ImagePtr ImageCache::get(const std::string &path, int width, int height) {
 
     auto it = entries_.find(key);
     if (it != entries_.end()) {
-        it->second.lastUsed = tick_;
-        return it->second.failed ? nullptr : it->second.image;
+        const bool staleFailure =
+            it->second.failed && tick_ - it->second.failedAtTick >= kFailureRetryTicks;
+        if (!staleFailure) {
+            it->second.lastUsed = tick_;
+            return it->second.failed ? nullptr : it->second.image;
+        }
     }
 
     // Decode only while this frame has not spent its decoding allowance yet.
@@ -40,6 +54,7 @@ ImagePtr ImageCache::get(const std::string &path, int width, int height) {
     ImagePtr source = Image::load(path);
     if (!source || !source->valid()) {
         entry.failed = true;
+        entry.failedAtTick = tick_;
     } else {
         // Fit inside the box without distorting: whichever side is relatively longer
         // determines the scale.
@@ -51,7 +66,7 @@ ImagePtr ImageCache::get(const std::string &path, int width, int height) {
             targetW = std::max(1, int(long(source->width()) * height / source->height()));
 
         entry.image = source->scaledTo(targetW, targetH);
-        if (!entry.image) entry.failed = true;
+        if (!entry.image) { entry.failed = true; entry.failedAtTick = tick_; }
     }
 
     decodedMs_ += nowMs() - startedAt;
@@ -59,7 +74,7 @@ ImagePtr ImageCache::get(const std::string &path, int width, int height) {
     const bool failed = entry.failed;
     ImagePtr result = entry.image;
     if (!failed) ++generation_;
-    entries_.emplace(key, std::move(entry));
+    entries_[key] = std::move(entry);   // assignment, not emplace: a retry replaces the stale miss
     evictIfNeeded();
 
     return failed ? nullptr : result;

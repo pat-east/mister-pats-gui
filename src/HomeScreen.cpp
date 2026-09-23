@@ -291,7 +291,7 @@ bool HomeScreen::rowChanged(const Row &row, bool active) const {
     return false;
 }
 
-void HomeScreen::render(Canvas &canvas, const Rect &area) {
+void HomeScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
     Theme &theme = context_.theme;
 
     const int headerHeight = theme.px(58);
@@ -321,7 +321,11 @@ void HomeScreen::render(Canvas &canvas, const Rect &area) {
     // this frame rather than waiting until the next one.
     const uint64_t imagesBefore = context_.images.generation();
 
-    bool anyChange = pageScroll_ != paintedPageScroll_ || imagesBefore != paintedImages_;
+    // The caller may have already wiped the canvas this frame for a reason of its own — a
+    // tab switch, returning from a detail view — in which case skipping our own repaint
+    // because nothing *we* track has changed would leave that wipe on screen.
+    bool anyChange = fullRedraw || pageScroll_ != paintedPageScroll_ ||
+                     imagesBefore != paintedImages_;
     for (size_t r = 0; r < rows_.size() && !anyChange; ++r)
         anyChange = rowChanged(rows_[r], int(r) == activeRow_);
 

@@ -48,10 +48,14 @@ struct SlotDefault {
     char type;   // 'f' file slot, 's' disk slot
 };
 
+// Matched case-insensitively against the display name below (kSlotDefaults was written in
+// upper case for readability, GameSystem::name is not), so the exact case here does not
+// matter — it just has to be the right word. "Mega CD", not "Sega CD", to match this
+// project's own naming (see the alias table in SystemCatalog.cpp).
 const SlotDefault kSlotDefaults[] = {
     {"PLAYSTATION", 1, 's'},
     {"SATURN", 0, 's'},
-    {"SEGA CD", 0, 's'},
+    {"MEGA CD", 0, 's'},
     {"TURBOGRAFX-16 CD", 0, 's'},
     {"NEO GEO CD", 1, 's'},
     {"3DO", 0, 's'},
@@ -272,7 +276,7 @@ bool Library::loadSectionFile(const std::string &file, const std::string &group)
 void Library::applySlotDefaults() {
     for (GameSystem &system : systems_) {
         for (const SlotDefault &slot : kSlotDefaults) {
-            if (system.name != slot.system) continue;
+            if (strcasecmp(system.name.c_str(), slot.system) != 0) continue;
             system.fileIndex = slot.index;
             system.fileType = slot.type;
             break;
@@ -309,7 +313,7 @@ void Library::applyOverrides() {
 
         const int index = atoi(rest.c_str());
         for (GameSystem &system : systems_) {
-            if (system.name != head) continue;
+            if (strcasecmp(system.name.c_str(), head.c_str()) != 0) continue;
             system.fileIndex = index;
             system.fileType = type;
             ++applied;

@@ -53,7 +53,7 @@ void SystemVisibilityScreen::handle(Action action) {
     }
 }
 
-void SystemVisibilityScreen::render(Canvas &canvas, const Rect &area) {
+void SystemVisibilityScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*/) {
     Theme &theme = context_.theme;
 
     const int headerHeight = theme.px(58);

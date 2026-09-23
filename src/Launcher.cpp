@@ -6,6 +6,7 @@
 #include <dirent.h>
 #include <fstream>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <vector>
 
 #include "Archive.h"
@@ -16,6 +17,19 @@ namespace {
 // In preference order. A .cue names its .bin tracks, so it must win over the raw track files
 // that sit beside it; .chd is a single self-contained file and is just as good.
 const char *kDiscExtensions[] = {"cue", "chd", "iso", "ccd"};
+
+// A drive still settling right after boot can make stat()/opendir() fail on a path that is
+// perfectly real; a handful of short retries tells that apart from the path genuinely not
+// being there. This matters here specifically because the alternative — silently treating an
+// unreadable folder as if it were already the disc image — starts a core with nothing behind
+// it rather than failing visibly.
+//
+// Three seconds, matching the settle delay SystemsScreen already waits out before its own
+// first read: opening a large system's list is itself a burst of stat() calls, and launching
+// a game straight out of that list is exactly when the drive is least likely to have caught
+// up yet.
+constexpr int kResolveAttempts = 10;
+constexpr int kResolveDelayUs = 300000;   // 300 ms; ten attempts is a three-second ceiling
 
 std::string extensionOf(const std::string &name) {
     const size_t dot = name.find_last_of('.');
@@ -53,10 +67,19 @@ std::string xmlEscape(const std::string &text) {
 
 std::string Launcher::resolveDisc(const std::string &path) {
     struct stat info {};
-    if (stat(path.c_str(), &info) != 0 || !S_ISDIR(info.st_mode)) return path;
+    int attempt = 0;
+    while (stat(path.c_str(), &info) != 0) {
+        if (++attempt >= kResolveAttempts) return std::string();
+        usleep(kResolveDelayUs);
+    }
+    if (!S_ISDIR(info.st_mode)) return path;
 
-    DIR *dir = opendir(path.c_str());
-    if (!dir) return path;
+    DIR *dir = nullptr;
+    attempt = 0;
+    while (!(dir = opendir(path.c_str()))) {
+        if (++attempt >= kResolveAttempts) return std::string();
+        usleep(kResolveDelayUs);
+    }
 
     // One folder, so a handful of entries — nothing like walking the library.
     std::vector<std::string> candidates[sizeof(kDiscExtensions) / sizeof(kDiscExtensions[0])];
@@ -130,7 +153,8 @@ bool Launcher::launchGame(const GameSystem &system, const Game &game) {
 
     std::string romPath = resolveDisc(game.path);
     if (romPath.empty()) {
-        error_ = "no disc image inside " + game.name;
+        error_ = "could not read " + game.name + " - no disc image found, or the drive it is "
+                 "on did not respond";
         return false;
     }
 

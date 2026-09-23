@@ -25,7 +25,7 @@ public:
     void resetForArtwork();
 
     void update(float deltaSeconds) override;
-    void render(Canvas &canvas, const Rect &area) override;
+    void render(Canvas &canvas, const Rect &area, bool fullRedraw) override;
     void handle(Action action) override;
     std::string hints() const override;
 

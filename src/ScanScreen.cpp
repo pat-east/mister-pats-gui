@@ -271,7 +271,7 @@ void ScanScreen::renderDone(Canvas &canvas, const Rect &panel) {
     }
 }
 
-void ScanScreen::render(Canvas &canvas, const Rect &area) {
+void ScanScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*/) {
     Theme &theme = context_.theme;
 
     const int width = std::min(area.w, theme.px(900));

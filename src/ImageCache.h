@@ -24,8 +24,11 @@ public:
     // Returns nullptr while a decode is still pending or if the file cannot be read.
     ImagePtr get(const std::string &path, int width, int height);
 
-    // Tries a second location when the first holds nothing. Misses are cached, so the extra
-    // lookup costs one failed open per artwork, once.
+    // Tries a second location when the first holds nothing. A miss is cached for a while, so
+    // scrolling past the same missing artwork repeatedly costs one failed open rather than
+    // one per frame — but it is retried after that, rather than blacklisted forever. A drive
+    // that is still settling right after boot can turn a real picture into a miss for the
+    // first attempt or two, and that must not become permanent.
     ImagePtr get(const std::string &path, const std::string &fallback, int width, int height);
 
     size_t size() const { return entries_.size(); }
@@ -40,6 +43,7 @@ private:
         ImagePtr image;
         bool failed = false;
         uint64_t lastUsed = 0;
+        uint64_t failedAtTick = 0;
     };
 
     void evictIfNeeded();
