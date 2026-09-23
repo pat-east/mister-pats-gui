@@ -251,8 +251,9 @@ dated commitment.
 - [x] Read JPEG as well as PNG, decided by file content rather than by extension — artwork
       on a MiSTer is routinely a JPEG named `.png`
 - [ ] General optimisation of the interface and of box art loading
-- [ ] A process for preparing box art: pre-scaling and recompressing the artwork on disk, so
-      the device never pays for a 512-pixel PNG it is about to draw at 260 pixels
+- [x] A process for preparing box art: pre-scaling and recompressing the artwork on disk, so
+      the device never pays for a 512-pixel PNG it is about to draw at 260 pixels — the
+      scraper now writes a second, smaller copy alongside the full-size one.
 - [ ] Menu sounds
 
 ### Library management

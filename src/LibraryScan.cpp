@@ -6,6 +6,8 @@
 #include <dirent.h>
 #include <sys/stat.h>
 
+#include "DebugLog.h"
+
 namespace {
 
 bool isDirectory(const std::string &path) {
@@ -114,32 +116,34 @@ std::vector<std::string> LibraryScan::scanOne(const CatalogEntry &system) const 
     return games;
 }
 
+void LibraryScan::fail(std::string message) {
+    error_ = std::move(message);
+    DebugLog::warn("scan: " + error_);
+    state_ = State::Failed;
+}
+
 void LibraryScan::step() {
     switch (state_) {
     case State::Discovering: {
         if (roots_.empty()) {
-            error_ = "no volumes found";
-            state_ = State::Failed;
+            fail("no volumes found");
             return;
         }
 
         cores_.scan(roots_);
         if (cores_.empty()) {
-            error_ = "no cores found — is this a MiSTer?";
-            state_ = State::Failed;
+            fail("no cores found — is this a MiSTer?");
             return;
         }
 
         queue_ = SystemCatalog::discover(roots_, cores_);
         if (queue_.empty()) {
-            error_ = "no game directories found next to an installed core";
-            state_ = State::Failed;
+            fail("no game directories found next to an installed core");
             return;
         }
 
         if (!database_.beginWrite(roots_)) {
-            error_ = database_.lastError();
-            state_ = State::Failed;
+            fail(database_.lastError());
             return;
         }
 
@@ -175,8 +179,7 @@ void LibraryScan::step() {
             record.discBased = system.discBased;
 
             if (!database_.writeSystem(record, games)) {
-                error_ = database_.lastError();
-                state_ = State::Failed;
+                fail(database_.lastError());
                 return;
             }
 
@@ -190,8 +193,7 @@ void LibraryScan::step() {
 
     case State::Writing: {
         if (!database_.finishWrite()) {
-            error_ = database_.lastError();
-            state_ = State::Failed;
+            fail(database_.lastError());
             return;
         }
         state_ = State::Done;

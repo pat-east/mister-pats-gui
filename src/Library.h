@@ -80,13 +80,28 @@ public:
     // Resolves the owning system from a ROM path, for entries that only store one.
     const GameSystem *systemForPath(const std::string &path) const;
 
-    // Rebuilds a game entry from a stored path, e.g. when restoring favourites.
+    // Rebuilds a game entry from a stored path, e.g. when restoring favourites. Includes a
+    // full artwork resolution — for a handful of entries built eagerly this is fine, but
+    // building thousands of these up front is exactly what makeStub()/resolveArtwork() below
+    // exist to avoid.
     static Game makeGame(const GameSystem &system, const std::string &path);
+
+    // Just the path and display name — no I/O, safe to call for every candidate in a library
+    // at once. What a screen showing thousands of entries should build immediately; artwork
+    // is resolved later, only for what actually gets drawn.
+    static Game makeStub(const GameSystem &system, const std::string &path);
 
     // Just the display name makeGame() would give a path, without any of the I/O that also
     // does — pure string work, safe to call for every candidate up front when their order
     // needs deciding before anything about them has actually been resolved.
     static std::string nameFor(const GameSystem &system, const std::string &path);
+
+    // Fills in a stub's artwork fields. `preferSmall` picks the `-sm` variant the scraper
+    // writes alongside full-size artwork when one exists — for a grid tile there is no reason
+    // to decode four times the pixels that will ever be drawn. Falls back to full-size when
+    // no small variant is there, so this is always safe to call regardless of whether the
+    // library has ever been scraped since -sm files existed.
+    static void resolveArtwork(const GameSystem &system, Game &game, bool preferSmall);
 
     static constexpr const char *kDefaultSectionDir =
         "/media/fat/ConsoleMode/themeconfig/section_groups";

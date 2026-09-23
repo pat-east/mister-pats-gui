@@ -115,6 +115,15 @@ ImagePtr Image::loadPng(const std::string &path) {
 ImagePtr Image::scaledTo(int w, int h) const {
     if (!valid() || w <= 0 || h <= 0) return nullptr;
 
+    // Already the size asked for — measured on the device at 34 ms for the bilinear path
+    // below even at a 1:1 ratio, since nothing there special-cases "nothing to do". A plain
+    // copy of the pixels costs a fraction of that.
+    if (w == width_ && h == height_) {
+        auto same = std::make_shared<Image>(w, h);
+        same->pixels_ = pixels_;
+        return same;
+    }
+
     auto out = std::make_shared<Image>(w, h);
 
     const bool shrinking = (w < width_ || h < height_);

@@ -1,4 +1,6 @@
 #include "App.h"
+#include "DebugLog.h"
+#include "Splash.h"
 #include "Version.h"
 
 #include <algorithm>
@@ -13,12 +15,23 @@ constexpr int kTargetFrameMs = 33;   // ~30 fps; the CPU renders every pixel in 
 bool App::initialize(const Options &options) {
     options_ = options;
 
-    if (!framebuffer_.open()) return false;
+    DebugLog::info(std::string("starting mister-gui v") + kAppVersion);
+
+    if (!framebuffer_.open()) {
+        DebugLog::error("could not open the framebuffer, giving up");
+        return false;
+    }
     std::printf("framebuffer: %s\n", framebuffer_.describe().c_str());
+    DebugLog::info("framebuffer: " + framebuffer_.describe());
 
     canvas_ = std::make_unique<Canvas>(framebuffer_.width(), framebuffer_.height());
     background_ = std::make_unique<Canvas>(framebuffer_.width(), framebuffer_.height());
     theme_ = std::make_unique<Theme>(framebuffer_.width(), framebuffer_.height());
+
+    // Nothing here has touched a game drive yet — everything below this point does. See
+    // Splash.h for why this exists.
+    if (options_.splashMs > 0) Splash::show(framebuffer_, *theme_, options_.splashMs);
+
     renderBackground(*background_);
 
     library_.load();
@@ -96,7 +109,7 @@ void App::reloadLibrary() {
     homeScreen_->refresh();
     favoritesScreen_->showFavorites();
     allGamesScreen_->showAllGames();
-    if (!gamesScreen_->empty() || gamesScreen_->loading()) gamesScreen_->reload();
+    if (!gamesScreen_->empty()) gamesScreen_->reload();
 }
 
 void App::openScan(bool firstRun) {
@@ -162,12 +175,11 @@ void App::selectTab(Tab tab) {
     needsFullRedraw_ = true;
     if (tab == Tab::Home) homeScreen_->refresh();
     if (tab == Tab::Favorites) favoritesScreen_->showFavorites();
-    // The whole library is a lot to gather, so it is built when the tab is opened and then
-    // kept; a library reload is what throws it away again. Checking loading() too matters
-    // here specifically: switching away mid-build and back before it finishes must not
-    // restart it, or leaving the tab becomes a way to make it never finish.
-    if (tab == Tab::Games && allGamesScreen_->empty() && !allGamesScreen_->loading())
-        allGamesScreen_->showAllGames();
+    // The whole library is gathered when the tab is first opened and then kept; a library
+    // reload is what throws it away again. Building the list itself is no longer the
+    // expensive part — see GamesScreen::reload() — so there is no longer a mid-build state
+    // to avoid restarting here.
+    if (tab == Tab::Games && allGamesScreen_->empty()) allGamesScreen_->showAllGames();
     tab_ = tab;
 }
 

@@ -78,7 +78,12 @@ bool fileExists(const std::string &path) {
 // assumed: a stray non-.jpg or non-.png file sits there unfound either way, but a scraped
 // cover no longer does. This is a read, not a write, so it costs nothing on a card that only
 // makes writes expensive.
-std::string resolveArtwork(const std::string &base) {
+// `preferSmall` is only ever honoured when the file is actually there — the scraper writes
+// `-sm.jpg` alongside the full-size artwork, but not every game has been scraped since that
+// existed, and a grid tile is happy to fall back to full-size and let the framebuffer's own
+// scaling do the work rather than show nothing.
+std::string resolveArtworkFile(const std::string &base, bool preferSmall) {
+    if (preferSmall && fileExists(base + "-sm.jpg")) return base + "-sm.jpg";
     if (fileExists(base + ".jpg")) return base + ".jpg";
     return base + ".png";
 }
@@ -393,10 +398,21 @@ std::string Library::nameFor(const GameSystem &system, const std::string &path) 
     return filename;
 }
 
-Game Library::makeGame(const GameSystem &system, const std::string &path) {
+Game Library::makeStub(const GameSystem &system, const std::string &path) {
     Game game;
     game.path = path;
     game.name = nameFor(system, path);
+    return game;
+}
+
+Game Library::makeGame(const GameSystem &system, const std::string &path) {
+    Game game = makeStub(system, path);
+    resolveArtwork(system, game, false);
+    return game;
+}
+
+void Library::resolveArtwork(const GameSystem &system, Game &game, bool preferSmall) {
+    const std::string &path = game.path;
 
     // Artwork sits next to the game itself. Deriving it from the game's own directory keeps
     // it right no matter which volume the game came from — a system's directories can span
@@ -404,8 +420,8 @@ Game Library::makeGame(const GameSystem &system, const std::string &path) {
     const size_t slash = path.find_last_of('/');
     if (slash != std::string::npos) {
         const std::string media = path.substr(0, slash) + "/media/" + game.name;
-        game.boxart = resolveArtwork(media);
-        game.background = resolveArtwork(media + "-BG");
+        game.boxart = resolveArtworkFile(media, preferSmall);
+        game.background = resolveArtworkFile(media + "-BG", preferSmall);
     }
 
     // Games organised into subfolders keep their artwork one level up, in the system's own
@@ -414,12 +430,10 @@ Game Library::makeGame(const GameSystem &system, const std::string &path) {
         if (path.compare(0, dir.size(), dir) != 0) continue;
         const std::string media = dir + "/media/" + game.name;
         if (dir + "/media/" == path.substr(0, slash) + "/media/") break;   // already looking there
-        game.boxartFallback = resolveArtwork(media);
-        game.backgroundFallback = resolveArtwork(media + "-BG");
+        game.boxartFallback = resolveArtworkFile(media, preferSmall);
+        game.backgroundFallback = resolveArtworkFile(media + "-BG", preferSmall);
         break;
     }
-
-    return game;
 }
 
 bool Library::hasGames(const GameSystem &system) const {

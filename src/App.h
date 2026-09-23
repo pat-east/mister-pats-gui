@@ -41,6 +41,11 @@ public:
         bool incremental = true; // redraw and transfer only what changed
         bool wizard = true;      // offer to build the database when there is none
         bool scanOnly = false;   // build the database, report, and exit
+
+        // Diagnostic: an artificial pause on the splash screen before anything else runs, to
+        // test whether boxart missing right after boot is a drive-not-ready-yet problem. 0
+        // skips it. Off by default under --frames/--no-input, so headless tests stay fast.
+        int splashMs = 0;
     };
 
     bool initialize(const Options &options);

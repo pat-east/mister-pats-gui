@@ -46,6 +46,7 @@ public:
 
 private:
     std::vector<std::string> scanOne(const CatalogEntry &system) const;
+    void fail(std::string message);
 
     State state_ = State::Idle;
     GameDatabase database_;

@@ -1,6 +1,8 @@
 #include "ImageCache.h"
 
 #include <algorithm>
+#include <cstdio>
+#include <unistd.h>
 
 #include "Input.h"   // nowMs
 
@@ -52,6 +54,17 @@ ImagePtr ImageCache::get(const std::string &path, int width, int height) {
     entry.lastUsed = tick_;
 
     ImagePtr source = Image::load(path);
+
+    if (!source || !source->valid()) {
+        // A drive touched for the first time this session can lose an early read even though
+        // the file is genuinely there — a debug build that happened to add a few ms of
+        // incidental delay around this exact call made the failure stop reproducing. One
+        // short, deliberate pause and a retry turns that into nothing anyone sees, rather
+        // than depending on logging (or anything else) to accidentally provide the delay.
+        usleep(5000);
+        source = Image::load(path);
+    }
+
     if (!source || !source->valid()) {
         entry.failed = true;
         entry.failedAtTick = tick_;

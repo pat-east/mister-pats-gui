@@ -32,7 +32,9 @@ void usage() {
         "  --scan                                   build the game database and exit\n"
         "  --no-input                               do not open the input devices\n"
         "  --exclusive                              grab inputs (blocks the MiSTer OSD)\n"
-        "  --full-redraw                            repaint everything every frame\n");
+        "  --full-redraw                            repaint everything every frame\n"
+        "  --no-splash                              skip the startup splash delay\n"
+        "  --splash-ms N                            splash delay in ms (default 2500)\n");
 }
 
 bool parse(int argc, char **argv, App::Options &options) {
@@ -78,6 +80,10 @@ bool parse(int argc, char **argv, App::Options &options) {
             options.readInput = false;
         } else if (arg == "--exclusive") {
             options.exclusive = true;
+        } else if (arg == "--no-splash") {
+            options.splashMs = 0;
+        } else if (arg == "--splash-ms" && hasValue) {
+            options.splashMs = std::atoi(argv[++i]);
         }
     }
     return true;
@@ -108,6 +114,7 @@ int runScanOnly() {
 
 int main(int argc, char **argv) {
     App::Options options;
+    options.splashMs = 2500;   // real boots show the splash unless told not to
     if (!parse(argc, argv, options)) return 0;
 
     if (options.scanOnly) return runScanOnly();

@@ -28,6 +28,11 @@ public:
         bool backgrounds = true;
         bool overwrite = false;   // off means "fill the gaps", which is also how it resumes
         int maxEdge = 512;        // long side after shrinking
+        // A second, smaller copy written alongside the full-size one — `<name>-sm.jpg` — for
+        // grid tiles, which never draw anything close to 512 pixels wide. 300 covers every
+        // tile size up to Boxart large (see GamesScreen's kSmallArtworkMaxTile) with room to
+        // spare, while still being a third of the source's pixel count to decode.
+        int smallMaxEdge = 300;
         int quality = 85;
 
         // Both live on the card, never on the game drive. Parameters so the whole thing can
@@ -67,7 +72,12 @@ private:
     };
 
     bool prepareNextSystem();
-    bool fetchOne(const std::string &url, const std::string &destination, int maxEdge);
+    // `base` is the destination without an extension — this writes both `base.jpg` (full
+    // size) and `base-sm.jpg` (grid size) from the one download.
+    bool fetchOne(const std::string &url, const std::string &base);
+    // For a game scraped before `-sm.jpg` existed: makes the small copy from the full-size
+    // file already on disk, no network access at all.
+    bool refreshSmall(const std::string &base);
     void noteMiss(const std::string &system, const std::string &title);
 
     State state_ = State::Idle;

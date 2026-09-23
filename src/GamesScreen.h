@@ -23,11 +23,6 @@ public:
     void reload();
 
     bool empty() const { return entries_.empty(); }
-    // True while entries_ is still being built up from a queued path list. A caller deciding
-    // whether to (re)start a load must check this too — `empty()` alone stays true for a
-    // system large enough that this takes a while, and re-starting would throw the progress
-    // away and begin again.
-    bool loading() const { return loading_; }
     const std::string &title() const { return title_; }
 
     // Public so a launch can be triggered without a controller (see App::Options).
@@ -42,9 +37,15 @@ public:
     std::string hints() const override;
 
 private:
+    // A stub (path + name, no I/O — see Library::makeStub) until it is actually about to be
+    // drawn. Every entry in even the whole 10,500-game library can be built this way in a
+    // handful of milliseconds; only artworkResolved marks whether the expensive part
+    // (Library::resolveArtwork, real `stat()` calls) has happened yet for this one.
     struct Entry {
         const GameSystem *system = nullptr;
         Game game;
+        bool artworkResolved = false;
+        bool artworkSmall = false;   // which variant was resolved, so a view change re-resolves
     };
 
     const Entry *current() const;
@@ -57,9 +58,9 @@ private:
     void moveCursor(int dx, int dy);
     void jumpLetter(int direction);
 
-    // Turns queued paths into Entry objects a few milliseconds at a time instead of all at
-    // once — see the note on buildBudgetMs_ below for why.
-    void buildStep();
+    // Resolves artwork for one entry if it has not been, or was resolved for the other size
+    // variant. Idempotent and cheap to call every frame for the same entry once it is done.
+    void ensureArtwork(Entry &entry, bool preferSmall);
 
     Context &context_;
     std::vector<Entry> entries_;
@@ -68,23 +69,6 @@ private:
     bool favoritesMode_ = false;
     bool allMode_ = false;
     const GameSystem *system_ = nullptr;
-
-    // Resolving a game's artwork paths costs real `stat()` calls, and a big system is
-    // thousands of them — building every Entry in one go before the first frame is what used
-    // to make opening one look like a hang. reload() now only queues the raw paths, already in
-    // their final display order (sortKey costs no I/O — see Library::nameFor — so working that
-    // out for everything up front is cheap even for the whole library at once). buildStep()
-    // then turns a slice of pending_ into real entries each frame, appending as it goes: since
-    // the order is already right, nothing has to wait for the slowest entry before it can be
-    // shown.
-    struct PendingItem {
-        const GameSystem *system;
-        std::string path;
-        std::string sortKey;
-    };
-    std::vector<PendingItem> pending_;
-    size_t pendingIndex_ = 0;
-    bool loading_ = false;
 
     GameView view_ = GameView::Grid;
     GridView grid_;

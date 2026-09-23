@@ -8,6 +8,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "DebugLog.h"
+
 namespace {
 
 const char *kCatalogFile = "catalog.tsv";
@@ -95,6 +97,26 @@ bool hasContents(const std::string &path) {
     return anything;
 }
 
+// Used only to accept a *fallback* match for a root that was not found where it was recorded
+// (see resolveRoots()) — a bar hasContents() does not clear. A not-yet-installed system still
+// gets an empty scaffolding directory from Console Mode (an NES folder with nothing but a
+// palette file, say), which is "has contents" but nowhere near a real library. Counting past
+// a handful of entries is enough to tell those apart without needing to know what a real
+// count should be, and cheap: readdir() stops as soon as the threshold is reached.
+bool looksSubstantial(const std::string &path, int minEntries) {
+    DIR *d = opendir(path.c_str());
+    if (!d) return false;
+
+    int count = 0;
+    while (dirent *entry = readdir(d)) {
+        const std::string name = entry->d_name;
+        if (name == "." || name == "..") continue;
+        if (++count >= minEntries) break;
+    }
+    closedir(d);
+    return count >= minEntries;
+}
+
 std::vector<std::string> GameDatabase::mountPoints() {
     std::vector<std::string> found;
     for (const char *candidate : kMountPoints)
@@ -125,6 +147,28 @@ size_t GameDatabase::totalGames() const {
     return total;
 }
 
+namespace {
+
+// A drive that is still mounting right after boot looks, for a moment, exactly like one that
+// genuinely is not there — the mount point directory exists either way. Giving the recorded
+// location a few short retries before treating it as gone matters more here than it looks:
+// the fallback search below would otherwise go looking for the same probe directory on every
+// *other* mount point, including /media/fat, where a not-yet-installed system's own empty
+// scaffolding directory (created by Console Mode for every known core) can satisfy the same
+// isDirectory() check and get a whole root silently, permanently pointed at the wrong drive
+// for the rest of the session.
+// Measured on a real device: a marginal USB bridge can disconnect and re-enumerate once
+// during boot, with the filesystem not actually mounted until ~15s in. 24 * 500ms comfortably
+// covers that, and it is only ever paid once, by whichever root is not ready yet — a root
+// that is already there resolves on the first, immediate attempt.
+constexpr int kSettleAttempts = 24;
+constexpr int kSettleDelayUs = 500000;   // ~12s worst case per not-yet-ready root
+
+// How much content a fallback candidate must have to be trusted — see looksSubstantial().
+constexpr int kSubstantialEntries = 5;
+
+} // namespace
+
 void GameDatabase::resolveRoots(const std::vector<Root> &recorded) {
     roots_.assign(recorded.size(), std::string());
     missingRoots_.clear();
@@ -134,21 +178,38 @@ void GameDatabase::resolveRoots(const std::vector<Root> &recorded) {
         const Root &root = recorded[i];
         if (root.path.empty()) continue;
 
-        // Still where it was. The common case, and the only one that costs nothing.
-        if (root.probe.empty() || isDirectory(root.path + "/" + root.probe)) {
+        if (root.probe.empty()) {
             roots_[i] = root.path;
             continue;
         }
 
-        // The drive order changed. Look for the same library somewhere else.
+        // Still where it was. The common case, and the only one that costs nothing once the
+        // drive has settled.
+        bool stillThere = false;
+        for (int attempt = 0; attempt < kSettleAttempts; ++attempt) {
+            if (attempt > 0) usleep(kSettleDelayUs);
+            if (isDirectory(root.path + "/" + root.probe)) { stillThere = true; break; }
+        }
+        if (stillThere) {
+            roots_[i] = root.path;
+            continue;
+        }
+
+        // The drive order changed. Look for the same library somewhere else — but only
+        // somewhere that actually looks like it, not a same-named placeholder directory.
         for (const std::string &candidate : candidates_) {
             if (root.path == candidate) continue;
-            if (!isDirectory(candidate + "/" + root.probe)) continue;
+            if (!looksSubstantial(candidate + "/" + root.probe, kSubstantialEntries)) continue;
 
             roots_[i] = candidate;
             rootsMoved_ = true;
             std::printf("gamesdb: root moved, %s is now %s\n", root.path.c_str(),
                         candidate.c_str());
+
+            char line[256];
+            std::snprintf(line, sizeof(line), "root moved: %s is now %s (matched by %s)",
+                         root.path.c_str(), candidate.c_str(), root.probe.c_str());
+            DebugLog::warn(line);
             break;
         }
 
@@ -156,6 +217,13 @@ void GameDatabase::resolveRoots(const std::vector<Root> &recorded) {
             missingRoots_.push_back(root.path);
             std::printf("gamesdb: root %s not found (looked for %s on every mount point)\n",
                         root.path.c_str(), root.probe.c_str());
+
+            char line[256];
+            std::snprintf(line, sizeof(line),
+                         "root not found: %s (looked for %s on every mount point — its "
+                         "games will not appear)",
+                         root.path.c_str(), root.probe.c_str());
+            DebugLog::warn(line);
         }
     }
 }
@@ -194,6 +262,7 @@ bool GameDatabase::load() {
     std::getline(in, line);
     if (line != kHeader) {
         error_ = "database written by a different version, rebuild it";
+        DebugLog::warn(error_);
         return false;
     }
 
@@ -215,6 +284,12 @@ bool GameDatabase::load() {
 
     std::printf("gamesdb: %zu systems, %zu games, %zu roots%s\n", systems_.size(), totalGames(),
                 roots_.size(), rootsMoved_ ? " (a root moved)" : "");
+
+    char summary[160];
+    std::snprintf(summary, sizeof(summary), "loaded: %zu systems, %zu games, %zu roots%s",
+                 systems_.size(), totalGames(), roots_.size(),
+                 missingRoots_.empty() ? "" : " (a root is missing)");
+    DebugLog::info(summary);
     return !systems_.empty();
 }
 
@@ -320,6 +395,7 @@ bool GameDatabase::finishWrite() {
         std::ofstream out(stagingPathOf(kRootsFile), std::ios::trunc);
         if (!out) {
             error_ = "cannot write " + stagingPathOf(kRootsFile);
+            DebugLog::error(error_);
             return false;
         }
         out << kHeader << "\n";
@@ -330,6 +406,7 @@ bool GameDatabase::finishWrite() {
         std::ofstream out(stagingPathOf(kCatalogFile), std::ios::trunc);
         if (!out) {
             error_ = "cannot write " + stagingPathOf(kCatalogFile);
+            DebugLog::error(error_);
             return false;
         }
         out << kHeader << "\n";
@@ -355,11 +432,13 @@ bool GameDatabase::finishWrite() {
 
     if (isDirectory(directory_) && rename(directory_.c_str(), oldGeneration.c_str()) != 0) {
         error_ = "cannot move the previous database aside";
+        DebugLog::error(error_);
         return false;
     }
 
     if (rename(stagingDirectory().c_str(), directory_.c_str()) != 0) {
         error_ = "cannot activate the new database";
+        DebugLog::error(error_);
         rename(oldGeneration.c_str(), directory_.c_str());   // restore rather than go dark
         return false;
     }
@@ -372,6 +451,11 @@ bool GameDatabase::finishWrite() {
     resolveRoots(recorded);
 
     std::printf("gamesdb: written, %zu systems, %zu games\n", systems_.size(), totalGames());
+
+    char summary[160];
+    std::snprintf(summary, sizeof(summary), "scan written: %zu systems, %zu games",
+                 systems_.size(), totalGames());
+    DebugLog::info(summary);
     return true;
 }
 

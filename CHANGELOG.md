@@ -5,7 +5,60 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.3] - 2026-09-23
+## [0.1.4] - 2026-09-23
+
+### Fixed
+
+- **Box art (and occasionally whole games) could silently point at the wrong drive for an
+  entire session**, most visible as every tile under Systems and the Games tab showing no
+  artwork at all while Home and Favorites looked fine. Root cause: `GameDatabase` remembers
+  which mount point each drive was on by recording one game directory as a "probe" and
+  checking it is still there. Right after boot, a USB drive that has not finished mounting
+  yet looks exactly like a drive that is not there at all — and the fallback search this
+  triggered would go looking for that same probe directory on *every* mount point, including
+  `/media/fat`, where a not-yet-installed system's own empty scaffolding folder (created by
+  Console Mode for every known core, whether or not anything lives there) could satisfy the
+  same directory-exists check. A whole drive's worth of games would then silently, permanently
+  resolve against `/media/fat` instead — right paths in the catalogue, wrong prefix put in
+  front of them, for the rest of the session. Fixed two ways: the original recorded location
+  now gets real time to finish mounting (up to ~12 s, paid only once, only by a root that
+  genuinely is not ready yet) before anything looks elsewhere for it, and the fallback search
+  itself now requires a candidate to actually have a handful of files in it, not just exist.
+- `Image::scaledTo()` had no same-size fast path — asking for the size an image already is
+  still ran the full per-pixel bilinear resample, measured on-device at ~34 ms for nothing.
+  Getting the same pixels back now costs a copy instead.
+
+### Added
+
+- **A persistent, leveled log** at `/media/fat/mister-pat/logs/debug.log` (INFO / WARN /
+  ERROR, timestamped, rotates itself at 512 KB) — startup info, library and database load
+  results, root-drive resolution problems, scan and scraper progress and failures. Lives on
+  the SD card rather than in `/tmp`, specifically so it survives the reboot that a boot-time
+  bug is likely to be followed by. Nothing personally identifying is ever written to it —
+  local file paths under your own game/artwork directories, nothing else — so a report can
+  come with a copy of this file attached.
+- **A startup splash** — briefly shows this project's own logo (embedded in the binary, not a
+  loose asset file) with a progress bar, before anything touches a game drive. While it is up,
+  every attached USB slot (`usb0`–`usb5`) gets a cheap, spaced-out directory read, which gives
+  a slow-to-enumerate drive a head start on being ready by the time the real work begins.
+- **A second, smaller artwork variant** (`<name>-sm.jpg`, longest edge 300px) written by the
+  scraper alongside the existing full-size copy, generated from the same single download.
+  Every presentation except Boxart large and the List view's detail panel — which is most of
+  the time a tile is actually on screen — decodes a third of the pixels for it. Already-scraped
+  libraries get the small copy filled in locally, from the full-size file already on disk, no
+  network access needed.
+
+### Changed
+
+- **Opening a system or the Games tab no longer resolves artwork for anything but what is
+  about to be drawn.** Every entry starts as a stub — path and display name, no `stat()` calls
+  — built for the whole 10,500-game library in one go, in a handful of milliseconds. The
+  expensive part (finding the actual box art and background files, up to four `stat()` calls
+  each) now happens per tile, the moment it is about to be rendered, with a small time budget
+  per frame so a letter jump across a library that has never scrolled there before still
+  cannot turn into a hitch.
+
+
 
 ### Added
 
