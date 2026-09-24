@@ -14,11 +14,18 @@ public:
     bool showGamesTab() const { return showGamesTab_; }
     void setShowGamesTab(bool show);
 
+    // One of GamesScreen's --view names ("grid", "list", "large", "small", "compact") — kept
+    // as a plain string here rather than the GameView enum so this class does not need to
+    // know about GamesScreen at all, consistent with everything else in it.
+    const std::string &defaultView() const { return defaultView_; }
+    void setDefaultView(const std::string &view);
+
     static constexpr const char *kDefaultFile = MISTER_PAT_ROOT "/preferences.txt";
 
 private:
     bool save() const;
 
     bool showGamesTab_ = true;
+    std::string defaultView_ = "grid";
     std::string file_ = kDefaultFile;
 };

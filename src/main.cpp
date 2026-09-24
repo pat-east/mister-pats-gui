@@ -52,12 +52,8 @@ bool parse(int argc, char **argv, App::Options &options) {
             else if (value == "games") options.tab = Tab::Games;
             else if (value == "settings") options.tab = Tab::Settings;
         } else if (arg == "--view" && hasValue) {
-            const std::string value = argv[++i];
-            if (value == "list") options.view = GameView::List;
-            else if (value == "large") options.view = GameView::BoxartLarge;
-            else if (value == "small") options.view = GameView::BoxartSmall;
-            else if (value == "grid") options.view = GameView::Grid;
-            else if (value == "compact") options.view = GameView::Compact;
+            options.view = gameViewFromName(argv[++i]);
+            options.viewExplicit = true;
         } else if (arg == "--system" && hasValue) {
             options.system = argv[++i];
         } else if (arg == "--frames" && hasValue) {

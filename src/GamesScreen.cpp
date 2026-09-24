@@ -57,6 +57,27 @@ bool prefersSmallArtwork(GameView view) {
 
 } // namespace
 
+GameView gameViewFromName(const std::string &name) {
+    if (name == "list") return GameView::List;
+    if (name == "large") return GameView::BoxartLarge;
+    if (name == "small") return GameView::BoxartSmall;
+    if (name == "compact") return GameView::Compact;
+    return GameView::Grid;
+}
+
+const char *nameForGameView(GameView view) {
+    switch (view) {
+    case GameView::List: return "list";
+    case GameView::BoxartLarge: return "large";
+    case GameView::BoxartSmall: return "small";
+    case GameView::Compact: return "compact";
+    case GameView::Grid:
+    default: return "grid";
+    }
+}
+
+const char *displayNameForGameView(GameView view) { return specFor(view).name; }
+
 GamesScreen::GamesScreen(Context &context) : context_(context) {}
 
 void GamesScreen::setView(GameView view) {
@@ -206,7 +227,7 @@ void GamesScreen::launch() {
         context_.standDown = true;
     }
     else {
-        context_.notify("Could not start: " + context_.launcher.lastError(), 6.0f);
+        context_.showError("Could not start " + entry->game.name, context_.launcher.lastError());
     }
 }
 

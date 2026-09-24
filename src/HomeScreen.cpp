@@ -94,7 +94,7 @@ void HomeScreen::launch() {
         context_.notify("Starting " + item->game.name);
         context_.standDown = true;
     } else {
-        context_.notify("Could not start: " + context_.launcher.lastError(), 6.0f);
+        context_.showError("Could not start " + item->game.name, context_.launcher.lastError());
     }
 }
 

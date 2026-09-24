@@ -66,6 +66,11 @@ toolkits and rules in careful, measured software rendering — see
 - **Manage systems**, in Settings — hide the systems you do not use from the Systems tab, and
   toggle the Games tab off entirely for a library large enough that browsing it flat stops
   being useful.
+- **A default presentation**, in Settings — pick Grid, List, Boxart large, Boxart small or
+  Compact once and it applies everywhere from then on.
+- **Multiple game drives**, resolved live rather than assumed — a drive can come back at a
+  different `/media/usbN` after a reboot, or a second volume can hold more games, and box art
+  and launching both keep working either way.
 - **Starts games through the MiSTer's own loader** — core loading, ROM mounting and the
   in-game OSD all stay in the code that already does them well.
 - **Boots straight into the GUI** via a small patch to the MiSTer main binary, which
@@ -265,10 +270,12 @@ dated commitment.
       which measured 91% coverage against a real PlayStation library.
 - [x] Hiding the systems you do not use, from Settings → Manage systems. **Ordering the rest
       is still open.**
-- [ ] **Support for several external drives.** The index today resolves every cached path
-      against `/media/usb0`, so a second volume mounted as `/media/usb1` would get paths
-      pointing at the first one and its games would fail to launch. Each cache file needs to
-      carry its own mount point. See `kUsbRoot` in [src/GameIndex.h](src/GameIndex.h).
+- [x] **Support for several external drives.** Both the GUI's own database and the ConsoleMode
+      cache index used to resolve a fixed mount point rather than re-checking which drive is
+      actually where — a game or a whole system's box art would silently break the day a
+      second volume, or a reboot that changed drive ordering, put anything at a different
+      `/media/usbN`. Everything is re-resolved live now, verified on hardware against a real
+      two-drive setup, including remounting both volumes swapped with no reboot in between.
 
 ### System settings
 
@@ -280,9 +287,10 @@ dated commitment.
 - [ ] Search
 - [ ] Localisation. Everything is English today, with the strings still inline; extracting
       them is the prerequisite.
-- [ ] A default presentation (list, large/small box art, grid, compact), settable from
-      Settings, plus an option to remember the last one chosen separately for each tab —
-      Home, Favorites, Systems and Games — instead of one view following you everywhere.
+- [x] A default presentation (list, large/small box art, grid, compact), settable from
+      Settings → Default view, applied immediately everywhere. **Remembering a separately
+      chosen view per tab — Home, Favorites, Systems and Games — instead of one setting for
+      all of them is still open.**
 
 ### Ideas, not committed
 

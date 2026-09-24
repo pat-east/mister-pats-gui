@@ -1,5 +1,6 @@
 #include "App.h"
 #include "DebugLog.h"
+#include "ErrorModal.h"
 #include "Splash.h"
 #include "Version.h"
 
@@ -48,6 +49,12 @@ bool App::initialize(const Options &options) {
     gamesScreen_ = std::make_unique<GamesScreen>(*context_);
     allGamesScreen_ = std::make_unique<GamesScreen>(*context_);
     favoritesScreen_ = std::make_unique<GamesScreen>(*context_);
+
+    const GameView initialView =
+        options_.viewExplicit ? options_.view : gameViewFromName(preferences_.defaultView());
+    gamesScreen_->setView(initialView);
+    allGamesScreen_->setView(initialView);
+    favoritesScreen_->setView(initialView);
     favoritesScreen_->showFavorites();
 
     homeScreen_ = std::make_unique<HomeScreen>(*context_);
@@ -61,7 +68,8 @@ bool App::initialize(const Options &options) {
     settingsScreen_ = std::make_unique<SettingsScreen>(
         *context_, [this] { reloadLibrary(); }, [this] { stop(); },
         [this] { openScan(false); }, [this] { openArtwork(); },
-        [this] { openVisibility(); }, [this] { toggleGamesTab(); });
+        [this] { openVisibility(); }, [this] { toggleGamesTab(); },
+        [this] { cycleDefaultView(); });
     settingsScreen_->setFramebufferInfo(framebuffer_.describe());
 
     scanScreen_ = std::make_unique<ScanScreen>(
@@ -69,9 +77,6 @@ bool App::initialize(const Options &options) {
 
     visibilityScreen_ =
         std::make_unique<SystemVisibilityScreen>(*context_, [this] { closeVisibility(); });
-
-    gamesScreen_->setView(options_.view);
-    allGamesScreen_->setView(options_.view);
 
     const GameSystem *wanted = options_.system.empty() ? nullptr
                                                        : library_.findSystem(options_.system);
@@ -155,6 +160,19 @@ void App::toggleGamesTab() {
     needsFullRedraw_ = true;
 }
 
+void App::cycleDefaultView() {
+    const GameView current = gameViewFromName(preferences_.defaultView());
+    const GameView next = GameView(((int)current + 1) % (int)GameView::kCount);
+    preferences_.setDefaultView(nameForGameView(next));
+
+    // Applied immediately, not just on the next screen shown — a setting that visibly does
+    // nothing until some later, unrelated action looks broken.
+    gamesScreen_->setView(next);
+    allGamesScreen_->setView(next);
+    favoritesScreen_->setView(next);
+    needsFullRedraw_ = true;
+}
+
 Screen *App::activeScreen() {
     if (scanActive_) return scanScreen_.get();
     if (visibilityActive_) return visibilityScreen_.get();
@@ -187,6 +205,19 @@ void App::dispatch(Action action) {
     const std::vector<Tab> tabs = TopBar::visibleTabs(preferences_.showGamesTab());
     const int tabCount = int(tabs.size());
     const int tabIndex = int(std::find(tabs.begin(), tabs.end(), tab_) - tabs.begin());
+
+    // Above even the wizard: an error is raised specifically because something needs the
+    // user's attention before anything else proceeds, including a scan already in progress.
+    // Quit is the one action that still goes through — it should never be the one thing an
+    // error dialog blocks a way out of.
+    if (context_->errorActive) {
+        if (action == Action::Quit) { stop(); return; }
+        if (action == Action::Confirm || action == Action::Back) {
+            context_->errorActive = false;
+            needsFullRedraw_ = true;
+        }
+        return;
+    }
 
     // The wizard is modal: nothing behind it is reachable while it is up.
     if (scanActive_) {
@@ -333,7 +364,10 @@ int App::run() {
                            bottom.y - top.bottom() - 2 * theme.marginY()};
 
         Screen *screen = activeScreen();
-        const bool full = needsFullRedraw_ || !options_.incremental;
+        // An error modal draws over whatever screen is underneath rather than replacing it,
+        // so that screen must be fully repainted every frame it is up — there is no damage
+        // tracking for "the same dialog is still sitting on top of you".
+        const bool full = needsFullRedraw_ || !options_.incremental || context_->errorActive;
 
         canvas_->clearDamage();
 
@@ -353,6 +387,10 @@ int App::run() {
         const int64_t t2 = nowMs();
 
         screen->render(*canvas_, content, full);
+
+        if (context_->errorActive)
+            ErrorModal::draw(*canvas_, theme, canvas_->bounds(), context_->errorTitle,
+                             context_->errorMessage);
         const int64_t t3 = nowMs();
 
         if (full) framebuffer_.present(*canvas_);

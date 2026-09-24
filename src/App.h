@@ -30,6 +30,7 @@ public:
     struct Options {
         Tab tab = Tab::Home;
         GameView view = GameView::Grid;
+        bool viewExplicit = false;   // --view was passed; overrides the saved default view
         std::string system;      // empty picks the first one with games
         int exitAfterFrames = 0; // 0 runs until stopped
         bool readInput = true;   // open the input devices at all
@@ -71,6 +72,7 @@ private:
     void openVisibility();
     void closeVisibility();
     void toggleGamesTab();
+    void cycleDefaultView();
     void writeCanvas(const std::string &path);
 
     std::string version;     // Version string to display in bottom bar

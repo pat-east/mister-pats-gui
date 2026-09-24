@@ -195,6 +195,14 @@ bool MediaScraper::prepareNextSystem() {
             continue;
         }
 
+        // Its root did not resolve — the drive it lives on is not attached right now, so
+        // there is nowhere to write artwork for it even if the thumbnail lookup succeeds.
+        if (system.dir.empty()) {
+            doneGames_ += system.count;
+            ++systemPosition_;
+            continue;
+        }
+
         GameSystem shape;
         shape.discBased = system.discBased;
         shape.romDirs.push_back(system.dir);

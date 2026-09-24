@@ -3,18 +3,21 @@
 #include <cstdio>
 
 #include "Canvas.h"
+#include "GamesScreen.h"
 
 SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
                                std::function<void()> onQuit,
                                std::function<void()> onBuildDatabase,
                                std::function<void()> onFetchArtwork,
                                std::function<void()> onManageSystems,
-                               std::function<void()> onToggleGamesTab)
+                               std::function<void()> onToggleGamesTab,
+                               std::function<void()> onCycleDefaultView)
     : context_(context), onReload_(std::move(onReload)), onQuit_(std::move(onQuit)),
       onBuildDatabase_(std::move(onBuildDatabase)),
       onFetchArtwork_(std::move(onFetchArtwork)),
       onManageSystems_(std::move(onManageSystems)),
-      onToggleGamesTab_(std::move(onToggleGamesTab)) {
+      onToggleGamesTab_(std::move(onToggleGamesTab)),
+      onCycleDefaultView_(std::move(onCycleDefaultView)) {
     buildRows();
 }
 
@@ -33,6 +36,13 @@ void SettingsScreen::buildRows() {
     rows_.push_back({"Show Games menu item",
                      [this] { return std::string(context_.preferences.showGamesTab() ? "On" : "Off"); },
                      [this] { onToggleGamesTab_(); }});
+
+    rows_.push_back({"Default view",
+                     [this] {
+                         return std::string(
+                             displayNameForGameView(gameViewFromName(context_.preferences.defaultView())));
+                     },
+                     [this] { onCycleDefaultView_(); }});
 
     rows_.push_back({"Reload library", [] { return std::string("A"); },
                      [this] {

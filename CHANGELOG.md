@@ -5,6 +5,47 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-09-24
+
+### Added
+
+- **Several external drives are now supported properly**, end to end. A system's directory
+  used to be baked into the database as an absolute path at scan time; a drive moving to a
+  different `/media/usbN` after a reboot — which MiSTer does not promise will not happen —
+  left it stale even though every individual game's own path re-resolved correctly around it,
+  so box art (and, for anything not itself re-resolved live, launching) silently broke for
+  that drive alone. A system's directory is now stored and resolved exactly the way a game's
+  path already was: root id plus what is relative to it, re-resolved at load time rather than
+  trusted as a fixed string. Verified on hardware against a real two-drive setup, including
+  unmounting and remounting both volumes swapped with no reboot in between.
+- **The ConsoleMode cache index is also multi-drive-safe now.** It previously resolved every
+  cached path against `/media/usb0` unconditionally, so a second attached volume's games would
+  get paths pointing at the first one and fail to launch. Each cache file is ConsoleMode's own
+  record of one specific volume, named after that volume's filesystem serial or USB signature
+  — nothing about the name says which mount point it belongs to, and trusting it would repeat
+  the exact mistake the drive-resolution fix above exists to avoid. Each file is instead
+  matched to a mount point by checking that a spread sample of the paths it records are
+  actually there, the same principle applied twice.
+- **A reusable error modal** — a centred, dismissible dialog for a failure the user needs to
+  actually notice, as opposed to a passing status line in the bottom bar. Wired up first for a
+  game that fails to start (drive not responding, disc image missing, no core for the system);
+  meant to be reached for again the next time something needs the same treatment.
+- **A default presentation, settable from Settings** — Grid, List, Boxart large, Boxart small
+  or Compact, applied to Systems, Games and Favorites immediately and remembered afterwards.
+
+### Fixed
+
+- A root's fallback search (see 0.1.4) checked which mount points existed only once, at
+  process construction — before a slower second drive had necessarily finished enumerating.
+  It now re-scans immediately before that search runs, rather than trusting a snapshot that
+  could be older than the drive it was looking for.
+
+### Changed
+
+- The database format bumped to account for the above (a system's directory is no longer an
+  absolute path on disk). An existing database is detected as outdated and rebuilt rather than
+  misread — expect one rescan after updating.
+
 ## [0.1.4] - 2026-09-23
 
 ### Fixed

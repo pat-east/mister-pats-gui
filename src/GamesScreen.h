@@ -8,6 +8,15 @@
 
 enum class GameView { List, BoxartLarge, Grid, BoxartSmall, Compact, kCount };
 
+// The stable, lowercase names used on the command line (--view) and in preferences.txt — as
+// opposed to GamesScreen's own display names ("Boxart large" and so on), which are for a
+// tile's label and free to change without breaking a saved setting.
+GameView gameViewFromName(const std::string &name);
+const char *nameForGameView(GameView view);
+
+// The label shown on a tile's presentation, and in Settings' "Default view" row.
+const char *displayNameForGameView(GameView view);
+
 // Shows a list of games in one of four presentations. Also used for the favourites tab,
 // which is the same view over a different source.
 class GamesScreen : public Screen {

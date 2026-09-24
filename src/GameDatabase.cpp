@@ -16,8 +16,11 @@ const char *kCatalogFile = "catalog.tsv";
 const char *kRootsFile = "roots.tsv";
 
 // Bumped when the layout changes, so an old database is rebuilt rather than misread.
-// 2 added the probe column to roots.tsv.
-const char *kHeader = "#mister-pat gamesdb 2";
+// 2 added the probe column to roots.tsv. 3 stores a system's directory the same way a game's
+// path is stored — root id plus what is relative to it — instead of baking in an absolute
+// path at scan time, which a drive moving to a different mount point then left stale even
+// though every actual game path re-resolved correctly around it.
+const char *kHeader = "#mister-pat gamesdb 3";
 
 // In the order MiSTer itself would use them. It creates usb0 through usb7 as empty
 // directories whether or not anything is mounted there, which is exactly why a root is
@@ -197,6 +200,11 @@ void GameDatabase::resolveRoots(const std::vector<Root> &recorded) {
 
         // The drive order changed. Look for the same library somewhere else — but only
         // somewhere that actually looks like it, not a same-named placeholder directory.
+        // Re-scanned now rather than trusting the snapshot from construction time: this
+        // object is built at process startup, and the drive that is about to be found here
+        // may not have finished enumerating yet at that point, even after the settle wait
+        // above got the *recorded* location itself checked repeatedly.
+        if (!candidatesPinned_) candidates_ = mountPoints();
         for (const std::string &candidate : candidates_) {
             if (root.path == candidate) continue;
             if (!looksSubstantial(candidate + "/" + root.probe, kSubstantialEntries)) continue;
@@ -269,7 +277,7 @@ bool GameDatabase::load() {
     while (std::getline(in, line)) {
         if (line.empty() || line[0] == '#') continue;
         const std::vector<std::string> field = splitTabs(line);
-        if (field.size() < 7) continue;
+        if (field.size() < 8) continue;
 
         DatabaseSystem system;
         system.key = field[0];
@@ -278,7 +286,14 @@ bool GameDatabase::load() {
         system.core = field[3];
         system.discBased = field[4] == "1";
         system.count = size_t(std::atoi(field[5].c_str()));
-        system.dir = field[6];
+
+        // Same resolution a game's own path gets (see pathsFor) — left empty, not guessed
+        // at, when the root it belongs to did not resolve, so a caller does not end up
+        // treating an unresolved system as though it lived at some root-less relative path.
+        const size_t rootId = size_t(std::atoi(field[6].c_str()));
+        if (rootId < roots_.size() && !roots_[rootId].empty())
+            system.dir = roots_[rootId] + "/" + field[7];
+
         if (system.count) systems_.push_back(system);
     }
 
@@ -411,9 +426,16 @@ bool GameDatabase::finishWrite() {
         }
         out << kHeader << "\n";
         for (const DatabaseSystem &system : pending_) {
+            // Root id plus what is relative to it, the same as a game's own path (see
+            // writeSystem) — not the absolute directory itself, which a drive moving to a
+            // different mount point would otherwise leave permanently stale.
+            const int rootId = rootIdFor(system.dir);
+            const std::string relative =
+                rootId >= 0 ? system.dir.substr(writing_[size_t(rootId)].path.size() + 1) : "";
+
             out << system.key << "\t" << system.name << "\t" << system.group << "\t"
                 << system.core << "\t" << (system.discBased ? "1" : "0") << "\t"
-                << system.count << "\t" << system.dir << "\n";
+                << system.count << "\t" << rootId << "\t" << relative << "\n";
         }
     }
 

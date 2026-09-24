@@ -6,6 +6,7 @@
 bool Preferences::load(const std::string &file) {
     file_ = file;
     showGamesTab_ = true;
+    defaultView_ = "grid";
 
     std::ifstream in(file_);
     if (!in) return false;
@@ -15,6 +16,7 @@ bool Preferences::load(const std::string &file) {
         // Trim a trailing carriage return, in case the file was ever touched from Windows.
         while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
         if (line == "showGamesTab=0") showGamesTab_ = false;
+        else if (line.compare(0, 12, "defaultView=") == 0) defaultView_ = line.substr(12);
     }
 
     return true;
@@ -22,6 +24,11 @@ bool Preferences::load(const std::string &file) {
 
 void Preferences::setShowGamesTab(bool show) {
     showGamesTab_ = show;
+    save();
+}
+
+void Preferences::setDefaultView(const std::string &view) {
+    defaultView_ = view;
     save();
 }
 
@@ -33,5 +40,6 @@ bool Preferences::save() const {
     }
 
     if (!showGamesTab_) out << "showGamesTab=0\n";
+    if (defaultView_ != "grid") out << "defaultView=" << defaultView_ << "\n";
     return true;
 }

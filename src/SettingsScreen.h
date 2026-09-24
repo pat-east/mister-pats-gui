@@ -18,7 +18,8 @@ public:
                    std::function<void()> onQuit, std::function<void()> onBuildDatabase,
                    std::function<void()> onFetchArtwork,
                    std::function<void()> onManageSystems,
-                   std::function<void()> onToggleGamesTab);
+                   std::function<void()> onToggleGamesTab,
+                   std::function<void()> onCycleDefaultView);
 
     void setFramebufferInfo(const std::string &info) { framebufferInfo_ = info; }
 
@@ -52,6 +53,7 @@ private:
     std::function<void()> onFetchArtwork_;
     std::function<void()> onManageSystems_;
     std::function<void()> onToggleGamesTab_;
+    std::function<void()> onCycleDefaultView_;
     std::vector<Row> rows_;
     SystemInfo system_;
     std::string framebufferInfo_;

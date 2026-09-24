@@ -338,7 +338,13 @@ bool Library::loadFromDatabase() {
         system.core = entry.core;
         system.dbKey = entry.key;
         system.discBased = entry.discBased;
-        system.romDirs.push_back(entry.dir);
+        // Empty when the root this system lives on did not resolve (see GameDatabase::load)
+        // — pushing it anyway would give resolveArtwork's fallback an empty prefix, which
+        // matches every path there is, not none.
+        if (!entry.dir.empty()) {
+            system.romDirs.push_back(entry.dir);
+            system.mediaDirs.push_back(entry.dir + "/media");
+        }
 
         // Needed to look inside a zip: MiSTer addresses an archived ROM as
         // "<archive>.zip/<inner file>", and finding that file means knowing which extension
@@ -346,7 +352,6 @@ bool Library::loadFromDatabase() {
         // a cartridge library.
         for (const std::string &ext : SystemCatalog::extensionsFor(entry.key))
             system.romExts.push_back("." + ext);
-        system.mediaDirs.push_back(entry.dir + "/media");
         systems_.push_back(system);
     }
 

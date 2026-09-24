@@ -25,18 +25,7 @@ public:
 
     static constexpr const char *kDefaultCacheDir = "/media/fat/ConsoleMode/caches";
 
-    // The cache stores volume-relative paths, so they need a root prefixed back on.
-    //
-    // This assumes a single attached USB volume. Console Mode writes one cache file per
-    // volume (`usb_<volume-id>.txt`) and every one of them is resolved against this same
-    // root — so with two volumes attached, the one that mounts as /media/usb1 would get
-    // paths pointing at /media/usb0 and its games would fail to launch. Supporting several
-    // volumes means mapping each cache file to its own mount point.
-    static constexpr const char *kUsbRoot = "/media/usb0";
-
 private:
-    bool loadFile(const std::string &file, const std::string &root);
-
     std::map<std::string, std::vector<std::string>> bySystem_;
     size_t total_ = 0;
     std::string source_;

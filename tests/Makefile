@@ -22,11 +22,11 @@ $(ALPHABET): alphabet_test.cpp ../src/Alphabet.cpp ../src/Alphabet.h
 	$(CXX) $(CXXFLAGS) alphabet_test.cpp ../src/Alphabet.cpp -o $@
 
 $(GAMESDB): gamesdb_test.cpp ../src/GameDatabase.cpp ../src/SystemCatalog.cpp ../src/CoreIndex.cpp \
-            ../src/Library.cpp ../src/GameIndex.cpp \
+            ../src/Library.cpp ../src/GameIndex.cpp ../src/DebugLog.cpp \
             ../src/GameDatabase.h ../src/SystemCatalog.h ../src/CoreIndex.h ../src/Library.h ../src/Paths.h
 	@mkdir -p $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) gamesdb_test.cpp ../src/GameDatabase.cpp ../src/SystemCatalog.cpp \
-	    ../src/CoreIndex.cpp ../src/Library.cpp ../src/GameIndex.cpp -o $@
+	    ../src/CoreIndex.cpp ../src/Library.cpp ../src/GameIndex.cpp ../src/DebugLog.cpp -o $@
 
 run: $(DAMAGE) $(ALPHABET) $(GAMESDB)
 	@$(DAMAGE)

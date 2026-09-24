@@ -41,8 +41,14 @@ public:
         : directory_(std::move(directory)) {}
 
     // Where to look when a recorded root is no longer at its old mount point. Defaults to
-    // the MiSTer's own mount points; a test can point it at scratch directories instead.
-    void setMountPoints(std::vector<std::string> points) { candidates_ = std::move(points); }
+    // the MiSTer's own mount points, re-scanned fresh right before each fallback search (not
+    // once at construction — this object is built at process startup, before a slower USB
+    // drive has necessarily finished enumerating); a test can pin it to scratch directories
+    // instead, which then stops the automatic re-scan.
+    void setMountPoints(std::vector<std::string> points) {
+        candidates_ = std::move(points);
+        candidatesPinned_ = true;
+    }
 
     bool exists() const;
 
@@ -102,6 +108,7 @@ private:
 
     std::string directory_;
     std::vector<std::string> candidates_ = mountPoints();
+    bool candidatesPinned_ = false;
     std::vector<std::string> roots_;        // resolved, indexed by id
     std::vector<std::string> missingRoots_;
     bool rootsMoved_ = false;

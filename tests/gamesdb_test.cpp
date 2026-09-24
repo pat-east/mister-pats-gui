@@ -223,7 +223,14 @@ int main() {
     {
         const std::string a = dir + "-vol-a";
         const std::string b = dir + "-vol-b";
-        std::system(("rm -rf '" + a + "' '" + b + "' && mkdir -p '" + a + "/games/PSX'").c_str());
+        // A handful of files, not just the directory — resolveRoots() requires a fallback
+        // candidate to actually look like a library (see looksSubstantial() in
+        // GameDatabase.cpp), which an empty directory does not, on purpose: that is exactly
+        // what let it mismatch onto a not-yet-installed system's empty scaffolding folder.
+        std::system(("rm -rf '" + a + "' '" + b + "' && mkdir -p '" + a + "/games/PSX' && "
+                    "touch '" + a + "/games/PSX/a' '" + a + "/games/PSX/b' '" + a +
+                    "/games/PSX/c' '" + a + "/games/PSX/d' '" + a + "/games/PSX/e'")
+                       .c_str());
 
         {
             GameDatabase db(dir);
@@ -243,7 +250,10 @@ int main() {
         }
 
         // The drive reappears elsewhere.
-        std::system(("rm -rf '" + a + "' && mkdir -p '" + b + "/games/PSX'").c_str());
+        std::system(("rm -rf '" + a + "' && mkdir -p '" + b + "/games/PSX' && "
+                    "touch '" + b + "/games/PSX/a' '" + b + "/games/PSX/b' '" + b +
+                    "/games/PSX/c' '" + b + "/games/PSX/d' '" + b + "/games/PSX/e'")
+                       .c_str());
         {
             GameDatabase db(dir);
             db.setMountPoints({a, b});

@@ -45,6 +45,19 @@ struct Context {
         message = text;
         messageTimer = seconds;
     }
+
+    // A failure the user has to actually notice and dismiss — see ErrorModal.h. App owns
+    // drawing it and routing Confirm/Back to close it; this is just the shared state so any
+    // screen or service (Launcher, a scan, the scraper) can raise one without depending on App.
+    std::string errorTitle;
+    std::string errorMessage;
+    bool errorActive = false;
+
+    void showError(const std::string &title, const std::string &text) {
+        errorTitle = title;
+        errorMessage = text;
+        errorActive = true;
+    }
 };
 
 class Screen {
