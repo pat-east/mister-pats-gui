@@ -71,6 +71,8 @@ toolkits and rules in careful, measured software rendering — see
 - **Multiple game drives**, resolved live rather than assumed — a drive can come back at a
   different `/media/usbN` after a reboot, or a second volume can hold more games, and box art
   and launching both keep working either way.
+- **An opt-in check for a newer release**, in Settings — off by default, and the only network
+  access here that is not something you asked for in the moment.
 - **Starts games through the MiSTer's own loader** — core loading, ROM mounting and the
   in-game OSD all stay in the code that already does them well.
 - **Boots straight into the GUI** via a small patch to the MiSTer main binary, which

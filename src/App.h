@@ -21,6 +21,7 @@
 #include "SystemVisibilityScreen.h"
 #include "SystemsScreen.h"
 #include "TopBar.h"
+#include "UpdateCheck.h"
 
 // Owns the services, the screens and the frame loop.
 class App {
@@ -108,6 +109,8 @@ private:
 
     LibraryScan scan_;
     MediaScraper scraper_;
+    UpdateCheck updateCheck_;
+    float updateCheckDelay_ = 8.0f;   // real seconds of uptime before the one-shot check fires
     bool scanActive_ = false;     // the database wizard owns the screen
     bool visibilityActive_ = false; // the show/hide list owns the screen
     bool detailActive_ = false;   // a system was opened from the systems tab

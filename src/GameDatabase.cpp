@@ -64,11 +64,35 @@ void removeTsvFiles(const std::string &directory) {
     closedir(d);
 }
 
+void removeGenerationDirectory(const std::string &directory);   // forward, for the recursion below
+
+// Anything that is not one of gamesdb's own .tsv files, encountered while clearing a whole
+// generation of it out. Nothing is meant to put anything else there — MediaScraper's index
+// cache did, once, and left a subdirectory removeTsvFiles() did not know to touch, which was
+// enough to make rename() refuse to replace the directory ever again on every rebuild after
+// the first. One misplaced file should not be able to do that again.
+void removeStragglers(const std::string &directory) {
+    DIR *d = opendir(directory.c_str());
+    if (!d) return;
+
+    while (dirent *entry = readdir(d)) {
+        const std::string name = entry->d_name;
+        if (name.empty() || name == "." || name == "..") continue;
+        if (name.size() > 4 && name.compare(name.size() - 4, 4, ".tsv") == 0) continue;
+
+        const std::string full = directory + "/" + name;
+        if (isDirectory(full)) removeGenerationDirectory(full);
+        else unlink(full.c_str());
+    }
+    closedir(d);
+}
+
 // Synchronous, so only used on the rare path where an old generation is still sitting there
 // unpruned when a new one needs the same name. The ordinary path never calls this — that is
 // the whole point of pruneOldGenerationStep().
 void removeGenerationDirectory(const std::string &directory) {
     removeTsvFiles(directory);
+    removeStragglers(directory);
     rmdir(directory.c_str());
 }
 
@@ -391,10 +415,12 @@ bool GameDatabase::writeSystem(const DatabaseSystem &system,
     return true;
 }
 
-bool GameDatabase::finishWrite() {
+bool GameDatabase::beginFinish() {
+    DebugLog::info("finishWrite: begin, " + std::to_string(pending_.size()) + " systems");
+
     // Recognise each root by its largest system rather than by whichever came first
     // alphabetically. A probe pointing at a one-game folder would declare the whole drive
-    // missing the day that folder goes.
+    // missing the day that folder goes. Cheap — O(roots × systems) — so this stays one shot.
     for (size_t i = 0; i < writing_.size(); ++i) {
         const std::string &root = writing_[i].path;
         size_t best = 0;
@@ -417,27 +443,40 @@ bool GameDatabase::finishWrite() {
         for (size_t i = 0; i < writing_.size(); ++i)
             out << i << "\t" << writing_[i].path << "\t" << writing_[i].probe << "\n";
     }
-    {
-        std::ofstream out(stagingPathOf(kCatalogFile), std::ios::trunc);
-        if (!out) {
-            error_ = "cannot write " + stagingPathOf(kCatalogFile);
-            DebugLog::error(error_);
-            return false;
-        }
-        out << kHeader << "\n";
-        for (const DatabaseSystem &system : pending_) {
-            // Root id plus what is relative to it, the same as a game's own path (see
-            // writeSystem) — not the absolute directory itself, which a drive moving to a
-            // different mount point would otherwise leave permanently stale.
-            const int rootId = rootIdFor(system.dir);
-            const std::string relative =
-                rootId >= 0 ? system.dir.substr(writing_[size_t(rootId)].path.size() + 1) : "";
 
-            out << system.key << "\t" << system.name << "\t" << system.group << "\t"
+    catalogOut_.open(stagingPathOf(kCatalogFile), std::ios::trunc);
+    if (!catalogOut_) {
+        error_ = "cannot write " + stagingPathOf(kCatalogFile);
+        DebugLog::error(error_);
+        return false;
+    }
+    catalogOut_ << kHeader << "\n";
+    finishPosition_ = 0;
+    return true;
+}
+
+bool GameDatabase::finishStep() {
+    if (finishPosition_ >= pending_.size()) return false;
+
+    const DatabaseSystem &system = pending_[finishPosition_++];
+
+    // Root id plus what is relative to it, the same as a game's own path (see writeSystem)
+    // — not the absolute directory itself, which a drive moving to a different mount point
+    // would otherwise leave permanently stale.
+    const int rootId = rootIdFor(system.dir);
+    const std::string relative =
+        rootId >= 0 ? system.dir.substr(writing_[size_t(rootId)].path.size() + 1) : "";
+
+    catalogOut_ << system.key << "\t" << system.name << "\t" << system.group << "\t"
                 << system.core << "\t" << (system.discBased ? "1" : "0") << "\t"
                 << system.count << "\t" << rootId << "\t" << relative << "\n";
-        }
-    }
+
+    return finishPosition_ < pending_.size();
+}
+
+bool GameDatabase::finishCommit() {
+    catalogOut_.close();
+    DebugLog::info("finishWrite: catalogue written, committing");
 
     // The swap. A directory rename touches one entry, not the files inside it, so it costs
     // one sync no matter how many systems the database holds. Deleting and renaming every
@@ -481,6 +520,12 @@ bool GameDatabase::finishWrite() {
     return true;
 }
 
+bool GameDatabase::finishWrite() {
+    if (!beginFinish()) return false;
+    while (finishStep()) {}
+    return finishCommit();
+}
+
 void GameDatabase::pruneOldGenerationStep() {
     const std::string oldGeneration = directory_ + ".old";
 
@@ -496,8 +541,14 @@ void GameDatabase::pruneOldGenerationStep() {
     while ((entry = readdir(d)) != nullptr) {
         if (std::strcmp(entry->d_name, ".") == 0 || std::strcmp(entry->d_name, "..") == 0)
             continue;
-        unlink((oldGeneration + "/" + entry->d_name).c_str());
-        return;   // exactly one filesystem operation per call
+
+        const std::string full = oldGeneration + "/" + entry->d_name;
+        // Nothing is meant to be a directory here — see removeStragglers()'s note — but if
+        // one turns up anyway, unlink() on it would just fail silently and leave this step
+        // never able to finish. Worth the one synchronous exception to stay correct.
+        if (isDirectory(full)) removeGenerationDirectory(full);
+        else unlink(full.c_str());
+        return;   // exactly one filesystem operation per call, the fallback above aside
     }
 
     closedir(d);

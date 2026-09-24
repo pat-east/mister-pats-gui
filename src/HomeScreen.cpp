@@ -1,7 +1,9 @@
 #include "HomeScreen.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 
 #include "Alphabet.h"
 #include "Canvas.h"
@@ -42,6 +44,12 @@ void HomeScreen::refresh() {
         if (!system) continue;
         favorites.items.push_back({system, Library::makeGame(*system, entry.path)});
     }
+    // Unlike Recently played, where the order itself is the information, favourites carry
+    // none — sorted alphabetically is what makes a specific one fast to find as the list
+    // grows, rather than however toggling them on happened to order it.
+    std::sort(favorites.items.begin(), favorites.items.end(), [](const Item &a, const Item &b) {
+        return strcasecmp(a.game.name.c_str(), b.game.name.c_str()) < 0;
+    });
 
     for (Row *row : {&recent, &favorites}) {
         row->focus.assign(row->items.size(), 0.0f);
@@ -116,6 +124,9 @@ void HomeScreen::toggleFavorite() {
         if (!system) continue;
         favorites.items.push_back({system, Library::makeGame(*system, entry.path)});
     }
+    std::sort(favorites.items.begin(), favorites.items.end(), [](const Item &a, const Item &b) {
+        return strcasecmp(a.game.name.c_str(), b.game.name.c_str()) < 0;
+    });
     favorites.focus.assign(favorites.items.size(), 0.0f);
     favorites.cursor = std::min(previous, std::max(0, int(favorites.items.size()) - 1));
 }

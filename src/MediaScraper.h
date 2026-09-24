@@ -62,7 +62,14 @@ public:
 
     // Where the list of titles nothing could be found for is written.
     static constexpr const char *kMissesFile = MISTER_PAT_ROOT "/scrape-misses.txt";
-    static constexpr const char *kIndexCache = MISTER_PAT_ROOT "/gamesdb/scrape-index";
+
+    // A sibling of gamesdb/, deliberately not inside it: that whole directory is treated as
+    // one disposable, atomically-swapped unit by GameDatabase (gamesdb -> gamesdb.old,
+    // gamesdb.new -> gamesdb), and its cleanup only ever knew about the .tsv files that
+    // belong to it. A cache folder living inside it too meant that cleanup could never
+    // actually empty gamesdb.old, which made every rebuild after the first fail outright —
+    // rename() refusing to replace a directory that still has something in it.
+    static constexpr const char *kIndexCache = MISTER_PAT_ROOT "/scrape-index";
 
 private:
     struct Job {

@@ -5,6 +5,43 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-09-24
+
+### Fixed
+
+- **A rescan from the interactive wizard could hang forever at "Writing the catalogue …".**
+  `LibraryScan` only kept stepping itself while its own `running()` said so, and that check
+  did not count the Writing state — so the moment scanning finished and state moved to
+  Writing, nothing ever drove it forward again, and the catalogue write it exists to run
+  never happened. Likely never caught before because every earlier scan this project's own
+  testing did went through the `--scan` command-line path instead, which drives its own loop
+  and was never affected. Writing the catalogue is also no longer one large blocking call:
+  it happens one system's line at a time, the same paced way scanning itself already did,
+  with the progress bar now showing real numbers instead of just the moving dot.
+- **A second rescan could fail outright** with "cannot move the previous database aside".
+  The box art scraper's index cache lived inside `gamesdb/`, the exact directory `GameDatabase`
+  treats as one disposable, atomically swapped unit — so it rode along into `gamesdb.old` on
+  the first rebuild, and cleanup only knew about the `.tsv` files that actually belong there.
+  Left behind, it meant `gamesdb.old` could never truly be emptied, and every rebuild after
+  the first failed the same way. The cache now lives next to `gamesdb/`, not inside it, and
+  cleanup no longer stops at files it does not recognise.
+- **Disc-based systems could report games that do not exist.** A CD system's BIOS commonly
+  sits in region folders right next to the actual games — `MegaCD/Europe`, `/Japan`, `/USA`,
+  each holding nothing but `cd_bios.rom` — and a scan counted every folder under a disc-based
+  system as a game without looking inside it, so these were catalogued as three MegaCD "games"
+  on a library that has none. A folder now has to actually contain a disc image to count.
+- Favourites on Home were listed in whatever order they happened to be added in, rather than
+  alphabetically — the order itself carries no information the way Recently played's does, so
+  finding one on a list that has grown got harder for no reason as it grew.
+
+### Added
+
+- **An opt-in check for a newer release**, Settings → *Check for updates on GitHub* (off by
+  default — the only network access in this project that is not something already asked for
+  in the moment, like the scraper is). Runs once, briefly, a few seconds after starting; a
+  newer version found shows next to the version number in the corner rather than as a
+  separate notification.
+
 ## [0.1.5] - 2026-09-24
 
 ### Added

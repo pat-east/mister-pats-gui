@@ -15,6 +15,24 @@ bool isDirectory(const std::string &path) {
     return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
 }
 
+// A disc-based system's BIOS commonly sits in region folders right next to the games —
+// MegaCD/Europe, MegaCD/Japan, MegaCD/USA, each holding nothing but a cd_bios.rom — which
+// otherwise look exactly like any other disc folder from the outside. Peeking inside for an
+// actual disc image is what tells the two apart.
+bool folderHasGame(const std::string &path, const std::vector<std::string> &extensions) {
+    DIR *d = opendir(path.c_str());
+    if (!d) return false;
+
+    bool found = false;
+    while (dirent *entry = readdir(d)) {
+        const std::string name = entry->d_name;
+        if (name.empty() || name[0] == '.') continue;
+        if (SystemCatalog::looksLikeGame(name, extensions)) { found = true; break; }
+    }
+    closedir(d);
+    return found;
+}
+
 } // namespace
 
 void LibraryScan::start(const std::vector<std::string> &roots) {
@@ -23,6 +41,7 @@ void LibraryScan::start(const std::vector<std::string> &roots) {
     position_ = written_ = games_ = 0;
     current_.clear();
     error_.clear();
+    writeStarted_ = false;
     state_ = State::Discovering;
 }
 
@@ -35,6 +54,10 @@ void LibraryScan::cancel() {
 
 float LibraryScan::progress() const {
     if (state_ == State::Done) return 1.0f;
+    if (state_ == State::Writing) {
+        const size_t total = database_.finishTotal();
+        return total ? float(database_.finishDone()) / float(total) : 1.0f;
+    }
     if (queue_.empty()) return 0.0f;
     return float(position_) / float(queue_.size());
 }
@@ -52,7 +75,9 @@ std::string LibraryScan::statusLine() const {
                       position_, queue_.size(), current_.c_str(), games_);
         return buffer;
     case State::Writing:
-        return "Writing the catalogue …";
+        std::snprintf(buffer, sizeof(buffer), "Writing the catalogue …  %zu / %zu",
+                      database_.finishDone(), database_.finishTotal());
+        return buffer;
     case State::Done:
         std::snprintf(buffer, sizeof(buffer), "%zu systems, %zu games", written_, games_);
         return buffer;
@@ -78,10 +103,15 @@ std::vector<std::string> LibraryScan::scanOne(const CatalogEntry &system) const 
         if (isDirectory(full)) {
             if (SystemCatalog::isIgnoredDirectory(name)) continue;
 
-            // A CD game is a folder of tracks, so the folder is the game. For everything
-            // else a folder is just how someone chose to organise their ROMs.
-            if (system.discBased) games.push_back(full);
-            else subdirectories.push_back(full);
+            // A CD game is a folder of tracks, so the folder is the game — but only if it
+            // actually holds one; a BIOS folder (MegaCD/Europe, /Japan, /USA, each holding
+            // nothing but cd_bios.rom) looks exactly like one from the outside otherwise.
+            // For everything else a folder is just how someone chose to organise their ROMs.
+            if (system.discBased) {
+                if (folderHasGame(full, system.extensions)) games.push_back(full);
+            } else {
+                subdirectories.push_back(full);
+            }
             continue;
         }
 
@@ -192,7 +222,20 @@ void LibraryScan::step() {
     }
 
     case State::Writing: {
-        if (!database_.finishWrite()) {
+        if (!writeStarted_) {
+            writeStarted_ = true;
+            if (!database_.beginFinish()) {
+                fail(database_.lastError());
+                return;
+            }
+            // Nothing to write a catalogue line for — go straight to committing rather
+            // than waiting for a finishStep() call that would never have anything to do.
+            if (database_.finishTotal() > 0) return;
+        } else if (database_.finishStep()) {
+            return;   // one more line written this call; more still to go
+        }
+
+        if (!database_.finishCommit()) {
             fail(database_.lastError());
             return;
         }

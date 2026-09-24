@@ -278,11 +278,16 @@ void App::renderBottomBar(const Rect &area) {
                          theme.textMuted.withAlpha(110));
 
     // Small and out of the way in the corner — a build identifier for bug reports, not
-    // something meant to draw the eye.
-    const std::string version = std::string("v") + kAppVersion;
+    // something meant to draw the eye. A newer release found on GitHub (see UpdateCheck,
+    // Settings → Check for updates) rides along in the one place a version number already
+    // draws attention, rather than a notification competing with everything else.
+    std::string version = std::string("v") + kAppVersion;
+    if (updateCheck_.available()) version += "  ·  v" + updateCheck_.latestVersion() + " available";
     const int versionWidth = theme.regular().measure(version, theme.sizeSmall());
     theme.regular().draw(canvas, area.right() - theme.marginX() - versionWidth, y, version,
-                         theme.sizeSmall(), theme.textMuted.withAlpha(90));
+                         theme.sizeSmall(),
+                         updateCheck_.available() ? theme.accent.withAlpha(200)
+                                                   : theme.textMuted.withAlpha(90));
 
     if (context_->messageTimer > 0.0f && !context_->message.empty()) {
         // Sits to the left of the version string so the two never overlap.
@@ -348,6 +353,14 @@ int App::run() {
         topBar_.update(dt);
         activeScreen()->update(dt);
         if (context_->messageTimer > 0.0f) context_->messageTimer -= dt;
+
+        // A quiet moment well after boot, not the frame loop's problem to pace — this either
+        // does nothing (off by default) or blocks once, briefly, bounded by UpdateCheck's own
+        // short timeout. Never runs a second time in the same session.
+        if (preferences_.checkForUpdates() && !updateCheck_.checked()) {
+            updateCheckDelay_ -= dt;
+            if (updateCheckDelay_ <= 0.0f) updateCheck_.run(kAppVersion);
+        }
 
         // Measured on the device against a real scraped cover: ~22ms to decode, well down
         // from the ~47ms a full-size PNG cost before the scraper started shrinking and

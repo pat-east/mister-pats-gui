@@ -20,6 +20,12 @@ public:
     const std::string &defaultView() const { return defaultView_; }
     void setDefaultView(const std::string &view);
 
+    // Off by default — the only network access in this project that is not something the
+    // user just asked for in the moment (the box art scraper is a button; this would run on
+    // its own), so it opts in rather than out. See UpdateCheck.
+    bool checkForUpdates() const { return checkForUpdates_; }
+    void setCheckForUpdates(bool check);
+
     static constexpr const char *kDefaultFile = MISTER_PAT_ROOT "/preferences.txt";
 
 private:
@@ -27,5 +33,6 @@ private:
 
     bool showGamesTab_ = true;
     std::string defaultView_ = "grid";
+    bool checkForUpdates_ = false;
     std::string file_ = kDefaultFile;
 };

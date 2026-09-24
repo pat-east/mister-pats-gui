@@ -31,7 +31,13 @@ public:
     void cancel();
 
     State state() const { return state_; }
-    bool running() const { return state_ == State::Discovering || state_ == State::Scanning; }
+    // Writing belongs in here too — App only calls step() while this is true, and without
+    // it the catalogue write this state exists to run is never actually reached: state_
+    // becomes Writing and then nothing ever calls step() again to act on it.
+    bool running() const {
+        return state_ == State::Discovering || state_ == State::Scanning ||
+              state_ == State::Writing;
+    }
     bool finished() const { return state_ == State::Done || state_ == State::Failed; }
 
     float progress() const;          // 0 … 1
@@ -56,6 +62,7 @@ private:
     size_t position_ = 0;
     size_t written_ = 0;
     size_t games_ = 0;
+    bool writeStarted_ = false;   // whether beginFinish() has been called for this Writing pass
     std::string current_;
     std::string error_;
 };

@@ -44,6 +44,12 @@ void SettingsScreen::buildRows() {
                      },
                      [this] { onCycleDefaultView_(); }});
 
+    rows_.push_back({"Check for updates on GitHub",
+                     [this] { return std::string(context_.preferences.checkForUpdates() ? "On" : "Off"); },
+                     [this] {
+                         context_.preferences.setCheckForUpdates(!context_.preferences.checkForUpdates());
+                     }});
+
     rows_.push_back({"Reload library", [] { return std::string("A"); },
                      [this] {
                          // The only path that walks the game volume, and only on request.

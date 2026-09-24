@@ -1,5 +1,6 @@
 #pragma once
 
+#include <fstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -72,10 +73,22 @@ public:
     std::vector<std::string> pathsFor(const std::string &key) const;
 
     // Writing. Everything goes to a staging directory and is only moved into place by
-    // `finishWrite`, so a cancelled or failed scan leaves the working database untouched.
+    // finishCommit(), so a cancelled or failed scan leaves the working database untouched.
     bool beginWrite(const std::vector<std::string> &roots);
     bool writeSystem(const DatabaseSystem &system, const std::vector<std::string> &paths);
+
+    // The catalogue, stepped one system's line at a time rather than in a single call, so a
+    // caller driving this from a frame loop (see LibraryScan) has something to actually show
+    // while it runs and never blocks for longer than one line's worth of I/O. Call
+    // beginFinish() once, then finishStep() until it returns false, then finishCommit() once
+    // to make the result visible. finishWrite() is the equivalent all at once, for the tests
+    // and the `--scan` CLI path, which already loop tightly with nothing to render anyway.
+    bool beginFinish();
+    bool finishStep();
+    bool finishCommit();
     bool finishWrite();
+    size_t finishTotal() const { return pending_.size(); }
+    size_t finishDone() const { return finishPosition_; }
 
     // Makes headway on deleting whatever the last `finishWrite` swapped out, one filesystem
     // operation at a time — a no-op once there is nothing left, so it is safe to call every
@@ -117,6 +130,10 @@ private:
     std::vector<DatabaseSystem> systems_;
     std::vector<DatabaseSystem> pending_;   // collected during a write
     std::string error_;
+
+    // State held between beginFinish() and finishCommit().
+    std::ofstream catalogOut_;
+    size_t finishPosition_ = 0;
 
     // Pruning state for the previous generation's leftovers. `void *` rather than `DIR *` so
     // this header does not need <dirent.h>.
