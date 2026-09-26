@@ -216,6 +216,7 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 | [GUI.md](GUI.md) | The interface design: layout, tiles, navigation, typography |
 | [PERFORMANCE.md](PERFORMANCE.md) | What was measured, what it cost, and what made it fast |
 | [POC.md](POC.md) | How the MiSTer boots, where a frontend hooks in, and what was proven on hardware |
+| [CONTROLLER.md](CONTROLLER.md) | Design for controller-first setup: listing pads, an input test, deadzone, button mapping and Bluetooth pairing |
 
 ## Status
 
@@ -246,7 +247,24 @@ dated commitment.
       pads on a wireless receiver. Still to try: PS4, PS5, and the Saturn pad wired.
 - [ ] Reach the letter jump from a pad with only two shoulder buttons. It sits on L2/R2,
       which a Saturn-style pad does not have.
-- [ ] Controller configuration in the settings screen
+- [ ] **Controller management**, in Settings. Premise: controller-first — usable end to end
+      without a keyboard attached. (Side effect: no mouse support for now, since the stock
+      MiSTer menu still needs a keyboard's spacebar to skip mouse detection at boot — that
+      stays true either way, this just does not try to paper over it.) See
+      [CONTROLLER.md](CONTROLLER.md) for the design.
+    - [ ] List the connected controllers
+    - [ ] An input test for buttons and analogue sticks
+    - [ ] A deadzone setting (writes MiSTer's own `deadzone=` line, e.g.
+          `deadzone=0x045e02a1, 25` — the vendor/product MiSTer itself reports for a pad, which
+          can differ from what `lsusb` shows; see CONTROLLER.md)
+    - [ ] Button mapping that affects the MiSTer menu, written as MiSTer's own
+          `/media/fat/config/inputs/input_<vid>_<pid>_v3.map` file
+    - [ ] Pair a new controller over Bluetooth, where the device has an adapter at all
+- [ ] **Later:** let two identical controllers be told apart and given separate mappings
+      (MiSTer's own `controller_unique_mapping`). Deliberately not in the first pass of
+      controller management above — accessibility over completeness while this is still an
+      early build; two same-model pads sharing one mapping is the common case, not the
+      exception worth solving for on day one.
 
 ### Presentation and speed
 
