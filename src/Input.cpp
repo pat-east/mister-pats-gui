@@ -88,6 +88,7 @@ void Input::rescan() {
         device.index = i;
         probeTrigger(fd, ABS_Z, device.triggerLeftThreshold);
         probeTrigger(fd, ABS_RZ, device.triggerRightThreshold);
+        device.hasHat = probeHat(fd);
         devices_.push_back(device);
     }
 }
@@ -106,6 +107,14 @@ void Input::probeTrigger(int fd, uint16_t code, int &threshold) {
     threshold = info.maximum / 2;
 }
 
+bool Input::probeHat(int fd) {
+    unsigned long bits[(ABS_MAX / (8 * sizeof(unsigned long))) + 1] = {};
+    if (ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(bits)), bits) < 0) return false;
+
+    const size_t bitsPerWord = 8 * sizeof(unsigned long);
+    return (bits[ABS_HAT0X / bitsPerWord] >> (ABS_HAT0X % bitsPerWord)) & 1;
+}
+
 void Input::emitDirection(Action action, bool pressed, std::vector<Action> &out) {
     if (pressed) {
         out.push_back(action);
@@ -117,14 +126,20 @@ void Input::emitDirection(Action action, bool pressed, std::vector<Action> &out)
     }
 }
 
-void Input::handleKey(uint16_t code, int32_t value, std::vector<Action> &out) {
+void Input::handleKey(const Device &device, uint16_t code, int32_t value, std::vector<Action> &out) {
     const bool pressed = value != 0;
 
+    // Some pads report the D-pad as BTN_DPAD_* keys in addition to the ABS_HAT0X/Y axes
+    // handled in handleAbs; acting on both would move the cursor twice per press.
     switch (code) {
-    case KEY_UP:    case BTN_DPAD_UP:    emitDirection(Action::Up, pressed, out); return;
-    case KEY_DOWN:  case BTN_DPAD_DOWN:  emitDirection(Action::Down, pressed, out); return;
-    case KEY_LEFT:  case BTN_DPAD_LEFT:  emitDirection(Action::Left, pressed, out); return;
-    case KEY_RIGHT: case BTN_DPAD_RIGHT: emitDirection(Action::Right, pressed, out); return;
+    case KEY_UP:    emitDirection(Action::Up, pressed, out); return;
+    case KEY_DOWN:  emitDirection(Action::Down, pressed, out); return;
+    case KEY_LEFT:  emitDirection(Action::Left, pressed, out); return;
+    case KEY_RIGHT: emitDirection(Action::Right, pressed, out); return;
+    case BTN_DPAD_UP:    if (!device.hasHat) emitDirection(Action::Up, pressed, out); return;
+    case BTN_DPAD_DOWN:  if (!device.hasHat) emitDirection(Action::Down, pressed, out); return;
+    case BTN_DPAD_LEFT:  if (!device.hasHat) emitDirection(Action::Left, pressed, out); return;
+    case BTN_DPAD_RIGHT: if (!device.hasHat) emitDirection(Action::Right, pressed, out); return;
     default: break;
     }
 
@@ -238,7 +253,7 @@ std::vector<Action> Input::poll(int timeoutMs) {
             input_event ev{};
             ssize_t got;
             while ((got = read(pfds[i].fd, &ev, sizeof(ev))) == sizeof(ev)) {
-                if (ev.type == EV_KEY) handleKey(ev.code, ev.value, out);
+                if (ev.type == EV_KEY) handleKey(devices_[i], ev.code, ev.value, out);
                 else if (ev.type == EV_ABS) handleAbs(devices_[i], ev.code, ev.value, out);
             }
 

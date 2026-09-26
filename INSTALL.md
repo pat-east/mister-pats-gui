@@ -162,6 +162,7 @@ The device then boots exactly as it did before. Nothing else was modified.
 | Symptom | Cause and remedy |
 | --- | --- |
 | Stock menu instead of the GUI | `main=` or `gui=` points at a file that is not there. Check the paths and that both files are executable. |
+| Stock menu instead of the GUI, even though both files are right where they should be | Stock MiSTer resolves relative paths like `main=`/`gui=` against whichever storage device was last selected — persisted in `/media/fat/config/device.bin`, not necessarily the SD card. If that got switched to a USB drive (e.g. while testing a second game drive), the lookup silently fails because neither file exists there, and MiSTer falls back to itself rather than showing an error. `ssh root@<ip> rm -f /media/fat/config/device.bin` and reboot to put it back on the SD card. |
 | Black screen, device responds to SSH | `ssh root@<ip> killall mister-gui` — the patched binary restarts it after a few seconds. |
 | Blinking cursor in the top left | The console is in text mode. `ssh root@<ip> 'chvt 1'`, or reboot. |
 | Nothing on a DVI monitor | Should be detected automatically. If not, set `dvi_mode=1` in `MiSTer.ini`. Note that DVI mode carries no audio. |

@@ -5,6 +5,33 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2026-09-26
+
+### Fixed
+
+- **A pad's D-pad could move the selection twice per press.** Some controllers — an Xbox 360
+  pad through a wireless receiver, among them — report the D-pad both as a hat (`ABS_HAT0X`/
+  `ABS_HAT0Y`) and as separate `BTN_DPAD_*` key events for the same physical press; acting on
+  both moved the cursor twice. Each device is now probed for a hat once, at connect time, and
+  `BTN_DPAD_*` is ignored on any device that has one.
+
+### Added
+
+- **Settings → "Start MiSTer Core"** exits this GUI and hands the screen back to MiSTer's own
+  stock menu — the place a controller actually gets configured (`Define joystick buttons`),
+  and otherwise not reachable from here at all if the usual way in (a keyboard's F12, or a
+  case's own hardware OSD button) does not work for a given setup. A matching change to the
+  patched main binary stops it from relaunching the GUI a few seconds later; a reboot is what
+  brings it back.
+
+### Verified
+
+- **Xbox 360 Wireless Receiver for Windows, with two Xbox 360 controllers paired to it** — now
+  tested and working, including the D-pad fix above. A drifting stick on this pad is a Stock
+  MiSTer `deadzone=` setting, not something this GUI touches; match it against the vendor/product
+  MiSTer itself reports for the pad (`cat /proc/bus/input/devices`), which can differ from what
+  `lsusb` shows for the receiver.
+
 ## [0.1.6] - 2026-09-24
 
 ### Fixed

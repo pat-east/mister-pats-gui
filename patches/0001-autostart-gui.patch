@@ -68,10 +68,10 @@ index 640929d..0739bc8 100644
  	char autofire_rates[3072];
  	uint8_t autofire_on_directions;
 diff --git a/menu.cpp b/menu.cpp
-index 9577174..7f7cf29 100644
+index 9577174..960cd06 100644
 --- a/menu.cpp
 +++ b/menu.cpp
-@@ -1167,6 +1167,84 @@ void HandleUI(void)
+@@ -1167,6 +1167,89 @@ void HandleUI(void)
  	static pid_t ttypid = 0;
  	static int ttystatus = 0;
  	static int has_fb_terminal = 0;
@@ -112,12 +112,17 @@ index 9577174..7f7cf29 100644
 +	// Start the configured replacement GUI, and bring it back if it ever goes away while the
 +	// menu core is up. This mirrors MENU_SCRIPTS_FB: only that path enables the framebuffer
 +	// overlay the GUI draws into. The cooldown keeps a GUI that fails to run from spinning.
++	//
++	// The GUI's own "Start MiSTer Core" setting exits it and drops this marker so the stock
++	// menu stays on screen instead of being covered again a few seconds later. It lives in
++	// /tmp, so a reboot is what brings the GUI back.
 +	{
 +		static unsigned long gui_next_try = 0;
 +		static bool gui_first = true;
 +		static bool gui_missing = false;
 +
 +		if (cfg.gui[0] && is_menu() && cfg.fb_terminal && !ttypid && !gui_missing &&
++		    !FileExists("/tmp/mister-pat-suspend-gui") &&
 +		    (gui_first || CheckTimer(gui_next_try)))
 +		{
 +			const char *gui_path = getFullPath(cfg.gui);

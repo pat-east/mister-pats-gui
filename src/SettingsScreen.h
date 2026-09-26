@@ -19,7 +19,8 @@ public:
                    std::function<void()> onFetchArtwork,
                    std::function<void()> onManageSystems,
                    std::function<void()> onToggleGamesTab,
-                   std::function<void()> onCycleDefaultView);
+                   std::function<void()> onCycleDefaultView,
+                   std::function<void()> onStartMisterCore);
 
     void setFramebufferInfo(const std::string &info) { framebufferInfo_ = info; }
 
@@ -54,6 +55,7 @@ private:
     std::function<void()> onManageSystems_;
     std::function<void()> onToggleGamesTab_;
     std::function<void()> onCycleDefaultView_;
+    std::function<void()> onStartMisterCore_;
     std::vector<Row> rows_;
     SystemInfo system_;
     std::string framebufferInfo_;

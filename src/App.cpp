@@ -69,7 +69,7 @@ bool App::initialize(const Options &options) {
         *context_, [this] { reloadLibrary(); }, [this] { stop(); },
         [this] { openScan(false); }, [this] { openArtwork(); },
         [this] { openVisibility(); }, [this] { toggleGamesTab(); },
-        [this] { cycleDefaultView(); });
+        [this] { cycleDefaultView(); }, [this] { startMisterCore(); });
     settingsScreen_->setFramebufferInfo(framebuffer_.describe());
 
     scanScreen_ = std::make_unique<ScanScreen>(
@@ -171,6 +171,14 @@ void App::cycleDefaultView() {
     allGamesScreen_->setView(next);
     favoritesScreen_->setView(next);
     needsFullRedraw_ = true;
+}
+
+void App::startMisterCore() {
+    // The patched Main_MiSTer relaunches this GUI a few seconds after it exits; the marker
+    // tells it to leave the stock menu on screen instead. See App.h for the path.
+    FILE *marker = std::fopen(kSuspendMarkerPath, "w");
+    if (marker) std::fclose(marker);
+    stop();
 }
 
 Screen *App::activeScreen() {

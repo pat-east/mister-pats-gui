@@ -60,6 +60,11 @@ public:
 
     static constexpr const char *kScreenshotPath = "/tmp/mister-gui-shot.raw";
 
+    // Tells the patched Main_MiSTer not to relaunch this GUI, so the stock menu underneath
+    // stays on screen instead of being covered again a few seconds later. Lives in /tmp, so
+    // a reboot is what brings the GUI back.
+    static constexpr const char *kSuspendMarkerPath = "/tmp/mister-pat-suspend-gui";
+
 private:
     Screen *activeScreen();
     void dispatch(Action action);
@@ -74,6 +79,7 @@ private:
     void closeVisibility();
     void toggleGamesTab();
     void cycleDefaultView();
+    void startMisterCore();
     void writeCanvas(const std::string &path);
 
     std::string version;     // Version string to display in bottom bar

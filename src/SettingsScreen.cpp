@@ -11,13 +11,15 @@ SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
                                std::function<void()> onFetchArtwork,
                                std::function<void()> onManageSystems,
                                std::function<void()> onToggleGamesTab,
-                               std::function<void()> onCycleDefaultView)
+                               std::function<void()> onCycleDefaultView,
+                               std::function<void()> onStartMisterCore)
     : context_(context), onReload_(std::move(onReload)), onQuit_(std::move(onQuit)),
       onBuildDatabase_(std::move(onBuildDatabase)),
       onFetchArtwork_(std::move(onFetchArtwork)),
       onManageSystems_(std::move(onManageSystems)),
       onToggleGamesTab_(std::move(onToggleGamesTab)),
-      onCycleDefaultView_(std::move(onCycleDefaultView)) {
+      onCycleDefaultView_(std::move(onCycleDefaultView)),
+      onStartMisterCore_(std::move(onStartMisterCore)) {
     buildRows();
 }
 
@@ -59,6 +61,9 @@ void SettingsScreen::buildRows() {
                          context_.library.setScanningAllowed(false);
                          context_.notify("Library reloaded");
                      }});
+
+    rows_.push_back({"Start MiSTer Core", [] { return std::string("A"); },
+                     [this] { onStartMisterCore_(); }});
 
     rows_.push_back({"Quit", [] { return std::string("A"); }, [this] { onQuit_(); }});
 }

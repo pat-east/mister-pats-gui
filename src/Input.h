@@ -52,6 +52,11 @@ private:
         int axisX = 0;
         int axisY = 0;
 
+        // Some pads report the D-pad both as a hat and as BTN_DPAD_* key events. Acting on
+        // both would move the cursor twice per press, so the keys are ignored on any device
+        // that also has a hat.
+        bool hasHat = false;
+
         // Analogue triggers, when the pad reports them as axes. Zero threshold means the
         // axis is a stick and must not be read as a trigger.
         int triggerLeftThreshold = 0;
@@ -60,9 +65,10 @@ private:
         int triggerRight = 0;
     };
 
-    void handleKey(uint16_t code, int32_t value, std::vector<Action> &out);
+    void handleKey(const Device &device, uint16_t code, int32_t value, std::vector<Action> &out);
     void handleAbs(Device &device, uint16_t code, int32_t value, std::vector<Action> &out);
     static void probeTrigger(int fd, uint16_t code, int &threshold);
+    static bool probeHat(int fd);
     void emitDirection(Action action, bool pressed, std::vector<Action> &out);
     void appendRepeats(std::vector<Action> &out);
     void forget(size_t slot);

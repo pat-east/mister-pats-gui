@@ -242,8 +242,8 @@ dated commitment.
 ### Controllers
 
 - [ ] Test more controllers. Working so far: an Xbox Series X pad on an 8BitDo Adapter 2
-      (the daily driver), and a Retro-Bit Sega Saturn pad on its 2.4 GHz adapter. Still to
-      try: PS4, PS5, and the Saturn pad wired.
+      (the daily driver), a Retro-Bit Sega Saturn pad on its 2.4 GHz adapter, and two Xbox 360
+      pads on a wireless receiver. Still to try: PS4, PS5, and the Saturn pad wired.
 - [ ] Reach the letter jump from a pad with only two shoulder buttons. It sits on L2/R2,
       which a Saturn-style pad does not have.
 - [ ] Controller configuration in the settings screen
