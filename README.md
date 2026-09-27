@@ -165,6 +165,18 @@ make -C tests                            # host-side checks, no device needed
 The MiSTer's own OSD stays reachable at all times — the GUI deliberately does not grab input
 devices exclusively.
 
+## Tested controllers
+
+| Controller | Connection | Notes |
+| --- | --- | --- |
+| Xbox Series X pad | 8BitDo Adapter 2 | The daily driver used for most of this project's own development |
+| Retro-Bit Sega Saturn pad | 2.4 GHz wireless adapter | D-pad only, no analogue stick. Works great once switched to X-Input mode — see the [pad's manual](https://retro-bit.com/sitepad-data/uploads/2025/07/NA-Saturn-Pro-2.4-GHz-Wireless-Controller_11-16-23.pdf) for the mode switch |
+| Xbox 360 pad ×2 | Xbox 360 Wireless Receiver for Windows | Needs a `deadzone=` set to behave — see [CONTROLLER.md](CONTROLLER.md#3-deadzone) — and [INSTALL.md](INSTALL.md) for the vendor/product gotcha that surfaced along the way |
+| PS4 controller (DualShock 4) | Wired (USB cable), and Bluetooth | Bluetooth pairing survives a reboot — the pad reconnects on its own, no re-pairing needed |
+
+Still to try: PS5 (DualSense) and the Saturn pad wired. See [CONTROLLER.md](CONTROLLER.md) for
+the controller-management feature this is building towards.
+
 ## Configuration
 
 | File | Purpose |
@@ -216,7 +228,7 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 | [GUI.md](GUI.md) | The interface design: layout, tiles, navigation, typography |
 | [PERFORMANCE.md](PERFORMANCE.md) | What was measured, what it cost, and what made it fast |
 | [POC.md](POC.md) | How the MiSTer boots, where a frontend hooks in, and what was proven on hardware |
-| [CONTROLLER.md](CONTROLLER.md) | Design for controller-first setup: listing pads, an input test, deadzone, button mapping and Bluetooth pairing |
+| [CONTROLLER.md](CONTROLLER.md) | Controller-first setup — listing pads, an input test, deadzone, button mapping and Bluetooth pairing: the design, and what real hardware testing found along the way |
 
 ## Status
 
@@ -242,24 +254,27 @@ dated commitment.
 
 ### Controllers
 
-- [ ] Test more controllers. Working so far: an Xbox Series X pad on an 8BitDo Adapter 2
-      (the daily driver), a Retro-Bit Sega Saturn pad on its 2.4 GHz adapter, and two Xbox 360
-      pads on a wireless receiver. Still to try: PS4, PS5, and the Saturn pad wired.
+- [ ] Test more controllers — see [Tested controllers](#tested-controllers) for what has
+      been confirmed so far and what is still to try.
 - [ ] Reach the letter jump from a pad with only two shoulder buttons. It sits on L2/R2,
       which a Saturn-style pad does not have.
-- [ ] **Controller management**, in Settings. Premise: controller-first — usable end to end
+- [x] **Controller management**, in Settings. Premise: controller-first — usable end to end
       without a keyboard attached. (Side effect: no mouse support for now, since the stock
       MiSTer menu still needs a keyboard's spacebar to skip mouse detection at boot — that
-      stays true either way, this just does not try to paper over it.) See
-      [CONTROLLER.md](CONTROLLER.md) for the design.
-    - [ ] List the connected controllers
-    - [ ] An input test for buttons and analogue sticks
-    - [ ] A deadzone setting (writes MiSTer's own `deadzone=` line, e.g.
+      stays true either way, this just does not try to paper over it.) Verified on real
+      hardware, including several rounds of fixes the design alone had not caught — see
+      [CONTROLLER.md](CONTROLLER.md) for the design and the full trail of hardware findings.
+    - [x] List the connected controllers
+    - [x] An input test for buttons and analogue sticks
+    - [x] A deadzone setting (writes MiSTer's own `deadzone=` line, e.g.
           `deadzone=0x045e02a1, 25` — the vendor/product MiSTer itself reports for a pad, which
           can differ from what `lsusb` shows; see CONTROLLER.md)
-    - [ ] Button mapping that affects the MiSTer menu, written as MiSTer's own
-          `/media/fat/config/inputs/input_<vid>_<pid>_v3.map` file
-    - [ ] Pair a new controller over Bluetooth, where the device has an adapter at all
+    - [x] Button mapping that affects the MiSTer menu, written as MiSTer's own
+          `/media/fat/config/inputs/input_<vid>_<pid>_v3.map` file — including a visual pad
+          diagram highlighting which button/stick to press, since a bare word like "X" means
+          a different physical button depending on which pad convention you grew up with
+    - [x] Pair a new controller over Bluetooth, where the device has an adapter at all —
+          verified surviving a reboot with no re-pairing needed
 - [ ] **Later:** let two identical controllers be told apart and given separate mappings
       (MiSTer's own `controller_unique_mapping`). Deliberately not in the first pass of
       controller management above — accessibility over completeness while this is still an

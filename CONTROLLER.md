@@ -1,8 +1,15 @@
 # Controller Management — Design
 
 Design document for the "Controller management" item on the [README roadmap](README.md#controllers).
-Nothing here is implemented yet — this is analysis and a proposed design, written before any
-code changes so the shape of the feature is settled first.
+Originally written as analysis and a proposed design, before any code changes, so the shape of
+the feature was settled first. **Now implemented and verified on real hardware** (Settings →
+Controllers) — kept up to date as a record of the design *and* of what hardware testing turned
+up along the way, most of it wrong assumptions this document's own earlier version made with
+confidence before a real pad proved otherwise: MiSTer's A/B/X/Y slots follow SNES-style
+positions rather than Xbox letters, its OSD-confirm slot is unrelated to its OSD-open combo, a
+D-pad-only pad needs a synthetic code MiSTer's own source builds for a hat axis, and level-
+triggered button capture stampedes through a whole wizard run if one button is held a moment
+too long. All fixed; all below.
 
 - [Premise](#premise)
 - [Why this belongs in this GUI at all](#why-this-belongs-in-this-gui-at-all)
@@ -114,38 +121,80 @@ against a real file this session (`input_045e_02a1_v3.map`, an Xbox 360 pad): **
 
 | Index | Meaning | Encoding |
 | ---: | --- | --- |
-| 0–3 | D-pad: Right, Left, Down, Up | raw evdev key code (e.g. `BTN_DPAD_RIGHT` = `0x223`) |
+| 0–3 | D-pad: Right, Left, Down, Up | raw evdev key code (e.g. `BTN_DPAD_RIGHT` = `0x223`) — **or**, on a pad whose D-pad is a hat axis rather than digital keys (confirmed on hardware: a Retro-Bit Saturn-style pad, reported as `Switch Co. Ltd. Retro-bit Controller`), a synthetic code MiSTer's own `input.cpp` builds for exactly this case: `KEY_EMU + (hat_axis_code << 1) + (0 for the axis's minimum / 1 for its maximum)`, where `KEY_EMU` is `KEY_MAX + 1` (`0x300`). A `.map` writer has to produce this form for a hat-based pad — writing a literal `BTN_DPAD_*` code that pad never actually sends leaves the slot silently unmappable. |
 | 4–7 | Face buttons: A, B, X, Y | raw evdev key code |
 | 8–9 | Shoulders: L, R | raw evdev key code |
 | 10–11 | Select, Start | raw evdev key code |
 | 12–19 | Mouse emulation (right/left/down/up, buttons L/R/M, emu toggle) | raw evdev key code |
-| 20 | OSD toggle (keyboard case) | raw evdev key code |
-| 21, 22 | OSD toggle, gamepad case: "confirm" / "cancel" halves | raw evdev key code, each |
-| 23 | Packed OSD confirm+cancel | low 16 bits = index 21's code, high 16 bits = index 22's |
+| 20 | `SYS_BTN_OSD_KTGL` — "open the OSD" key, **keyboard sessions only** | raw evdev key code; always `0` for a gamepad mapping (see below) |
+| 21, 22 | `SYS_BTN_CNT_OK`/`SYS_BTN_CNT_ESC` — reused, for a gamepad, as the "open OSD from inside a running core" combo's two halves | raw evdev key code, each — the same code in both for a single-button combo |
+| 23 | `SYS_BTN_MENU_FUNC` — "OK"/"Back" **while the OSD is already open** | low 16 bits = "OK" button's code, high 16 bits = "Back" button's — each packed in directly as captured, not read back from 21/22 |
 | 24–27 | Stick 1 X/Y, Stick 2 X/Y | `0x0002_0000 \| abs_code` (`ABS_X`=0, `ABS_Y`=1, `ABS_RX`=3, `ABS_RY`=4) |
 | 28–29 | "Active" stick X/Y (mirrors whichever of 24–27 is in use) | same encoding as 24–27 |
 | 30–31 | Spinner / mouse-emulation axes | same encoding, usually unset (`0`) |
 
-An unset slot is `0`. This is a **binary format with no version-tolerant fields** — index 23's
-packed encoding in particular only makes sense once indices 21 and 22 are already known, so a
-writer has to construct the whole 128 bytes as one unit; there is no safe way to patch a single
-slot in place without decoding the rest first. This project's own writer must therefore always
-read-modify-write the full struct, matching MiSTer's own approach 1:1, not attempt a partial
-update.
+An unset slot is `0`. **Indices 20–23 confirmed on real hardware to mean something different
+from an earlier assumption here — worth spelling out in full, since getting this wrong is
+exactly the kind of silent, hard-to-notice breakage this whole document exists to avoid.**
+Reproducing a PS4 controller's own mapping side by side with the file MiSTer's own stock
+wizard wrote for the *same pad* (via `xxd`) showed index 20 at `0`, indices 21/22 holding the
+*same* code as each other, and index 23 holding two *different* codes entirely unrelated to
+21/22. Reading `Main_MiSTer/input.cpp`'s own mapping-capture state machine
+(`SYS_BTN_OSD_KTGL`/`SYS_BTN_CNT_OK`/`SYS_BTN_CNT_ESC`/`SYS_BTN_MENU_FUNC` in `input.h`, and
+`menu.cpp`'s three separate prompts for this area — "Menu", "Menu: OK", "Menu: Back") settled
+it:
+
+- **Slots 21/22 are the "open the OSD from inside a running core" combo** — entirely unrelated
+  to confirm/cancel. `SYS_BTN_CNT_OK`/`SYS_BTN_CNT_ESC` (21/22) are literally
+  `SYS_BTN_OSD_KTGL + 1`/`+ 2`, reused under different names depending on which feature is
+  reading them — at runtime, both halves have to be *held simultaneously* for the OSD to pop
+  up (`input[dev].osd_combo` becoming `3`, a two-bit mask); a single-button combo works simply
+  because one physical press satisfies both halves at once. Left at `0`, there is no way to
+  reach the OSD from inside a core at all with that pad, which is precisely the situation this
+  whole feature is meant to prevent — see [Feature 4](#4-button-mapping) for why this wizard
+  does not let this particular step be silently forgotten.
+- **Slot 23 is what confirms/cancels once the OSD is already open**, and it is built
+  incrementally, one half at a time, directly from two *separate* prompts ("Menu: OK", "Menu:
+  Back") — there is no other slot these two raw codes are ever stored in first. Left at `0`,
+  either half **falls back to this same pad's regular A/B mapping** (`input.cpp`: the low
+  half's fallback is literally `ev->code == mmap[SYS_BTN_A]`) — so leaving this slot entirely
+  untouched is a correct, working default, not a placeholder needing a follow-up fix.
+
+The earlier assumption here — one captured button feeding *both* a single OSD-toggle slot
+*and* directly becoming the packed "confirm" value — quietly wrote whatever button was
+captured for "open the OSD" into slot 23's low 16 bits, which **overrides** the correct
+A-button fallback with an unrelated, usually wrong button. That is exactly the "confirm with A
+doesn't work any more, only the actual menu button does" symptom real hardware testing turned
+up, and exactly why this document says to read the source rather than guess.
+
+This is a **binary format with no version-tolerant fields** — a writer has to construct the
+whole 128 bytes as one unit; there is no safe way to patch a single slot in place without
+decoding the rest first. This project's own writer must therefore always read-modify-write the
+full struct, matching MiSTer's own approach 1:1, not attempt a partial update.
 
 **This means the button-mapping screen has to capture a raw evdev event per prompt**, not run
 through this GUI's own `Action` enum (`Up`/`Down`/`Confirm`/... in `src/Input.h`) — that enum is
 this GUI's *own*, fixed navigation scheme and is not what gets written to the `.map` file. The
 two are related only in that both, today, read the same physical pad.
 
-**Not fully worked out yet: capturing the two stick-axis slots (24–27).** A digital button is a
-single evdev key event — trivial to capture. An axis is a continuous value with a sign and a
-resting point, and MiSTer's own capture code (`tmp_axis[4]` in `input.cpp`) fills all four axis
-slots from what looks like one combined calibration step, not four separate "press this"
-prompts. Exactly how that step decides which physical axis is X vs Y, and which direction is
-positive, needs another close read of `input.cpp`'s mapping state machine before this can be
-specified precisely — flagged here rather than guessed at, since getting it wrong would produce
-a `.map` file that silently inverts or swaps a stick.
+**Capturing the two stick-axis slots (24–27): resolved, deliberately not the way MiSTer's own
+wizard does it.** MiSTer's own capture code (`tmp_axis[4]` in `input.cpp`) fills all four axis
+slots from one combined calibration step, not four separate "press this" prompts — replicating
+that exactly would need its own close read of that state machine, which this project's own
+wizard does not need: the slot's *value* is just `0x0002_0000 | abs_code` (see the table
+above), independent of any calibration procedure that decided to write it. This wizard instead
+asks for each of the four slots separately ("Stick 1: move left/right", then "...up/down", and
+the same for Stick 2), and for each one picks whichever of the pad's own reported stick axes
+(`ABS_X`, `ABS_Y`, `ABS_RX`, `ABS_RY`) moved furthest from where it sat when the step began.
+
+Confirmed on hardware to need a much stricter threshold than first assumed: a plain "moved at
+all" or even "moved a third of the way" reading was too eager — a diagonal push, or noise on
+an unrelated axis, could register before the intended one. The threshold is now **75% of the
+axis's half-range** (centre to one edge — the most a resting stick can ever travel one way),
+not a fraction of its whole span (a full deflection off centre is only ever ~50% of that). Once
+an axis has answered one of the four stick prompts it is retired for the rest of the wizard, so
+a stuck or absent second stick cannot silently answer a later prompt with the same axis the
+first stick already used.
 
 **Also not accounted for: analogue triggers.** This GUI's own `Input` class already treats
 `ABS_Z`/`ABS_RZ` specially (trigger detection added for the letter-jump feature). The fixed
@@ -196,9 +245,10 @@ until the button that got corrupted is pressed.
 ### Bluetooth pairing
 
 Confirmed by reading `menu.cpp`'s own `MENU_BTPAIR`/`MENU_BTPAIR2` states (the stock OSD's
-"Pair Bluetooth device" screen) — the device this feature must key off did not answer this
-session's own SSH connection, so the one thing below marked unconfirmed genuinely needs a
-follow-up read on real hardware before this part is built, not just before it ships.
+"Pair Bluetooth device" screen). Since then, confirmed end to end on real hardware too: a PS4
+controller (DualShock 4) paired through this feature's own modal, and — separately worth
+noting — the pairing survives a reboot on its own, with no re-pairing step needed (see
+[README](README.md#tested-controllers)).
 
 - **Not every MiSTer has Bluetooth**, and stock MiSTer already checks for that the right way:
   `hci_get_route(0) < 0` (from `<bluetooth.h>`, i.e. BlueZ) — an adapter either answers or it
@@ -207,8 +257,9 @@ follow-up read on real hardware before this part is built, not just before it sh
   new dependency to an otherwise dependency-minimal static binary, is checking for
   `/sys/class/bluetooth/hci0` (or any `hciN`) directly rather than linking BlueZ — confirmed
   the sysfs path exists and is populated on the reference device (visible in this session's own
-  `dmesg`: `Bluetooth: hci0: RTL: ...`), not yet confirmed that its mere presence is exactly
-  equivalent to what `hci_get_route` checks (likely, not proven).
+  `dmesg`: `Bluetooth: hci0: RTL: ...`). Not formally proven bit-for-bit equivalent to what
+  `hci_get_route` checks, but a real pairing (see above) went through end to end on the same
+  device this check runs on, which is as good a practical confirmation as this feature needs.
 - **Pairing itself is not something to reimplement.** Stock MiSTer runs a separate helper,
   `/usr/sbin/btpair`, via `popen(..., "r")`, and simply streams whatever it prints to stdout
   into the OSD, line by line, until the process exits or is cancelled
@@ -286,26 +337,44 @@ different from here on.
 
 A live view of one selected controller's raw state: every digital button lights up while held,
 both analogue sticks are shown as a dot inside a circle that moves live, both analogue triggers
-(if present) as a fill bar. Read-only — nothing here writes anything. Its only job is to let
-someone confirm "yes, this button press is reaching the MiSTer at all" and "yes, this is what
-my stick's rest position and range actually look like" before deciding whether a deadzone is
-even needed, and how large.
+(if present) as a fill bar. Read-only — nothing here writes anything, and (**decided after
+hardware testing**) no button here does anything *but* light up either — see below for how you
+actually leave.
 
 **Default layout: the now-standard PS/Xbox-style pad** — one D-pad, two analogue sticks (each
-with a click button), four face buttons (A/B/X/Y), four shoulder buttons (L, R, L2, R2 — L2/R2
-shown as the analogue trigger bars above if the pad reports them that way, as a digital light
+with a click button), four face buttons, four shoulder buttons (L, R, L2, R2 — L2/R2 shown as
+the analogue trigger bars above if the pad reports them that way, as a digital light
 otherwise), Start, Select, and a Home/Guide button. This covers the large majority of pads
-someone is likely to plug in without any setup at all.
+someone is likely to plug in without any setup at all. The face buttons are drawn as a real
+diamond at the *physical* position each one actually reports (`BTN_NORTH`=top, `BTN_WEST`=left,
+`BTN_EAST`=right, `BTN_SOUTH`=bottom), labelled with the Xbox letter that belongs at that
+position (Y top, X left, B right, A bottom) — not the kernel's own `BTN_X`/`BTN_Y` aliases,
+which do not match a real Xbox pad's own silkscreen for the left/top pair. Getting this
+backwards is exactly what silently swapped X and Y for a real PS4 pad during a mapping run —
+see [The .map file](#the-map-file), and [Button mapping](#4-button-mapping) below for where the
+same distinction matters again and matters more.
 
-**A "Sega layout" toggle adds two more face buttons — Z and C — for six-button pads**
-(arcade-style layout: X/Y/Z on the top row, A/B/C on the bottom). This is purely a *display*
-toggle for this screen — it changes nothing about what gets captured or written anywhere else,
-including the button-mapping wizard (MiSTer's own `.map` format, documented above, only has
-slots for four face buttons; a six-button pad's extra two buttons are outside what that format
-represents at all, which is a limitation of MiSTer's own format, not something this screen can
-paper over). The toggle exists so the *test* screen does not silently ignore two buttons a
-person can see themselves pressing, even though nothing downstream currently does anything
-with them.
+**A "Sega layout" toggle for six-button pads (X/Y/Z top row, A/B/C bottom) was designed but is
+disabled for now**, on request, rather than left in half-finished — dropped cleanly instead of
+kept as dead, unreachable code. Revisiting it is still on the table; see
+[Non-goals for v1](#non-goals-for-v1) for the same "accessibility over completeness" reasoning
+this project applies elsewhere.
+
+**Leaving this screen: decided, and revised twice after hardware testing.** Holding Start for
+5 seconds leaves, exactly like the button-mapping wizard's own cancel gesture (see
+[Button mapping](#4-button-mapping)) — chosen for the same reason: it cannot be mistaken for
+this screen's own job of showing every other press. On top of that, **this screen also leaves
+on its own after 10 seconds with no input at all**: some pads register extra sub-devices
+alongside the real controller (a DualShock's own "Motion Sensors" or "Touchpad" nodes), and
+pointing this screen at one of those can mean there is no Start to hold at all — without this,
+that silently strands someone here for good. Getting "no input at all" right took two real
+bugs to find: an axis's *rest* value is not reliably its range's mathematical centre (a
+trigger sits at one end, not the middle), and it is not reliably *constant* either — a live
+accelerometer/gyro keeps drifting a little even lying flat, so a one-time rest snapshot
+eventually gets outrun by that drift over a full 10-second window. The working version tracks
+each axis's own rest reading continuously, nudging it towards wherever the axis currently sits
+*only while it reads as still resting* — real, sustained activity freezes it in place instead
+of being allowed to quietly "catch up" and go stale.
 
 ### 3. Deadzone
 
@@ -325,10 +394,31 @@ should not offer itself for one that does not.
 Pick a controller, then step through the same fixed list of logical buttons MiSTer's own wizard
 uses — "Press the button for **Right**", capturing the first raw event and advancing, exactly
 the way the stock OSD wizard already does it (so this reproduces a flow players already know
-from other consoles' setup, rather than inventing a new one). Include the OSD-toggle and
-stick-axis slots too, since leaving those `0` is a silent, easy-to-miss way to end up with the
-*original* problem this whole feature is meant to prevent — no way back into the OSD from
-inside a game.
+from other consoles' setup, rather than inventing a new one). Also asks, separately, for the
+combo that opens the OSD from inside a running game, and the buttons that confirm/cancel once
+it is open — see [The .map file](#the-map-file) for exactly what each of those three prompts
+writes and why they are not the same thing, after an earlier wrong assumption here broke OSD
+confirm on real hardware. Of the three, only the OSD-open combo is worth a warning against
+skipping: unlike "Menu: OK"/"Menu: Back" (which correctly fall back to this pad's own A/B
+button if left unset), skipping it is a silent, easy-to-miss way to end up with the *original*
+problem this whole feature is meant to prevent — no way back into the OSD from inside a game.
+
+**Confirmed on hardware to need one more rule: once a physical control has answered a prompt,
+it is retired for the rest of the wizard.** Without this, a button held a touch too long, or a
+stick that has not quite recentred, silently answers the *next* prompt too — not a skip, a
+button or axis quietly claiming a second slot it was never meant for. Every capture (a button,
+a hat-derived D-pad direction, or a stick axis — see [The .map file](#the-map-file)) is checked
+against everything already assigned earlier in the same run and ignored if it repeats.
+
+**Confirmed on hardware to need a second, related rule: Start's own trailing release must not
+answer the next step.** Whichever step just finished — Start's own capture, or a later step
+Start was tapped to skip — the physical release of that same press can land a frame or two
+into the *new* step. Without accounting for that, the new step's own hold/skip machinery sees
+"Start down, then released before 5 seconds," which is exactly what a deliberate tap-to-skip
+looks like — so it silently skips a step nobody meant to skip, from the tail end of a press
+that was answering something else entirely. Each step now waits until Start has actually been
+seen released at least once before its own hold/skip logic does anything at all; if Start was
+not the control just used, this adds no delay (it is already up on the very first check).
 
 **The very first button captured is always Start**, ahead of the D-pad and everything else —
 not MiSTer's own ordering, a deliberate change. Before capturing anything, the wizard states
@@ -364,6 +454,17 @@ pad turns out to be unusable mid-wizard": Start is guaranteed to exist on any co
 mapping, is captured first (so it is always known from that point on, independent of whatever
 comes later in the sequence), and every one of the three exits above only needs Start to already
 work.
+
+**Added after hardware testing: a schematic pad diagram, not just a word.** "Press the button
+for X" is ambiguous on its own — X means a different physical button depending on which pad
+convention the person grew up with, which is exactly what caused the swap described in
+[The .map file](#the-map-file). Each step now draws a small schematic controller (D-pad,
+face-button diamond, shoulders, Home, Select/Start, both sticks) with the one relevant part lit
+up — a directional square, a face position, a stick with a bar through it pointing along
+whichever axis ("left/right" vs "up/down") that step is asking for. The three OSD-related steps
+have no diagram at all: "Confirm inside the menu" is not tied to one physical spot, and "open
+the menu" is highlighted at the Home/Guide position not because the `.map` format requires it
+but because that is, in practice, by far the most common real answer on a modern pad.
 
 ### 5. Connect a new controller via Bluetooth
 

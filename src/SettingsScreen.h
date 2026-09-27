@@ -18,6 +18,7 @@ public:
                    std::function<void()> onQuit, std::function<void()> onBuildDatabase,
                    std::function<void()> onFetchArtwork,
                    std::function<void()> onManageSystems,
+                   std::function<void()> onManageControllers,
                    std::function<void()> onToggleGamesTab,
                    std::function<void()> onCycleDefaultView,
                    std::function<void()> onStartMisterCore);
@@ -53,6 +54,7 @@ private:
     std::function<void()> onBuildDatabase_;
     std::function<void()> onFetchArtwork_;
     std::function<void()> onManageSystems_;
+    std::function<void()> onManageControllers_;
     std::function<void()> onToggleGamesTab_;
     std::function<void()> onCycleDefaultView_;
     std::function<void()> onStartMisterCore_;

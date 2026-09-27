@@ -6,7 +6,7 @@
 # process is really gone, copy, and let it come back on its own.
 set -e
 
-DEVICE=${DEVICE:-root@192.168.64.163}
+DEVICE=${DEVICE:-root@192.168.64.128}
 REMOTE=${REMOTE:-/media/fat/mister-pat}
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 BINARY=${1:-$HERE/build/mister-gui}

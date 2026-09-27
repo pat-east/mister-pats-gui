@@ -10,6 +10,7 @@ SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
                                std::function<void()> onBuildDatabase,
                                std::function<void()> onFetchArtwork,
                                std::function<void()> onManageSystems,
+                               std::function<void()> onManageControllers,
                                std::function<void()> onToggleGamesTab,
                                std::function<void()> onCycleDefaultView,
                                std::function<void()> onStartMisterCore)
@@ -17,6 +18,7 @@ SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
       onBuildDatabase_(std::move(onBuildDatabase)),
       onFetchArtwork_(std::move(onFetchArtwork)),
       onManageSystems_(std::move(onManageSystems)),
+      onManageControllers_(std::move(onManageControllers)),
       onToggleGamesTab_(std::move(onToggleGamesTab)),
       onCycleDefaultView_(std::move(onCycleDefaultView)),
       onStartMisterCore_(std::move(onStartMisterCore)) {
@@ -34,6 +36,9 @@ void SettingsScreen::buildRows() {
 
     rows_.push_back({"Manage systems", [] { return std::string("A"); },
                      [this] { onManageSystems_(); }});
+
+    rows_.push_back({"Controllers", [] { return std::string("A"); },
+                     [this] { onManageControllers_(); }});
 
     rows_.push_back({"Show Games menu item",
                      [this] { return std::string(context_.preferences.showGamesTab() ? "On" : "Off"); },

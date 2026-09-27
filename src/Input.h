@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <map>
+#include <string>
 #include <vector>
 
 enum class Action {
@@ -43,6 +44,39 @@ public:
     // Hands the devices back, so a launched core receives input instead of us.
     void releaseAll();
 
+    // Everything the controller-management screens need to know about a connected pad, on
+    // top of what the ordinary Action pipeline above already handles. Kept as a snapshot
+    // struct (rather than handing out Device itself) so those screens cannot reach into or
+    // depend on the navigation-only fields above.
+    struct DeviceInfo {
+        int slot = -1;          // index into this snapshot vector; stable only within one call
+        int eventNumber = 0;    // the N in /dev/input/eventN, MiSTer's own EVIOCGID-read node
+        std::string name;
+        uint16_t vendor = 0;
+        uint16_t product = 0;
+        bool hasHat = false;
+    };
+
+    // A snapshot of every currently-open device. Rebuilt from scratch each call — cheap
+    // enough at a handful of pads, and it means a caller never holds a pointer that could
+    // outlive a disconnect.
+    std::vector<DeviceInfo> listDevices() const;
+
+    // Resolves a device's *current* slot from its stable `/dev/input/eventN` number — -1 if
+    // it is not open right now. A caller that holds onto a DeviceInfo across more than one
+    // call (the controller-management screens do, across many frames) must re-resolve the
+    // slot this way before each use rather than trusting the one a stale DeviceInfo carries:
+    // any device elsewhere disconnecting can reshuffle every other device's slot.
+    int findSlot(int eventNumber) const;
+
+    // Raw digital/analogue state, read directly from the kernel (EVIOCGKEY / EVIOCGABS)
+    // rather than from the Action event queue — so reading it here never consumes or
+    // interferes with the ordinary poll()/Action path above. `slot` is DeviceInfo::slot from
+    // the same listDevices() call; an out-of-range slot reads as "not pressed"/0.
+    bool keyState(int slot, uint16_t code) const;
+    int32_t absValue(int slot, uint16_t code) const;
+    bool absInfo(int slot, uint16_t code, int32_t &minimum, int32_t &maximum) const;
+
 private:
     struct Device {
         int fd = -1;
@@ -51,6 +85,10 @@ private:
         int hatY = 0;
         int axisX = 0;
         int axisY = 0;
+
+        std::string name;
+        uint16_t vendor = 0;
+        uint16_t product = 0;
 
         // Some pads report the D-pad both as a hat and as BTN_DPAD_* key events. Acting on
         // both would move the cursor twice per press, so the keys are ignored on any device

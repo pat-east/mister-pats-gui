@@ -86,6 +86,18 @@ void Input::rescan() {
         Device device;
         device.fd = fd;
         device.index = i;
+        device.name = name;
+
+        // The kernel's own vendor/product for this evdev node — not the same thing lsusb
+        // reports for the underlying USB hardware (see CONTROLLER.md: confirmed to differ
+        // for a Wireless Receiver's Xbox 360 pads this project ran into). Anything that keys
+        // off a controller's identity the way MiSTer itself does must read it this way.
+        input_id id{};
+        if (ioctl(fd, EVIOCGID, &id) == 0) {
+            device.vendor = id.vendor;
+            device.product = id.product;
+        }
+
         probeTrigger(fd, ABS_Z, device.triggerLeftThreshold);
         probeTrigger(fd, ABS_RZ, device.triggerRightThreshold);
         device.hasHat = probeHat(fd);
@@ -278,4 +290,61 @@ std::vector<Action> Input::poll(int timeoutMs) {
 
     appendRepeats(out);
     return out;
+}
+
+std::vector<Input::DeviceInfo> Input::listDevices() const {
+    std::vector<DeviceInfo> out;
+    out.reserve(devices_.size());
+    for (size_t i = 0; i < devices_.size(); ++i) {
+        const Device &d = devices_[i];
+        DeviceInfo info;
+        info.slot = int(i);
+        info.eventNumber = d.index;
+        info.name = d.name;
+        info.vendor = d.vendor;
+        info.product = d.product;
+        info.hasHat = d.hasHat;
+        out.push_back(info);
+    }
+    return out;
+}
+
+int Input::findSlot(int eventNumber) const {
+    for (size_t i = 0; i < devices_.size(); ++i)
+        if (devices_[i].index == eventNumber) return int(i);
+    return -1;
+}
+
+bool Input::keyState(int slot, uint16_t code) const {
+    if (slot < 0 || slot >= int(devices_.size())) return false;
+    const int fd = devices_[size_t(slot)].fd;
+    if (fd < 0) return false;
+
+    unsigned long bits[(KEY_MAX / (8 * sizeof(unsigned long))) + 1] = {};
+    if (ioctl(fd, EVIOCGKEY(sizeof(bits)), bits) < 0) return false;
+
+    const size_t bitsPerWord = 8 * sizeof(unsigned long);
+    return (bits[code / bitsPerWord] >> (code % bitsPerWord)) & 1;
+}
+
+int32_t Input::absValue(int slot, uint16_t code) const {
+    if (slot < 0 || slot >= int(devices_.size())) return 0;
+    const int fd = devices_[size_t(slot)].fd;
+    if (fd < 0) return 0;
+
+    input_absinfo info{};
+    if (ioctl(fd, EVIOCGABS(code), &info) < 0) return 0;
+    return info.value;
+}
+
+bool Input::absInfo(int slot, uint16_t code, int32_t &minimum, int32_t &maximum) const {
+    if (slot < 0 || slot >= int(devices_.size())) return false;
+    const int fd = devices_[size_t(slot)].fd;
+    if (fd < 0) return false;
+
+    input_absinfo info{};
+    if (ioctl(fd, EVIOCGABS(code), &info) < 0) return false;
+    minimum = info.minimum;
+    maximum = info.maximum;
+    return true;
 }

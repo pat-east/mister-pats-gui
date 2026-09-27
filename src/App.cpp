@@ -68,8 +68,9 @@ bool App::initialize(const Options &options) {
     settingsScreen_ = std::make_unique<SettingsScreen>(
         *context_, [this] { reloadLibrary(); }, [this] { stop(); },
         [this] { openScan(false); }, [this] { openArtwork(); },
-        [this] { openVisibility(); }, [this] { toggleGamesTab(); },
-        [this] { cycleDefaultView(); }, [this] { startMisterCore(); });
+        [this] { openVisibility(); }, [this] { openControllers(); },
+        [this] { toggleGamesTab(); }, [this] { cycleDefaultView(); },
+        [this] { startMisterCore(); });
     settingsScreen_->setFramebufferInfo(framebuffer_.describe());
 
     scanScreen_ = std::make_unique<ScanScreen>(
@@ -77,6 +78,9 @@ bool App::initialize(const Options &options) {
 
     visibilityScreen_ =
         std::make_unique<SystemVisibilityScreen>(*context_, [this] { closeVisibility(); });
+
+    controllersScreen_ = std::make_unique<ControllersScreen>(
+        *context_, input_, [this] { closeControllers(); });
 
     const GameSystem *wanted = options_.system.empty() ? nullptr
                                                        : library_.findSystem(options_.system);
@@ -151,6 +155,17 @@ void App::closeVisibility() {
     needsFullRedraw_ = true;
 }
 
+void App::openControllers() {
+    controllersScreen_->refresh();
+    controllersActive_ = true;
+    needsFullRedraw_ = true;
+}
+
+void App::closeControllers() {
+    controllersActive_ = false;
+    needsFullRedraw_ = true;
+}
+
 void App::toggleGamesTab() {
     preferences_.setShowGamesTab(!preferences_.showGamesTab());
 
@@ -184,6 +199,7 @@ void App::startMisterCore() {
 Screen *App::activeScreen() {
     if (scanActive_) return scanScreen_.get();
     if (visibilityActive_) return visibilityScreen_.get();
+    if (controllersActive_) return controllersScreen_.get();
     if (detailActive_) return gamesScreen_.get();
 
     switch (tab_) {
@@ -238,6 +254,13 @@ void App::dispatch(Action action) {
     if (visibilityActive_) {
         if (action == Action::Quit) stop();
         else visibilityScreen_->handle(action);
+        return;
+    }
+
+    // And the controller-management flow — modal the same way, for the same reason.
+    if (controllersActive_) {
+        if (action == Action::Quit) stop();
+        else controllersScreen_->handle(action);
         return;
     }
 
@@ -340,7 +363,17 @@ int App::run() {
             rescanAt = frameStart + 1000;
         }
 
-        for (Action action : input_.poll(kTargetFrameMs)) dispatch(action);
+        // The button-mapping wizard's capture step reads raw evdev state directly (see
+        // ControllersScreen::update) and must be the only thing that gets to interpret a
+        // press while it is doing that — otherwise the very button being captured as this
+        // wizard's answer would also fire through the ordinary Action pipeline below and,
+        // say, back out of the wizard entirely. poll() itself still has to run every frame
+        // regardless (it is what notices a disconnect and re-opens a replacement device);
+        // only dispatching what it returns is what gets skipped.
+        const bool suppressActions = controllersActive_ && controllersScreen_->wantsRawInput();
+        std::vector<Action> actions = input_.poll(kTargetFrameMs);
+        if (!suppressActions)
+            for (Action action : actions) dispatch(action);
         if (!running_) break;
 
         // A core was started: hand the devices and the console straight back.

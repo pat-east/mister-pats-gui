@@ -5,6 +5,72 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2026-09-27
+
+### Added
+
+- **Controller management, in Settings → Controllers** — this project's largest feature to
+  date, and its first that writes files outside its own `mister-pat/` directory. Fully
+  controller-first, no keyboard required anywhere in it:
+  - **List** connected controllers, showing the vendor/product MiSTer itself reports (not
+    `lsusb`'s), whether a mapping/deadzone is already set, and whether two pads currently
+    share one mapping.
+  - **Input test** — every button, D-pad direction, trigger and stick shown live, drawn as a
+    schematic pad rather than a bare word list. Read-only: nothing here writes anything, and
+    no button does anything but light up. Leaves after holding Start 5 seconds, or on its own
+    after 10 seconds with no input at all — for a sub-device (a DualShock's own "Motion
+    Sensors" or "Touchpad" node, say) that has no Start to hold at all.
+  - **Deadzone** — reads and writes MiSTer's own `deadzone=` line in `MiSTer.ini`. Every write
+    is preceded by a timestamped backup into `/media/fat/mister-pat/mister-ini-backups/`
+    (capped at 30), then an atomic replace — this file must never be allowed to end up broken.
+  - **Button mapping wizard** — writes MiSTer's own binary `input_<vid>_<pid>_v3.map` file.
+    Start is captured first and doubles as the wizard's own safety net for the rest of the
+    run (hold 5s: abort; press once: skip a button that mis-fired; 1 minute idle: skip a
+    button this pad does not have, with a visible countdown). Each step draws a schematic pad
+    diagram highlighting the one relevant button, direction or stick, rather than a bare
+    letter whose physical position depends on which pad convention you grew up with.
+  - **Bluetooth pairing** — only offered where an adapter is present; reuses stock MiSTer's
+    own `btpair` helper rather than reimplementing pairing, and offers the button-mapping
+    wizard right away for a newly paired, still-unmapped pad.
+  - See [CONTROLLER.md](CONTROLLER.md) for the full design and, further down, the trail of
+    real hardware findings below that shaped it along the way.
+
+### Fixed
+
+Every one of these was found by actually running the wizard against real pads, not by reading
+source alone — see CONTROLLER.md for the full trace on each:
+
+- **MiSTer's own A/B/X/Y `.map` slots follow SNES-style positions** (right=A, bottom=B, top=X,
+  left=Y), not the Xbox letters most modern pads are physically labelled with. Writing
+  straight into the same-named slot silently swapped X and Y (and A and B) on a real PS4 pad.
+- **The OSD "confirm" slot and the OSD "open from inside a game" combo are unrelated slots.**
+  An earlier assumption fed one captured button into both, which overrode a pad's correct A
+  button mapping with an unrelated one — "confirm with A" stopped working, only the actual
+  Menu button did. Now three separate, correctly-scoped prompts, matching stock MiSTer.
+- **A D-pad-only pad (a Retro-Bit Saturn-style pad) reports its D-pad as a hat axis, not as
+  keys** — the wizard's capture never saw it at all. Now reproduces the synthetic code
+  MiSTer's own `input.cpp` builds for exactly this case.
+- **Button/axis capture was level-triggered, not edge-triggered** — a button held a moment too
+  long (including the very button used to confirm the previous step) could silently answer
+  several steps in one stampede. Every capture is now edge-triggered, locked from answering a
+  second step once it has answered one, and Start's own trailing release is specifically
+  guarded against being misread as a tap-to-skip on the step right after it.
+- **Stick-axis capture was far too sensitive**, and measured against the wrong thing (a stick's
+  full span, which a resting stick can only ever travel half of). Now requires 75% of the
+  axis's own half-range, measured from wherever it sat when the step began.
+- **The input test's 10-second idle timeout never fired** for a trigger or a motion-sensor
+  axis — first because "distance from centre" reads a trigger (which rests at one end, not
+  the middle) as permanently deflected, then, after that fix, because a live sensor keeps
+  drifting even lying still, which eventually outran a one-time rest snapshot anyway. Fixed
+  with a rest baseline that continuously chases the current reading while nothing is
+  happening, and freezes the moment something is.
+
+### Verified
+
+- **PS4 controller (DualShock 4)** — wired and over Bluetooth; pairing survives a reboot with
+  no re-pairing needed.
+- **Retro-Bit Sega Saturn pad** — works well once switched to X-Input mode.
+
 ## [0.1.7] - 2026-09-26
 
 ### Fixed

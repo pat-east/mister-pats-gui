@@ -6,6 +6,7 @@
 
 #include "Canvas.h"
 #include "Console.h"
+#include "ControllersScreen.h"
 #include "Framebuffer.h"
 #include "GamesScreen.h"
 #include "HiddenSystems.h"
@@ -77,6 +78,8 @@ private:
     void closeScan();
     void openVisibility();
     void closeVisibility();
+    void openControllers();
+    void closeControllers();
     void toggleGamesTab();
     void cycleDefaultView();
     void startMisterCore();
@@ -112,6 +115,7 @@ private:
     std::unique_ptr<SettingsScreen> settingsScreen_;
     std::unique_ptr<ScanScreen> scanScreen_;
     std::unique_ptr<SystemVisibilityScreen> visibilityScreen_;
+    std::unique_ptr<ControllersScreen> controllersScreen_;
 
     LibraryScan scan_;
     MediaScraper scraper_;
@@ -119,6 +123,7 @@ private:
     float updateCheckDelay_ = 8.0f;   // real seconds of uptime before the one-shot check fires
     bool scanActive_ = false;     // the database wizard owns the screen
     bool visibilityActive_ = false; // the show/hide list owns the screen
+    bool controllersActive_ = false; // Settings -> Controllers owns the screen
     bool detailActive_ = false;   // a system was opened from the systems tab
     bool needsFullRedraw_ = true; // set on start and whenever the screen changes
 
