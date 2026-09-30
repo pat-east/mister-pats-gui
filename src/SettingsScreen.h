@@ -19,7 +19,9 @@ public:
                    std::function<void()> onFetchArtwork,
                    std::function<void()> onManageSystems,
                    std::function<void()> onManageControllers,
+                   std::function<void()> onManageArcade,
                    std::function<void()> onToggleGamesTab,
+                   std::function<void()> onToggleArcadeTab,
                    std::function<void()> onCycleDefaultView,
                    std::function<void()> onStartMisterCore);
 
@@ -55,7 +57,9 @@ private:
     std::function<void()> onFetchArtwork_;
     std::function<void()> onManageSystems_;
     std::function<void()> onManageControllers_;
+    std::function<void()> onManageArcade_;
     std::function<void()> onToggleGamesTab_;
+    std::function<void()> onToggleArcadeTab_;
     std::function<void()> onCycleDefaultView_;
     std::function<void()> onStartMisterCore_;
     std::vector<Row> rows_;

@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "ArcadeScan.h"
 #include "CoreIndex.h"
 #include "GameDatabase.h"
 #include "SystemCatalog.h"
@@ -24,6 +25,10 @@ public:
 
     // Roots are found automatically when none are given.
     void start(const std::vector<std::string> &roots = {});
+
+    // Where Arcade ROM zips are looked for, in order. Left alone, this is MiSTer's own order
+    // for the roots being scanned; only a test with scratch folders has a reason to set it.
+    void setRomSearchOrder(std::vector<std::string> order) { romSearchOrder_ = std::move(order); }
 
     // One unit of work. Call until `finished()`.
     void step();
@@ -54,6 +59,28 @@ private:
     std::vector<std::string> scanOne(const CatalogEntry &system) const;
     void fail(std::string message);
 
+    // Arcade is scanned after the ordinary systems, and differently: its games are the
+    // .mra files under every volume's _Arcade folder, at any depth, and have no single core.
+    // Only the ones that can actually start are recorded — the same core / ROM zip / CRC
+    // check the Arcade Games diagnostic table shows, done by the same ArcadeScan.
+    //
+    // Sorts out which of those games to keep, writes the Arcade system itself, and queues one
+    // list per manufacturer and per category. The queue is then written one file per step,
+    // like everything else here: on a card that syncs every write, a few hundred small files
+    // in one unbroken burst is exactly what made an earlier rebuild look hung.
+    bool prepareArcade();     // false when the database write failed
+    bool writeArcadeStep();   // one file; false once nothing is left to write
+
+    struct ArcadeList {
+        std::string key;
+        std::vector<std::string> paths;
+    };
+    std::vector<ArcadeList> arcadeLists_;
+    size_t arcadeListsDone_ = 0;
+    std::vector<DatabaseGroup> manufacturers_;
+    std::vector<DatabaseGroup> categories_;
+    bool arcadePrepared_ = false;
+
     State state_ = State::Idle;
     GameDatabase database_;
     CoreIndex cores_;
@@ -62,6 +89,10 @@ private:
     size_t position_ = 0;
     size_t written_ = 0;
     size_t games_ = 0;
+    std::vector<std::string> romSearchOrder_;
+    bool arcadeStarted_ = false;
+    ArcadeScan arcade_;
+    size_t arcadeKept_ = 0;   // working games recorded
     bool writeStarted_ = false;   // whether beginFinish() has been called for this Writing pass
     std::string current_;
     std::string error_;

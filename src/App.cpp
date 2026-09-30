@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 
 namespace {
 
@@ -69,7 +70,8 @@ bool App::initialize(const Options &options) {
         *context_, [this] { reloadLibrary(); }, [this] { stop(); },
         [this] { openScan(false); }, [this] { openArtwork(); },
         [this] { openVisibility(); }, [this] { openControllers(); },
-        [this] { toggleGamesTab(); }, [this] { cycleDefaultView(); },
+        [this] { openArcadeSettings(); },
+        [this] { toggleGamesTab(); }, [this] { toggleArcadeTab(); }, [this] { cycleDefaultView(); },
         [this] { startMisterCore(); });
     settingsScreen_->setFramebufferInfo(framebuffer_.describe());
 
@@ -81,6 +83,25 @@ bool App::initialize(const Options &options) {
 
     controllersScreen_ = std::make_unique<ControllersScreen>(
         *context_, input_, [this] { closeControllers(); });
+
+    arcadeGamesScreen_ =
+        std::make_unique<ArcadeGamesScreen>(*context_, [this] { closeArcadeGames(); });
+
+    arcadeScreen_ = std::make_unique<ArcadeScreen>(
+        *context_, [this](ArcadeScreen::Dimension d) { openArcadeFull(d); },
+        [this](ArcadeScreen::Dimension d, const DatabaseGroup &g) { openArcadeGroup(d, g); });
+    arcadeScreen_->refresh();
+
+    arcadeGroupsScreen_ = std::make_unique<ArcadeGroupsScreen>(
+        *context_, [this](const DatabaseGroup &group) {
+            openArcadeGroup(arcadeGroupsScreen_->manufacturers()
+                                ? ArcadeScreen::Dimension::Manufacturers
+                                : ArcadeScreen::Dimension::Categories,
+                            group);
+        });
+
+    arcadeSettingsScreen_ = std::make_unique<ArcadeSettingsScreen>(
+        *context_, [this] { openArcadeGames(); }, [this] { closeArcadeSettings(); });
 
     const GameSystem *wanted = options_.system.empty() ? nullptr
                                                        : library_.findSystem(options_.system);
@@ -101,8 +122,22 @@ bool App::initialize(const Options &options) {
     // left behind.
     if (options_.wizard && !library_.usingDatabase()) openScan(true);
 
+    {
+        std::string token;
+        for (char c : options_.script + ",") {
+            if (c == ',') {
+                if (!token.empty()) script_.push_back(token);
+                token.clear();
+            } else if (c != ' ') {
+                token.push_back(c);
+            }
+        }
+    }
+
     if (options_.readInput) {
-        console_.acquire();   // stop the kernel console drawing over us
+        // A capture (--dump) is often taken next to a GUI that is already running. It must not
+        // take the console from that one, nor hand it back on the way out.
+        if (options_.dumpPath.empty()) console_.acquire();   // stop the kernel console drawing over us
         input_.setExclusive(options_.exclusive);
         input_.rescan();
     }
@@ -119,6 +154,12 @@ void App::reloadLibrary() {
     favoritesScreen_->showFavorites();
     allGamesScreen_->showAllGames();
     if (!gamesScreen_->empty()) gamesScreen_->reload();
+    arcadeScreen_->refresh();
+
+    // The Arcade system may have gone or changed, which would leave an open Arcade view, or
+    // the copy of the system a group's games point into, dangling.
+    arcadeGroupsActive_ = false;
+    if (tab_ == Tab::Arcade && !arcadeTabShown()) selectTab(Tab::Home);
 }
 
 void App::openScan(bool firstRun) {
@@ -166,12 +207,78 @@ void App::closeControllers() {
     needsFullRedraw_ = true;
 }
 
+void App::openArcadeSettings() {
+    arcadeSettingsActive_ = true;
+    needsFullRedraw_ = true;
+}
+
+void App::closeArcadeSettings() {
+    arcadeSettingsActive_ = false;
+    needsFullRedraw_ = true;
+}
+
+void App::openArcadeGames() {
+    arcadeGamesScreen_->refresh();
+    arcadeGamesActive_ = true;
+    needsFullRedraw_ = true;
+}
+
+void App::closeArcadeGames() {
+    arcadeGamesActive_ = false;
+    needsFullRedraw_ = true;
+}
+
 void App::toggleGamesTab() {
     preferences_.setShowGamesTab(!preferences_.showGamesTab());
 
     // Turning it off while it is the current tab would otherwise leave the top bar
     // highlighting a tab that no longer exists.
     if (!preferences_.showGamesTab() && tab_ == Tab::Games) selectTab(Tab::Home);
+    needsFullRedraw_ = true;
+}
+
+bool App::arcadeTabShown() const {
+    return preferences_.showArcadeTab() && library_.arcadeSystem() != nullptr;
+}
+
+std::vector<Tab> App::visibleTabs() const {
+    return TopBar::visibleTabs(preferences_.showGamesTab(), arcadeTabShown());
+}
+
+void App::toggleArcadeTab() {
+    preferences_.setShowArcadeTab(!preferences_.showArcadeTab());
+    if (!arcadeTabShown() && tab_ == Tab::Arcade) selectTab(Tab::Home);
+    needsFullRedraw_ = true;
+}
+
+void App::openArcadeFull(ArcadeScreen::Dimension dimension) {
+    const GameSystem *arcade = library_.arcadeSystem();
+    if (!arcade) return;
+
+    if (dimension == ArcadeScreen::Dimension::Games) {
+        // Exactly what Systems -> Arcade shows: one list, reached from two places.
+        gamesScreen_->showSystem(*arcade);
+        detailActive_ = true;
+    } else {
+        arcadeGroupsScreen_->show(dimension == ArcadeScreen::Dimension::Manufacturers);
+        arcadeGroupsActive_ = true;
+    }
+    needsFullRedraw_ = true;
+}
+
+void App::openArcadeGroup(ArcadeScreen::Dimension dimension, const DatabaseGroup &group) {
+    const GameSystem *arcade = library_.arcadeSystem();
+    if (!arcade) return;
+
+    arcadeGroupSystem_ = *arcade;
+    arcadeGroupSystem_.dbKey = group.key;
+
+    const char *kind = dimension == ArcadeScreen::Dimension::Manufacturers ? "Manufacturers"
+                                                                           : "Categories";
+    gamesScreen_->showSystem(arcadeGroupSystem_,
+                             std::string("Arcade > ") + kind + " > " +
+                                 group.name);
+    detailActive_ = true;
     needsFullRedraw_ = true;
 }
 
@@ -200,12 +307,16 @@ Screen *App::activeScreen() {
     if (scanActive_) return scanScreen_.get();
     if (visibilityActive_) return visibilityScreen_.get();
     if (controllersActive_) return controllersScreen_.get();
+    if (arcadeGamesActive_) return arcadeGamesScreen_.get();
+    if (arcadeSettingsActive_) return arcadeSettingsScreen_.get();
     if (detailActive_) return gamesScreen_.get();
+    if (arcadeGroupsActive_) return arcadeGroupsScreen_.get();
 
     switch (tab_) {
     case Tab::Home:      return homeScreen_.get();
     case Tab::Favorites: return favoritesScreen_.get();
     case Tab::Systems:   return systemsScreen_.get();
+    case Tab::Arcade:    return arcadeScreen_.get();
     case Tab::Games:     return allGamesScreen_.get();
     case Tab::Settings:  return settingsScreen_.get();
     }
@@ -214,9 +325,11 @@ Screen *App::activeScreen() {
 
 void App::selectTab(Tab tab) {
     detailActive_ = false;
+    arcadeGroupsActive_ = false;
     needsFullRedraw_ = true;
     if (tab == Tab::Home) homeScreen_->refresh();
     if (tab == Tab::Favorites) favoritesScreen_->showFavorites();
+    if (tab == Tab::Arcade) arcadeScreen_->refresh();
     // The whole library is gathered when the tab is first opened and then kept; a library
     // reload is what throws it away again. Building the list itself is no longer the
     // expensive part — see GamesScreen::reload() — so there is no longer a mid-build state
@@ -225,8 +338,35 @@ void App::selectTab(Tab tab) {
     tab_ = tab;
 }
 
+void App::runScript() {
+    if (scriptWait_ > 0) { --scriptWait_; return; }
+
+    while (scriptPosition_ < script_.size()) {
+        const std::string &token = script_[scriptPosition_++];
+
+        if (token.compare(0, 5, "wait:") == 0) {
+            scriptWait_ = std::atoi(token.c_str() + 5);
+            return;
+        }
+
+        static const struct { const char *name; Action action; } kNames[] = {
+            {"up", Action::Up},           {"down", Action::Down},
+            {"left", Action::Left},       {"right", Action::Right},
+            {"confirm", Action::Confirm}, {"back", Action::Back},
+            {"fav", Action::ToggleFavorite}, {"view", Action::CycleView},
+            {"prev", Action::TabPrev},    {"next", Action::TabNext},
+            {"jumpprev", Action::JumpPrev}, {"jumpnext", Action::JumpNext},
+        };
+        for (const auto &entry : kNames)
+            if (token == entry.name) { dispatch(entry.action); break; }
+
+        // One press per frame, so each has its effect applied before the next arrives.
+        return;
+    }
+}
+
 void App::dispatch(Action action) {
-    const std::vector<Tab> tabs = TopBar::visibleTabs(preferences_.showGamesTab());
+    const std::vector<Tab> tabs = visibleTabs();
     const int tabCount = int(tabs.size());
     const int tabIndex = int(std::find(tabs.begin(), tabs.end(), tab_) - tabs.begin());
 
@@ -264,6 +404,19 @@ void App::dispatch(Action action) {
         return;
     }
 
+    // Arcade Games sits on top of Manage Arcade, which sits on top of Settings — same modal
+    // rule, checked in that nesting order.
+    if (arcadeGamesActive_) {
+        if (action == Action::Quit) stop();
+        else arcadeGamesScreen_->handle(action);
+        return;
+    }
+    if (arcadeSettingsActive_) {
+        if (action == Action::Quit) stop();
+        else arcadeSettingsScreen_->handle(action);
+        return;
+    }
+
     switch (action) {
     case Action::Quit:
         stop();
@@ -276,6 +429,12 @@ void App::dispatch(Action action) {
         return;
     case Action::Back:
         if (detailActive_) { detailActive_ = false; needsFullRedraw_ = true; return; }
+        if (arcadeGroupsActive_) { arcadeGroupsActive_ = false; needsFullRedraw_ = true; return; }
+        // On the Arcade tab, Back first steps from a tile to its row's title.
+        if (tab_ == Tab::Arcade && arcadeScreen_->wantsBack()) {
+            arcadeScreen_->handle(Action::Back);
+            return;
+        }
         if (tab_ != Tab::Home) { selectTab(Tab::Home); return; }
         break;
     default:
@@ -370,6 +529,8 @@ int App::run() {
         // say, back out of the wizard entirely. poll() itself still has to run every frame
         // regardless (it is what notices a disconnect and re-opens a replacement device);
         // only dispatching what it returns is what gets skipped.
+        runScript();
+
         const bool suppressActions = controllersActive_ && controllersScreen_->wantsRawInput();
         std::vector<Action> actions = input_.poll(kTargetFrameMs);
         if (!suppressActions)
@@ -436,7 +597,7 @@ int App::run() {
             canvas_->restoreFrom(*background_, top);
             canvas_->restoreFrom(*background_, bottom);
         }
-        topBar_.render(*canvas_, theme, top, tab_, preferences_.showGamesTab());
+        topBar_.render(*canvas_, theme, top, tab_, preferences_.showGamesTab(), arcadeTabShown());
         renderBottomBar(bottom);
         const int64_t t2 = nowMs();
 

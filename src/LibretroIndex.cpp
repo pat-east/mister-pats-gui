@@ -19,6 +19,10 @@ struct Platform {
 // VC 4000, Bally Astrocade — are deliberately absent: an entry that 404s would leave the
 // system silently without artwork and no hint as to why.
 const Platform kPlatforms[] = {
+    // MiSTer's arcade set is named after MAME's, and so is this platform — "Killer Instinct
+    // (v1.5d)" is the same string in a .mra filename and on the server. The other arcade
+    // platform there, "FBNeo - Arcade Games", names the same games quite differently.
+    {"Arcade", "MAME"},
     {"3DO", "The 3DO Company - 3DO"},
     {"AO486", "DOS"},
     {"ATARI5200", "Atari - 5200"},
@@ -156,6 +160,26 @@ std::string LibretroIndex::normalise(const std::string &title) {
     return out;
 }
 
+std::string LibretroIndex::exactKey(const std::string &title) {
+    std::string out;
+    bool space = false;
+
+    for (char c : title) {
+        if (c == ' ' || c == '\t') { space = !out.empty(); continue; }
+
+        // The server's own substitution for what a filename cannot hold, applied to the
+        // local title too so both sides land on the same key: "Bubble Bobble : Part 2"
+        // is listed as "Bubble Bobble _ Part 2".
+        if (std::strchr("&*/:`<>?\\|", c)) c = '_';
+        if (c >= 'A' && c <= 'Z') c = char(c + 32);
+
+        if (space) out.push_back(' ');
+        space = false;
+        out.push_back(c);
+    }
+    return out;
+}
+
 int LibretroIndex::regionRank(const std::string &filename) {
     static const char *kTags[] = {"(USA", "(World", "(Europe", "(Japan"};
     for (int i = 0; i < 4; ++i)
@@ -171,6 +195,7 @@ bool LibretroIndex::parse(const std::string &htmlPath) {
     }
 
     byKey_.clear();
+    byExact_.clear();
 
     std::string line;
     while (std::getline(in, line)) {
@@ -186,6 +211,8 @@ bool LibretroIndex::parse(const std::string &htmlPath) {
             if (href.size() < 5 || href.compare(href.size() - 4, 4, ".png") != 0) continue;
 
             const std::string name = decodeHref(href.substr(0, href.size() - 4));
+            byExact_.emplace(exactKey(name), name);
+
             const std::string key = normalise(name);
             if (key.empty()) continue;
 
@@ -203,6 +230,7 @@ bool LibretroIndex::open(const std::string &platform, Downloader &downloader,
     error_.clear();
     platform_ = platform;
     byKey_.clear();
+    byExact_.clear();
 
     if (platform.empty()) {
         error_ = "no thumbnail set for this system";
@@ -239,4 +267,9 @@ bool LibretroIndex::open(const std::string &platform, Downloader &downloader,
 std::string LibretroIndex::match(const std::string &title) const {
     const auto found = byKey_.find(normalise(title));
     return found == byKey_.end() ? std::string() : found->second;
+}
+
+std::string LibretroIndex::matchExact(const std::string &title) const {
+    const auto found = byExact_.find(exactKey(title));
+    return found == byExact_.end() ? std::string() : found->second;
 }

@@ -35,7 +35,12 @@ struct GameSystem {
     char fileType = 'f';                  // 'f' file, 's' disk slot (CD based cores)
     bool discBased = false;               // games are folders of tracks, not single files
 
-    bool launchable() const { return !core.empty(); }
+    // Arcade is the one system with no single core: every .mra names its own, and MiSTer's
+    // own loader picks it. `core` stays empty, and launching hands the .mra straight to
+    // load_core instead of going through an .mgl (see ARCADE.md).
+    bool isArcade = false;
+
+    bool launchable() const { return isArcade || !core.empty(); }
 };
 
 // The catalogue of systems and the games in them.
@@ -76,6 +81,9 @@ public:
     bool scanningAllowed() const { return scanningAllowed_; }
 
     const GameSystem *findSystem(const std::string &name) const;
+
+    // The Arcade system, when the library has one — what the Arcade tab browses.
+    const GameSystem *arcadeSystem() const;
 
     // Resolves the owning system from a ROM path, for entries that only store one.
     const GameSystem *systemForPath(const std::string &path) const;

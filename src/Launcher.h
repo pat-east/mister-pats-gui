@@ -17,6 +17,11 @@ public:
     bool launchGame(const GameSystem &system, const Game &game);
     bool launchCore(const GameSystem &system);
 
+    // An arcade .mra is self-describing — MiSTer's own loader branches on the extension and
+    // parses it directly (see support/arcade/mra_loader.cpp), unlike every other system here,
+    // which needs an .mgl naming a core plus a ROM. No .mgl is written for this path at all.
+    bool launchArcade(const std::string &mraPath, const std::string &name);
+
     const std::string &lastError() const { return error_; }
     const std::string &lastMgl() const { return mgl_; }
 

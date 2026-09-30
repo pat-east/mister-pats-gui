@@ -10,6 +10,11 @@ ALPHABET := $(BUILDDIR)/alphabet_test
 GAMESDB  := $(BUILDDIR)/gamesdb_test
 MISTERINI := $(BUILDDIR)/mister_ini_test
 CONTROLLERMAP := $(BUILDDIR)/controller_map_test
+ARCHIVE  := $(BUILDDIR)/archive_test
+MRAFILE  := $(BUILDDIR)/mra_file_test
+ARCADESCAN := $(BUILDDIR)/arcade_scan_test
+LIBRETRO := $(BUILDDIR)/libretro_index_test
+UPDATECHECK := $(BUILDDIR)/update_check_test
 
 .PHONY: all run clean
 
@@ -40,7 +45,35 @@ $(CONTROLLERMAP): controller_map_test.cpp ../src/ControllerMap.cpp ../src/SafeFi
 	@mkdir -p $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) controller_map_test.cpp ../src/ControllerMap.cpp ../src/SafeFileWrite.cpp -o $@
 
-run: $(DAMAGE) $(ALPHABET) $(GAMESDB) $(MISTERINI) $(CONTROLLERMAP)
+$(ARCHIVE): archive_test.cpp ../src/Archive.cpp ../src/Archive.h
+	@mkdir -p $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) archive_test.cpp ../src/Archive.cpp -o $@
+
+$(MRAFILE): mra_file_test.cpp ../src/MraFile.cpp ../src/Archive.cpp ../src/MraFile.h ../src/Archive.h
+	@mkdir -p $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) mra_file_test.cpp ../src/MraFile.cpp ../src/Archive.cpp -o $@
+
+$(ARCADESCAN): arcade_scan_test.cpp ../src/LibraryScan.cpp ../src/ArcadeScan.cpp ../src/MraFile.cpp \
+               ../src/Archive.cpp ../src/GameDatabase.cpp \
+               ../src/SystemCatalog.cpp ../src/CoreIndex.cpp ../src/DebugLog.cpp \
+               ../src/LibraryScan.h ../src/GameDatabase.h ../src/SystemCatalog.h
+	@mkdir -p $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) arcade_scan_test.cpp ../src/LibraryScan.cpp ../src/ArcadeScan.cpp \
+	    ../src/MraFile.cpp ../src/Archive.cpp ../src/GameDatabase.cpp \
+	    ../src/SystemCatalog.cpp ../src/CoreIndex.cpp ../src/DebugLog.cpp -o $@
+
+$(LIBRETRO): libretro_index_test.cpp ../src/LibretroIndex.cpp ../src/Downloader.cpp \
+             ../src/LibretroIndex.h ../src/Downloader.h
+	@mkdir -p $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) libretro_index_test.cpp ../src/LibretroIndex.cpp ../src/Downloader.cpp -o $@
+
+$(UPDATECHECK): update_check_test.cpp ../src/UpdateCheck.cpp ../src/Downloader.cpp ../src/DebugLog.cpp \
+                ../src/UpdateCheck.h
+	@mkdir -p $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) update_check_test.cpp ../src/UpdateCheck.cpp ../src/Downloader.cpp \
+	    ../src/DebugLog.cpp -o $@
+
+run: $(DAMAGE) $(ALPHABET) $(GAMESDB) $(MISTERINI) $(CONTROLLERMAP) $(ARCHIVE) $(MRAFILE) $(ARCADESCAN) $(LIBRETRO) $(UPDATECHECK)
 	@$(DAMAGE)
 	@echo
 	@$(ALPHABET)
@@ -50,6 +83,16 @@ run: $(DAMAGE) $(ALPHABET) $(GAMESDB) $(MISTERINI) $(CONTROLLERMAP)
 	@$(MISTERINI)
 	@echo
 	@$(CONTROLLERMAP)
+	@echo
+	@$(ARCHIVE)
+	@echo
+	@$(MRAFILE)
+	@echo
+	@$(ARCADESCAN)
+	@echo
+	@$(LIBRETRO)
+	@echo
+	@$(UPDATECHECK)
 
 clean:
 	rm -rf $(BUILDDIR)

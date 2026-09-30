@@ -33,6 +33,34 @@ std::string extractTag(const std::string &json) {
 
 } // namespace
 
+bool UpdateCheck::isNewer(const std::string &latest, const std::string &current) {
+    const auto parse = [](const std::string &text, int (&parts)[3]) {
+        parts[0] = parts[1] = parts[2] = 0;
+        size_t index = 0;
+        int part = 0;
+        bool digits = false;
+        for (char c : text) {
+            if (c >= '0' && c <= '9') {
+                parts[part] = parts[part] * 10 + (c - '0');
+                digits = true;
+            } else if (c == '.' && digits && part < 2) {
+                ++part;
+                digits = false;
+            } else {
+                return false;
+            }
+            ++index;
+        }
+        return index > 0 && digits;
+    };
+
+    int a[3], b[3];
+    if (!parse(latest, a) || !parse(current, b)) return false;
+    for (int i = 0; i < 3; ++i)
+        if (a[i] != b[i]) return a[i] > b[i];
+    return false;
+}
+
 void UpdateCheck::run(const std::string &currentVersion) {
     currentVersion_ = currentVersion;
     checked_ = true;

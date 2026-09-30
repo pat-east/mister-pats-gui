@@ -11,7 +11,9 @@ SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
                                std::function<void()> onFetchArtwork,
                                std::function<void()> onManageSystems,
                                std::function<void()> onManageControllers,
+                               std::function<void()> onManageArcade,
                                std::function<void()> onToggleGamesTab,
+                               std::function<void()> onToggleArcadeTab,
                                std::function<void()> onCycleDefaultView,
                                std::function<void()> onStartMisterCore)
     : context_(context), onReload_(std::move(onReload)), onQuit_(std::move(onQuit)),
@@ -19,7 +21,9 @@ SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
       onFetchArtwork_(std::move(onFetchArtwork)),
       onManageSystems_(std::move(onManageSystems)),
       onManageControllers_(std::move(onManageControllers)),
+      onManageArcade_(std::move(onManageArcade)),
       onToggleGamesTab_(std::move(onToggleGamesTab)),
+      onToggleArcadeTab_(std::move(onToggleArcadeTab)),
       onCycleDefaultView_(std::move(onCycleDefaultView)),
       onStartMisterCore_(std::move(onStartMisterCore)) {
     buildRows();
@@ -28,34 +32,15 @@ SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
 void SettingsScreen::buildRows() {
     rows_.clear();
 
+    // Library and content — building/refreshing it, then managing what it shows. Grouped
+    // together and in this order because that is the order they actually depend on each
+    // other: a database has to exist before there is art worth fetching for it or systems
+    // worth hiding, and "Reload" only ever re-reads what the other two just produced.
     rows_.push_back({"Build game database", [] { return std::string("A"); },
                      [this] { onBuildDatabase_(); }});
 
     rows_.push_back({"Fetch box art", [] { return std::string("A"); },
                      [this] { onFetchArtwork_(); }});
-
-    rows_.push_back({"Manage systems", [] { return std::string("A"); },
-                     [this] { onManageSystems_(); }});
-
-    rows_.push_back({"Controllers", [] { return std::string("A"); },
-                     [this] { onManageControllers_(); }});
-
-    rows_.push_back({"Show Games menu item",
-                     [this] { return std::string(context_.preferences.showGamesTab() ? "On" : "Off"); },
-                     [this] { onToggleGamesTab_(); }});
-
-    rows_.push_back({"Default view",
-                     [this] {
-                         return std::string(
-                             displayNameForGameView(gameViewFromName(context_.preferences.defaultView())));
-                     },
-                     [this] { onCycleDefaultView_(); }});
-
-    rows_.push_back({"Check for updates on GitHub",
-                     [this] { return std::string(context_.preferences.checkForUpdates() ? "On" : "Off"); },
-                     [this] {
-                         context_.preferences.setCheckForUpdates(!context_.preferences.checkForUpdates());
-                     }});
 
     rows_.push_back({"Reload library", [] { return std::string("A"); },
                      [this] {
@@ -67,6 +52,40 @@ void SettingsScreen::buildRows() {
                          context_.notify("Library reloaded");
                      }});
 
+    rows_.push_back({"Manage systems", [] { return std::string("A"); },
+                     [this] { onManageSystems_(); }});
+
+    rows_.push_back({"Manage Arcade", [] { return std::string("A"); },
+                     [this] { onManageArcade_(); }});
+
+    // Hardware.
+    rows_.push_back({"Controllers", [] { return std::string("A"); },
+                     [this] { onManageControllers_(); }});
+
+    // How the interface itself looks and navigates.
+    rows_.push_back({"Show Games menu item",
+                     [this] { return std::string(context_.preferences.showGamesTab() ? "On" : "Off"); },
+                     [this] { onToggleGamesTab_(); }});
+
+    rows_.push_back({"Show Arcade menu item",
+                     [this] { return std::string(context_.preferences.showArcadeTab() ? "On" : "Off"); },
+                     [this] { onToggleArcadeTab_(); }});
+
+    rows_.push_back({"Default view",
+                     [this] {
+                         return std::string(
+                             displayNameForGameView(gameViewFromName(context_.preferences.defaultView())));
+                     },
+                     [this] { onCycleDefaultView_(); }});
+
+    // This project itself.
+    rows_.push_back({"Check for updates on GitHub",
+                     [this] { return std::string(context_.preferences.checkForUpdates() ? "On" : "Off"); },
+                     [this] {
+                         context_.preferences.setCheckForUpdates(!context_.preferences.checkForUpdates());
+                     }});
+
+    // Leaving — deliberately last.
     rows_.push_back({"Start MiSTer Core", [] { return std::string("A"); },
                      [this] { onStartMisterCore_(); }});
 

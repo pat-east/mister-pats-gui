@@ -23,7 +23,10 @@ class GamesScreen : public Screen {
 public:
     explicit GamesScreen(Context &context);
 
-    void showSystem(const GameSystem &system);
+    // `title` replaces the system's name in the header, for a filtered view such as one
+    // Arcade manufacturer — "Arcade › Manufacturers › Capcom" — over a system that is still
+    // called "Arcade" everywhere else, favourites and history included.
+    void showSystem(const GameSystem &system, const std::string &title = std::string());
     void showFavorites();
 
     // Every game of every system in one grid, sorted by title across system boundaries so

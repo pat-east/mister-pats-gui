@@ -31,7 +31,7 @@ const Alias kAliases[] = {
     {"PLAYSTATION", "PS"},
     {"SG1000", "SG1000"},
     {"SNES", "SFC"},
-    {"SEGACD", "SEGACD"},
+    {"SEGACD", "MEGACD"},
     {"TURBOGRAFX16", "PCE"},
     {"TURBOGRAFX16CD", "PCECD"},
     {"VIRTUALBOY", "VB"},

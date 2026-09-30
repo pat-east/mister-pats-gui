@@ -6,7 +6,7 @@ in [README.md](README.md), the measurements in [PERFORMANCE.md](PERFORMANCE.md).
 **Implementation status.** The basic framework is built and running; screenshots taken on the
 device are in `build/shots/`. Deviations from this design that came out of the implementation:
 
-- **Tabs:** Favorites · Systems · Games · Settings (Favorites was added).
+- **Tabs:** Favorites · Systems · Arcade · Games · Settings (Favorites was added; Arcade appears only when the library has Arcade games — see [ARCADE.md](ARCADE.md#implemented-the-arcade-tab)).
 - **Games** does not show the games of one system, but everything across all systems, in three
   sections: Recently played, Favorites, All games. The game list of a *single* system is a
   separate detail view, opened from the Systems tab.

@@ -146,6 +146,8 @@ bool Launcher::sendCommand(const std::string &command) {
 bool Launcher::launchGame(const GameSystem &system, const Game &game) {
     error_.clear();
 
+    if (system.isArcade) return launchArcade(game.path, game.name);
+
     if (!system.launchable()) {
         error_ = "no core found for " + system.name;
         return false;
@@ -171,8 +173,27 @@ bool Launcher::launchGame(const GameSystem &system, const Game &game) {
     return sendCommand(std::string("load_core ") + kMglPath);
 }
 
+bool Launcher::launchArcade(const std::string &mraPath, const std::string &name) {
+    error_.clear();
+    mgl_.clear();
+
+    struct stat info {};
+    if (stat(mraPath.c_str(), &info) != 0) {
+        error_ = "could not read " + name + " - " + mraPath + " is gone";
+        return false;
+    }
+
+    return sendCommand(std::string("load_core ") + mraPath);
+}
+
 bool Launcher::launchCore(const GameSystem &system) {
     error_.clear();
+
+    // Arcade has no core of its own to start — each game names one.
+    if (system.isArcade) {
+        error_ = "Arcade has no core of its own - pick a game";
+        return false;
+    }
 
     if (!system.launchable()) {
         error_ = "no core found for " + system.name;

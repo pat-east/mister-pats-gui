@@ -85,11 +85,11 @@ void GamesScreen::setView(GameView view) {
     scrollRow_ = 0;
 }
 
-void GamesScreen::showSystem(const GameSystem &system) {
+void GamesScreen::showSystem(const GameSystem &system, const std::string &title) {
     system_ = &system;
     favoritesMode_ = false;
     allMode_ = false;
-    title_ = system.name;
+    title_ = title.empty() ? system.name : title;
     reload();
 }
 

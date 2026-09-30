@@ -1,6 +1,6 @@
 # Controller Management — Design
 
-Design document for the "Controller management" item on the [README roadmap](README.md#controllers).
+Design document for the "Controller management" item on the [README roadmap](README.md#roadmap).
 Originally written as analysis and a proposed design, before any code changes, so the shape of
 the feature was settled first. **Now implemented and verified on real hardware** (Settings →
 Controllers) — kept up to date as a record of the design *and* of what hardware testing turned

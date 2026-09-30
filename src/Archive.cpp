@@ -16,8 +16,8 @@ uint32_t read32(const uint8_t *p) {
 
 } // namespace
 
-std::vector<std::string> Archive::entries(const std::string &path) {
-    std::vector<std::string> out;
+std::vector<ArchiveEntry> Archive::list(const std::string &path) {
+    std::vector<ArchiveEntry> out;
 
     FILE *file = std::fopen(path.c_str(), "rb");
     if (!file) return out;
@@ -62,17 +62,24 @@ std::vector<std::string> Archive::entries(const std::string &path) {
     for (uint16_t i = 0; i < count && pos + 46 <= directory.size(); ++i) {
         if (std::memcmp(&directory[pos], "PK\x01\x02", 4) != 0) break;
 
+        const uint32_t crc32 = read32(&directory[pos + 16]);
         const uint16_t nameLength = read16(&directory[pos + 28]);
         const uint16_t extraLength = read16(&directory[pos + 30]);
         const uint16_t commentLength = read16(&directory[pos + 32]);
         if (pos + 46 + nameLength > directory.size()) break;
 
         std::string name(reinterpret_cast<const char *>(&directory[pos + 46]), nameLength);
-        if (!name.empty() && name.back() != '/') out.push_back(std::move(name));
+        if (!name.empty() && name.back() != '/') out.push_back({std::move(name), crc32});
 
         pos += 46u + nameLength + extraLength + commentLength;
     }
 
+    return out;
+}
+
+std::vector<std::string> Archive::entries(const std::string &path) {
+    std::vector<std::string> out;
+    for (ArchiveEntry &entry : list(path)) out.push_back(std::move(entry.name));
     return out;
 }
 

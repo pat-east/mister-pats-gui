@@ -13,6 +13,8 @@
 
 namespace {
 
+constexpr const char *kArcadeKey = "Arcade";
+
 const char *kCoreDirs[] = {
     "/media/fat/_Console", "/media/fat/_Computer", "/media/fat/_Handheld",
     "/media/fat/_Arcade",  "/media/fat/_Other",    "/media/fat/_Utility",
@@ -338,6 +340,7 @@ bool Library::loadFromDatabase() {
         system.core = entry.core;
         system.dbKey = entry.key;
         system.discBased = entry.discBased;
+        system.isArcade = entry.key == kArcadeKey;
         // Empty when the root this system lives on did not resolve (see GameDatabase::load)
         // — pushing it anyway would give resolveArtwork's fallback an empty prefix, which
         // matches every path there is, not none.
@@ -352,6 +355,22 @@ bool Library::loadFromDatabase() {
         // a cartridge library.
         for (const std::string &ext : SystemCatalog::extensionsFor(entry.key))
             system.romExts.push_back("." + ext);
+
+        if (system.isArcade) {
+            system.romExts.push_back(".mra");
+            // One system's .mra files can sit on several volumes at once; systemForPath()
+            // needs every one of them to map a favourite or history entry back here, not
+            // only the volume the catalogue happened to record as its directory.
+            for (const std::string &root : database_.roots()) {
+                if (root.empty()) continue;
+                const std::string dir = root + "/_Arcade";
+                if (std::find(system.romDirs.begin(), system.romDirs.end(), dir) ==
+                    system.romDirs.end()) {
+                    system.romDirs.push_back(dir);
+                    system.mediaDirs.push_back(dir + "/media");
+                }
+            }
+        }
         systems_.push_back(system);
     }
 
@@ -468,6 +487,12 @@ bool Library::hasGames(const GameSystem &system) const {
 const GameSystem *Library::findSystem(const std::string &name) const {
     for (const GameSystem &system : systems_)
         if (system.name == name) return &system;
+    return nullptr;
+}
+
+const GameSystem *Library::arcadeSystem() const {
+    for (const GameSystem &system : systems_)
+        if (system.isArcade) return &system;
     return nullptr;
 }
 

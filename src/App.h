@@ -3,7 +3,12 @@
 #include <csignal>
 #include <memory>
 #include <string>
+#include <vector>
 
+#include "ArcadeGamesScreen.h"
+#include "ArcadeGroupsScreen.h"
+#include "ArcadeScreen.h"
+#include "ArcadeSettingsScreen.h"
 #include "Canvas.h"
 #include "Console.h"
 #include "ControllersScreen.h"
@@ -45,6 +50,12 @@ public:
         bool wizard = true;      // offer to build the database when there is none
         bool scanOnly = false;   // build the database, report, and exit
 
+        // Button presses fed to the interface before anything else, so a screen that takes a
+        // few presses to reach can be captured without a controller in hand. Comma separated:
+        // up down left right confirm back fav view prev next jumpprev jumpnext, and wait:N for
+        // N frames. See --press.
+        std::string script;
+
         // Diagnostic: an artificial pause on the splash screen before anything else runs, to
         // test whether boxart missing right after boot is a drive-not-ready-yet problem. 0
         // skips it. Off by default under --frames/--no-input, so headless tests stay fast.
@@ -80,10 +91,20 @@ private:
     void closeVisibility();
     void openControllers();
     void closeControllers();
+    void openArcadeSettings();
+    void closeArcadeSettings();
+    void openArcadeGames();
+    void closeArcadeGames();
     void toggleGamesTab();
+    void toggleArcadeTab();
+    bool arcadeTabShown() const;
+    std::vector<Tab> visibleTabs() const;
+    void openArcadeFull(ArcadeScreen::Dimension dimension);
+    void openArcadeGroup(ArcadeScreen::Dimension dimension, const DatabaseGroup &group);
     void cycleDefaultView();
     void startMisterCore();
     void writeCanvas(const std::string &path);
+    void runScript();
 
     std::string version;     // Version string to display in bottom bar
 
@@ -116,6 +137,17 @@ private:
     std::unique_ptr<ScanScreen> scanScreen_;
     std::unique_ptr<SystemVisibilityScreen> visibilityScreen_;
     std::unique_ptr<ControllersScreen> controllersScreen_;
+    std::unique_ptr<ArcadeSettingsScreen> arcadeSettingsScreen_;
+    std::unique_ptr<ArcadeGamesScreen> arcadeGamesScreen_;
+    std::unique_ptr<ArcadeScreen> arcadeScreen_;              // the Arcade tab
+    std::unique_ptr<ArcadeGroupsScreen> arcadeGroupsScreen_;  // ...its Manufacturers/Categories list
+    bool arcadeGroupsActive_ = false;   // that list is showing, between the tab and a group's games
+
+    // One group's games are an ordinary GamesScreen over a copy of the Arcade system whose
+    // database key names the group's list. Kept here so the pointer GamesScreen holds stays
+    // valid for as long as it is showing; it is a copy of Arcade, not a system of its own,
+    // so a favourite or history entry made from it still files under "Arcade".
+    GameSystem arcadeGroupSystem_;
 
     LibraryScan scan_;
     MediaScraper scraper_;
@@ -124,12 +156,18 @@ private:
     bool scanActive_ = false;     // the database wizard owns the screen
     bool visibilityActive_ = false; // the show/hide list owns the screen
     bool controllersActive_ = false; // Settings -> Controllers owns the screen
+    bool arcadeSettingsActive_ = false; // Settings -> Manage Arcade owns the screen
+    bool arcadeGamesActive_ = false;    // ...-> Arcade Games owns the screen, on top of that
     bool detailActive_ = false;   // a system was opened from the systems tab
     bool needsFullRedraw_ = true; // set on start and whenever the screen changes
 
     Options options_;
     bool running_ = false;
     volatile sig_atomic_t screenshotRequested_ = 0;
+
+    std::vector<std::string> script_;   // Options::script, split; consumed from the front
+    size_t scriptPosition_ = 0;
+    int scriptWait_ = 0;
 
     int64_t backgroundMs_ = 0;
     int64_t chromeMs_ = 0;

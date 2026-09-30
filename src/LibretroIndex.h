@@ -33,6 +33,22 @@ public:
     // The server's filename for a title, or empty when nothing matches.
     std::string match(const std::string &title) const;
 
+    // The stricter lookup, for libraries where a bracketed part is the one thing that tells
+    // two entries apart — an arcade game has a separate cover for every ROM revision
+    // ("Killer Instinct (v1.5d)" against "(proto v4.7)"), and match() above would treat them
+    // all as one title and pick whichever the server listed first. Compares the whole title,
+    // brackets included, ignoring only case, runs of spaces, and the characters the server
+    // cannot keep in a filename. Empty when there is no such title; try match() after it.
+    std::string matchExact(const std::string &title) const;
+
+    // Reads a platform listing already on disk — what open() does once it has the file, and
+    // what a test can do without a network.
+    bool parse(const std::string &htmlPath);
+
+    // The form matchExact() compares: lower case, spaces collapsed and trimmed, and every
+    // character libretro replaces in filenames (& * / : ` < > ? \ |) mapped to '_'.
+    static std::string exactKey(const std::string &title);
+
     size_t size() const { return byKey_.size(); }
     const std::string &platform() const { return platform_; }
     const std::string &lastError() const { return error_; }
@@ -47,9 +63,8 @@ public:
     static constexpr const char *kHost = "https://thumbnails.libretro.com";
 
 private:
-    bool parse(const std::string &htmlPath);
-
     std::string platform_;
     std::map<std::string, std::string> byKey_;   // normalised title -> server filename
+    std::map<std::string, std::string> byExact_; // exactKey -> server filename
     std::string error_;
 };

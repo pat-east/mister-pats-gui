@@ -25,15 +25,18 @@ struct TabEntry {
 
 const TabEntry kAllTabs[] = {
     {Tab::Home, "Home"},       {Tab::Favorites, "Favorites"}, {Tab::Systems, "Systems"},
-    {Tab::Games, "Games"},     {Tab::Settings, "Settings"},
+    {Tab::Arcade, "Arcade"},   {Tab::Games, "Games"},         {Tab::Settings, "Settings"},
 };
 
 } // namespace
 
-std::vector<Tab> TopBar::visibleTabs(bool showGames) {
+std::vector<Tab> TopBar::visibleTabs(bool showGames, bool showArcade) {
     std::vector<Tab> out;
-    for (const TabEntry &entry : kAllTabs)
-        if (showGames || entry.tab != Tab::Games) out.push_back(entry.tab);
+    for (const TabEntry &entry : kAllTabs) {
+        if (entry.tab == Tab::Games && !showGames) continue;
+        if (entry.tab == Tab::Arcade && !showArcade) continue;
+        out.push_back(entry.tab);
+    }
     return out;
 }
 
@@ -95,7 +98,8 @@ void TopBar::update(float deltaSeconds) {
     }
 }
 
-void TopBar::render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, bool showGames) {
+void TopBar::render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, bool showGames,
+                    bool showArcade) {
     Font &bold = theme.bold();
     Font &regular = theme.regular();
 
@@ -106,7 +110,7 @@ void TopBar::render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, 
                  date_, theme.sizeSmall(), theme.textMuted.withAlpha(170));
 
     // Centre: tabs.
-    const std::vector<Tab> tabs = visibleTabs(showGames);
+    const std::vector<Tab> tabs = visibleTabs(showGames, showArcade);
     const int tabSize = theme.sizeTab();
     const int spacing = theme.px(44);
     int total = 0;

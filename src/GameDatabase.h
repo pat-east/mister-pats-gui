@@ -18,6 +18,14 @@ struct DatabaseSystem {
     bool discBased = false;
 };
 
+// One manufacturer or category of arcade games, as a catalogue line records it. Its games are
+// a list in exactly the same format as a system's, under `key`.
+struct DatabaseGroup {
+    std::string name;    // "Capcom"
+    size_t count = 0;
+    std::string key;     // file name, without .tsv: "Arcade-Manufacturer-Capcom"
+};
+
 // The GUI's own record of what is installed, written by a scan and read back at startup.
 //
 // Deliberately not one big file. The catalogue is a handful of lines and is read every start;
@@ -28,6 +36,14 @@ struct DatabaseSystem {
 //   gamesdb/roots.tsv     <id> \t <mount path> \t <probe path relative to that root>
 //   gamesdb/catalog.tsv   <key> \t <name> \t <group> \t <core> \t <disc> \t <count> \t <dir>
 //   gamesdb/<key>.tsv     <root id> \t <path relative to that root>
+//
+// Arcade adds groups on top of that, because its games are browsed by manufacturer and by
+// category as well as all together. A group is not a new kind of data: its list is a file of
+// the very same rows, just a subset of Arcade's own, and is read with the same pathsFor().
+//
+//   gamesdb/arcade-manufacturers.tsv   <name> \t <count> \t <key>
+//   gamesdb/arcade-categories.tsv      <name> \t <count> \t <key>
+//   gamesdb/Arcade-Manufacturer-<n>.tsv, Arcade-Category-<n>.tsv   game lists as above
 //
 // Game paths are stored relative to a root, and the root is re-resolved every time the
 // database is loaded. MiSTer hands out /media/usb0, usb1 … in the order devices appear, so
@@ -77,6 +93,17 @@ public:
     bool beginWrite(const std::vector<std::string> &roots);
     bool writeSystem(const DatabaseSystem &system, const std::vector<std::string> &paths);
 
+    // A game list that is not a system and gets no catalogue line — one Arcade manufacturer
+    // or category. Same rows, same staging, same commit.
+    bool writeGroupList(const std::string &key, const std::vector<std::string> &paths);
+    bool writeGroupCatalog(const std::string &file, const std::vector<DatabaseGroup> &groups);
+
+    // Reads one of the group catalogues below; empty when there is none.
+    std::vector<DatabaseGroup> groupsFor(const std::string &file) const;
+
+    static constexpr const char *kArcadeManufacturers = "arcade-manufacturers.tsv";
+    static constexpr const char *kArcadeCategories = "arcade-categories.tsv";
+
     // The catalogue, stepped one system's line at a time rather than in a single call, so a
     // caller driving this from a frame loop (see LibraryScan) has something to actually show
     // while it runs and never blocks for longer than one line's worth of I/O. Call
@@ -113,6 +140,8 @@ private:
         std::string probe;  // a directory that must exist on it, relative to the root
     };
 
+    bool writeList(const std::string &key, const std::vector<std::string> &paths,
+                   size_t &written);
     std::string pathOf(const std::string &file) const;
     std::string stagingPathOf(const std::string &file) const;
     std::string stagingDirectory() const { return directory_ + ".new"; }

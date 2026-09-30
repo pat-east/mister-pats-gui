@@ -12,9 +12,24 @@ asks the MiSTer to load it, the same way the stock menu does.
 | --- | --- |
 | ![Home](screenshots/home.png) | ![Favorites](screenshots/favorites.png) |
 
-| Systems | Settings |
+| Systems | Arcade |
 | --- | --- |
-| ![Systems](screenshots/systems.png) | ![Settings](screenshots/settings.png) |
+| ![Systems](screenshots/systems.png) | ![Arcade](screenshots/arcade.png) |
+
+Every system's games in the presentation you prefer — Y cycles through them. Here, SNES in
+Grid, Boxart small and List:
+
+| Grid | Boxart small |
+| --- | --- |
+| ![SNES, grid view](screenshots/snes-grid.png) | ![SNES, small box art view](screenshots/snes-small.png) |
+
+| List | Games |
+| --- | --- |
+| ![SNES, list view](screenshots/snes-list.png) | ![Games](screenshots/games.png) |
+
+| Settings | Controller input test |
+| --- | --- |
+| ![Settings](screenshots/settings.png) | ![Controller input test](screenshots/controller-test.png) |
 
 ## A note on how this was built
 
@@ -54,6 +69,11 @@ toolkits and rules in careful, measured software rendering — see
 - **Letter jump** on the shoulder triggers. A single console can hold a few thousand titles;
   L2/R2 skip whole initial letters.
 - **Favourites and history**, stored as plain text files you can read and edit.
+- **Arcade.** MiSTer's arcade library does not fit "one folder, one core", so it has its own
+  treatment: a library of the games that actually work — core installed, ROM zip found,
+  every CRC correct, checked the way MiSTer searches for them — an Arcade tab that browses
+  it by manufacturer and category, box art matched to the exact ROM revision, and a
+  diagnostic table that explains why a game is missing. See [ARCADE.md](ARCADE.md).
 - **Its own game database.** A scan works out which systems are installed and what is in
   them, and writes one index file per system. Opening a console reads that one file and
   nothing else.
@@ -173,6 +193,7 @@ devices exclusively.
 | Retro-Bit Sega Saturn pad | 2.4 GHz wireless adapter | D-pad only, no analogue stick. Works great once switched to X-Input mode — see the [pad's manual](https://retro-bit.com/sitepad-data/uploads/2025/07/NA-Saturn-Pro-2.4-GHz-Wireless-Controller_11-16-23.pdf) for the mode switch |
 | Xbox 360 pad ×2 | Xbox 360 Wireless Receiver for Windows | Needs a `deadzone=` set to behave — see [CONTROLLER.md](CONTROLLER.md#3-deadzone) — and [INSTALL.md](INSTALL.md) for the vendor/product gotcha that surfaced along the way |
 | PS4 controller (DualShock 4) | Wired (USB cable), and Bluetooth | Bluetooth pairing survives a reboot — the pad reconnects on its own, no re-pairing needed |
+| 8BitDo Arcade Stick (Xbox version) | 2.4 GHz wireless dongle, and wired (USB cable) | Works flawlessly over both, no extra setup needed |
 
 Still to try: PS5 (DualSense) and the Saturn pad wired. See [CONTROLLER.md](CONTROLLER.md) for
 the controller-management feature this is building towards.
@@ -184,7 +205,7 @@ the controller-management feature this is building towards.
 | `/media/fat/mister-pat/favorites.txt` | Favourites, one per line |
 | `/media/fat/mister-pat/history.txt` | Recently played |
 | `/media/fat/mister-pat/hidden-systems.txt` | Systems hidden from the Systems tab, one per line — see *Manage systems* in Settings |
-| `/media/fat/mister-pat/preferences.txt` | Interface toggles, such as whether the Games tab is shown |
+| `/media/fat/mister-pat/preferences.txt` | Interface toggles, such as whether the Games and Arcade tabs are shown |
 | `/media/fat/mister-pat/systems.conf` | Per-system loader slot overrides, see [the example](assets/systems.conf.example) |
 | `/media/fat/mister-pat/icons/` | Console icons |
 | `/media/fat/mister-pat/gamesdb/` | The game database: `catalog.tsv`, `roots.tsv` and one `<System>.tsv` per system |
@@ -193,11 +214,12 @@ The GUI also takes command-line options, which is how every screen can be reache
 captured without a controller:
 
 ```
---tab home|favorites|systems|games|settings  screen to open
+--tab home|favorites|systems|arcade|games|settings  screen to open
 --view list|large|grid|small|compact     game presentation
 --system NAME                            preselect a system
 --frames N                               render N frames, then exit
 --dump PATH                              write the finished canvas to PATH
+--press LIST                             feed button presses first, e.g. down,confirm,wait:30
 --launch-now                             start the preselected game at once
 --dry-run                                print the MGL instead of loading it
 --no-wizard                              never open the database wizard
@@ -229,103 +251,96 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 | [PERFORMANCE.md](PERFORMANCE.md) | What was measured, what it cost, and what made it fast |
 | [POC.md](POC.md) | How the MiSTer boots, where a frontend hooks in, and what was proven on hardware |
 | [CONTROLLER.md](CONTROLLER.md) | Controller-first setup — listing pads, an input test, deadzone, button mapping and Bluetooth pairing: the design, and what real hardware testing found along the way |
+| [ARCADE.md](ARCADE.md) | Arcade support — the analysis, the design and what was built from it. The MRA format, a ROM-storage-priority bug found on real hardware, how the library, the tab and the box art work, and what is still open |
 
 ## Status
 
 Working: booting into the GUI, browsing every system, box art, favourites, history, letter
 navigation, launching games, returning from a game with a long press on the menu button, and
-hiding systems or the Games tab from Settings for a large library.
+hiding systems or the Games tab from Settings for a large library. Arcade (since 0.2.0) works
+end to end; the tab and the box art matching are the newest parts and have seen the least
+time on hardware — [ARCADE.md](ARCADE.md) says exactly which parts were verified where.
 
 ## Roadmap
 
-Grouped by theme, roughly in the order things are likely to be picked up. Nothing here is a
-dated commitment.
+**This roadmap is not set in stone.** It is a statement of intent, not a promise: what goes
+into which release, and in what order, will move as testing on real hardware shows what matters
+most, and a version's scope can shrink, grow or change places with another. Nothing here is
+dated. Only the next release is planned with any precision, and even that gets sharper once its
+testing has been done — the later ones are direction.
 
-### Independence
+### Release plan
 
-- [x] Its own catalogue of systems and its own game index, written by a scan of the drives
-      and stored one file per system. Verified on hardware against a 10,500-game library
-      across two drives.
-- [x] Independence from Console Mode for the typeface. Not by bundling it — Fontfabric's
-      free-font licence does not permit redistributing Akrobat itself — but by pointing
-      straight at the official download instead of requiring Console Mode as a middleman.
-      See [Console Mode is not required](#console-mode-is-not-required).
-- [ ] Loader slots for the remaining CD-based cores (CD-i, Jaguar CD)
+Releases are themed rather than feature-by-feature, so that each one has a single thing it is
+for.
 
-### Controllers
+#### 0.3.0 — Tests and bug fixes
 
-- [ ] Test more controllers — see [Tested controllers](#tested-controllers) for what has
+- [ ] **Test what 0.2.0 brought on real hardware** — the Arcade library and tab, box art
+      matching, the rebuilt game database — and fix what turns up.
+- [ ] **Bug fixes** from that testing, and from day-to-day use.
+- [ ] **Better box art scraping.** Where it gets better will show in the testing; two starting
+      points are already known from measuring 0.2.0 against a real library — a game with no
+      cover at all (201 of 849 Arcade games found none) and a cover that is for the right
+      game but not the right revision (the looser fallback match).
+
+Deliberately open-ended: this release gets more concrete as the tests are done.
+
+#### 0.4.0 — Optimisation
+
+- [ ] **Smoother, faster menu control**, everywhere.
+- [ ] **Three-tier artwork loading** (thumbnail → medium → full) with a cross-fade. The design
+      is in [PERFORMANCE.md](PERFORMANCE.md#planned-three-tier-image-quality).
+- [ ] **Reach the letter jump from a pad with only two shoulder buttons.** It sits on L2/R2
+      today, which a Saturn-style pad does not have.
+- [ ] **A much shorter first visit to Systems.** The first time the tab is opened there is
+      currently a progress bar while it works out which systems have games. Extending the game
+      database so that answer is already in it should remove most of that.
+
+Also to be made concrete by testing, in particular by measuring where time actually goes.
+
+#### 0.5.0 — Easy to install ... and to update
+
+- [ ] **A pleasant install flow**, rather than today's manual steps.
+- [ ] **A system, or a process, for updating the GUI.** Today an update means replacing files by
+      hand over SSH. There has to be a proper way to get a newer version onto the device.
+- [ ] **An extension of `update_all.sh`** (the Update_All_MiSTer script), so installing and
+      updating this GUI fits into the way MiSTer users already keep their device current.
+- [ ] **Manage Cores / Manage MRAs** for Arcade, syncing against the official distribution
+      manifest — the same download-and-verify machinery an installer and updater need. Design
+      in [ARCADE.md](ARCADE.md#decision-manage-cores-and-manage-mras).
+
+#### 0.6.0 — Settings, sound and search
+
+- [ ] **More settings**, such as Wi-Fi, and whatever else turns out to be useful to reach from
+      the couch.
+- [ ] **A switch for the time format:** 12-hour or 24-hour.
+- [ ] **Menu sounds.**
+- [ ] **Search.** This needs an on-screen keyboard that can be driven entirely from a
+      controller, which is the real piece of work in it.
+
+#### Not scheduled yet, but coming
+
+- [ ] **Loader slots for the remaining CD-based cores** (CD-i, Jaguar CD).
+- [ ] **Telling two identical controllers apart**, with separate mappings for each (MiSTer's own
+      `controller_unique_mapping`). Left out of the first pass of controller management on
+      purpose — two same-model pads sharing one mapping is the common case.
+- [ ] **Per-game DIP-switch editing** for Arcade.
+- [ ] **Video modes.** `video_mode=` in `MiSTer.ini`, including a clean fallback when a
+      configured mode fails or is not available. Also covers running, and verifying, this GUI
+      at resolutions other than 1080p — it only scales its own design pixels to whatever the
+      framebuffer reports, which is untested outside 1080p despite "scales from 480p to 4K"
+      being listed as a feature.
+- [ ] **Testing more controllers.** See [Tested controllers](#tested-controllers) for what has
       been confirmed so far and what is still to try.
-- [ ] Reach the letter jump from a pad with only two shoulder buttons. It sits on L2/R2,
-      which a Saturn-style pad does not have.
-- [x] **Controller management**, in Settings. Premise: controller-first — usable end to end
-      without a keyboard attached. (Side effect: no mouse support for now, since the stock
-      MiSTer menu still needs a keyboard's spacebar to skip mouse detection at boot — that
-      stays true either way, this just does not try to paper over it.) Verified on real
-      hardware, including several rounds of fixes the design alone had not caught — see
-      [CONTROLLER.md](CONTROLLER.md) for the design and the full trail of hardware findings.
-    - [x] List the connected controllers
-    - [x] An input test for buttons and analogue sticks
-    - [x] A deadzone setting (writes MiSTer's own `deadzone=` line, e.g.
-          `deadzone=0x045e02a1, 25` — the vendor/product MiSTer itself reports for a pad, which
-          can differ from what `lsusb` shows; see CONTROLLER.md)
-    - [x] Button mapping that affects the MiSTer menu, written as MiSTer's own
-          `/media/fat/config/inputs/input_<vid>_<pid>_v3.map` file — including a visual pad
-          diagram highlighting which button/stick to press, since a bare word like "X" means
-          a different physical button depending on which pad convention you grew up with
-    - [x] Pair a new controller over Bluetooth, where the device has an adapter at all —
-          verified surviving a reboot with no re-pairing needed
-- [ ] **Later:** let two identical controllers be told apart and given separate mappings
-      (MiSTer's own `controller_unique_mapping`). Deliberately not in the first pass of
-      controller management above — accessibility over completeness while this is still an
-      early build; two same-model pads sharing one mapping is the common case, not the
-      exception worth solving for on day one.
-
-### Presentation and speed
-
-- [x] Opening a system or the whole library no longer stalls the UI — resolving artwork paths
-      happens a slice per frame, the same budgeted way image decoding already did, rather than
-      all at once before the first frame can render. Not a background thread — a single
-      frame loop stays simpler — but the practical effect is the same: nothing blocks.
-- [ ] Three-tier artwork loading (thumbnail → medium → full) with a cross-fade
-- [x] Read JPEG as well as PNG, decided by file content rather than by extension — artwork
-      on a MiSTer is routinely a JPEG named `.png`
-- [ ] General optimisation of the interface and of box art loading
-- [x] A process for preparing box art: pre-scaling and recompressing the artwork on disk, so
-      the device never pays for a 512-pixel PNG it is about to draw at 260 pixels — the
-      scraper now writes a second, smaller copy alongside the full-size one.
-- [ ] Menu sounds
-
-### Library management
-
-- [x] Library scan — from the settings, or guided by a wizard on first start
-- [x] Box art scraping, as a further step of the same wizard. Source: the libretro thumbnail
-      server, which needs no account or key. Matching follows the approach Console Mode
-      uses — fetch the platform's file index once, normalise both sides, look the title up —
-      which measured 91% coverage against a real PlayStation library.
-- [x] Hiding the systems you do not use, from Settings → Manage systems. **Ordering the rest
-      is still open.**
-- [x] **Support for several external drives.** Both the GUI's own database and the ConsoleMode
-      cache index used to resolve a fixed mount point rather than re-checking which drive is
-      actually where — a game or a whole system's box art would silently break the day a
-      second volume, or a reboot that changed drive ordering, put anything at a different
-      `/media/usbN`. Everything is re-resolved live now, verified on hardware against a real
-      two-drive setup, including remounting both volumes swapped with no reboot in between.
-
-### System settings
-
-- [ ] Wi-Fi connection
-- [ ] Controller settings (see above)
-
-### Interface
-
-- [ ] Search
-- [ ] Localisation. Everything is English today, with the strings still inline; extracting
+- [ ] **Ordering the systems** in the Systems tab. Hiding the ones you do not use already works.
+- [ ] **Telling HDD/CHD-based Arcade games apart** — boards such as Killer Instinct — from those
+      that start unattended. Nothing found can automate the one-time manual step itself; see
+      [ARCADE.md](ARCADE.md#hddchd-based-games-no-automated-mount-found).
+- [ ] **A separately remembered view per tab** — Home, Favorites, Systems and Games — instead
+      of the one default view for all of them.
+- [ ] **Localisation.** Everything is English today, with the strings still inline; extracting
       them is the prerequisite.
-- [x] A default presentation (list, large/small box art, grid, compact), settable from
-      Settings → Default view, applied immediately everywhere. **Remembering a separately
-      chosen view per tab — Home, Favorites, Systems and Games — instead of one setting for
-      all of them is still open.**
 
 ### Ideas, not committed
 

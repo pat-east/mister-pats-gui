@@ -14,6 +14,12 @@ public:
     bool showGamesTab() const { return showGamesTab_; }
     void setShowGamesTab(bool show);
 
+    // The Arcade tab. On by default, but only ever shown when the library actually holds
+    // Arcade games — see App — so this is the switch for someone who has them and does not
+    // want the tab.
+    bool showArcadeTab() const { return showArcadeTab_; }
+    void setShowArcadeTab(bool show);
+
     // One of GamesScreen's --view names ("grid", "list", "large", "small", "compact") — kept
     // as a plain string here rather than the GameView enum so this class does not need to
     // know about GamesScreen at all, consistent with everything else in it.
@@ -32,6 +38,7 @@ private:
     bool save() const;
 
     bool showGamesTab_ = true;
+    bool showArcadeTab_ = true;
     std::string defaultView_ = "grid";
     bool checkForUpdates_ = false;
     std::string file_ = kDefaultFile;

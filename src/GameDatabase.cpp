@@ -19,8 +19,9 @@ const char *kRootsFile = "roots.tsv";
 // 2 added the probe column to roots.tsv. 3 stores a system's directory the same way a game's
 // path is stored — root id plus what is relative to it — instead of baking in an absolute
 // path at scan time, which a drive moving to a different mount point then left stale even
-// though every actual game path re-resolved correctly around it.
-const char *kHeader = "#mister-pat gamesdb 3";
+// though every actual game path re-resolved correctly around it. 4 adds Arcade as a system
+// with no core, plus its group catalogues and per-group game lists (see writeGroupList).
+const char *kHeader = "#mister-pat gamesdb 4";
 
 // In the order MiSTer itself would use them. It creates usb0 through usb7 as empty
 // directories whether or not anything is mounted there, which is exactly why a root is
@@ -386,17 +387,17 @@ bool GameDatabase::beginWrite(const std::vector<std::string> &roots) {
     return true;
 }
 
-bool GameDatabase::writeSystem(const DatabaseSystem &system,
-                               const std::vector<std::string> &paths) {
+bool GameDatabase::writeList(const std::string &key, const std::vector<std::string> &paths,
+                             size_t &written) {
+    written = 0;
     if (paths.empty()) return true;
 
-    std::ofstream out(stagingPathOf(system.key + ".tsv"), std::ios::trunc);
+    std::ofstream out(stagingPathOf(key + ".tsv"), std::ios::trunc);
     if (!out) {
-        error_ = "cannot write " + stagingPathOf(system.key + ".tsv");
+        error_ = "cannot write " + stagingPathOf(key + ".tsv");
         return false;
     }
 
-    size_t written = 0;
     for (const std::string &path : paths) {
         const int id = rootIdFor(path);
         if (id < 0 || !storable(path)) continue;
@@ -406,7 +407,52 @@ bool GameDatabase::writeSystem(const DatabaseSystem &system,
         out << id << "\t" << relative << "\n";
         ++written;
     }
+    return true;
+}
 
+bool GameDatabase::writeGroupList(const std::string &key,
+                                  const std::vector<std::string> &paths) {
+    size_t written = 0;
+    return writeList(key, paths, written);
+}
+
+bool GameDatabase::writeGroupCatalog(const std::string &file,
+                                     const std::vector<DatabaseGroup> &groups) {
+    std::ofstream out(stagingPathOf(file), std::ios::trunc);
+    if (!out) {
+        error_ = "cannot write " + stagingPathOf(file);
+        return false;
+    }
+    for (const DatabaseGroup &group : groups)
+        out << group.name << "\t" << group.count << "\t" << group.key << "\n";
+    return true;
+}
+
+std::vector<DatabaseGroup> GameDatabase::groupsFor(const std::string &file) const {
+    std::vector<DatabaseGroup> groups;
+
+    std::ifstream in(pathOf(file));
+    if (!in) return groups;
+
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        const std::vector<std::string> field = splitTabs(line);
+        if (field.size() < 3) continue;
+
+        DatabaseGroup group;
+        group.name = field[0];
+        group.count = size_t(std::atoi(field[1].c_str()));
+        group.key = field[2];
+        groups.push_back(group);
+    }
+    return groups;
+}
+
+bool GameDatabase::writeSystem(const DatabaseSystem &system,
+                               const std::vector<std::string> &paths) {
+    size_t written = 0;
+    if (!writeList(system.key, paths, written)) return false;
     if (!written) return true;
 
     DatabaseSystem recorded = system;

@@ -107,5 +107,6 @@ private:
     size_t skipped_ = 0;
     size_t missing_ = 0;
     bool missesOpened_ = false;
+    bool arcade_ = false;   // the system being worked on is Arcade — see prepareNextSystem()
     std::string error_;
 };

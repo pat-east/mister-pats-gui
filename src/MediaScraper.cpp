@@ -207,9 +207,22 @@ bool MediaScraper::prepareNextSystem() {
         shape.discBased = system.discBased;
         shape.romDirs.push_back(system.dir);
 
+        arcade_ = system.key == "Arcade";
+
         const std::string mediaDir = system.dir + "/media";
-        for (const std::string &path : database_->pathsFor(system.key))
-            jobs_.push_back({path, Library::nameFor(shape, path), mediaDir});
+        for (const std::string &path : database_->pathsFor(system.key)) {
+            // Every other system keeps its games in one directory, so one media folder does
+            // for all of them. Arcade's .mra files sit on every mounted volume, each with
+            // its own _Arcade folder, and artwork belongs next to the volume its game is on
+            // — the place Library::resolveArtwork looks.
+            std::string where = mediaDir;
+            if (arcade_) {
+                const size_t marker = path.find("/_Arcade/");
+                where = marker == std::string::npos ? mediaDir
+                                                    : path.substr(0, marker) + "/_Arcade/media";
+            }
+            jobs_.push_back({path, Library::nameFor(shape, path), where});
+        }
 
         ++systemPosition_;
         return true;
@@ -259,6 +272,12 @@ void MediaScraper::step() {
 
         for (const Wanted &kind : wanted) {
             if (!kind.enabled) continue;
+
+            // MAME's "snaps" are gameplay screenshots, which may not make a pleasant
+            // full-screen background the way console fan art does. Not looked at yet, so
+            // not fetched — see ARCADE.md. Box art only for Arcade until that is settled.
+            if (arcade_ && kind.suffix[0] == '-') continue;
+
             anyWanted = true;
 
             const std::string base = job.mediaDir + "/" + job.name + kind.suffix;
@@ -281,7 +300,13 @@ void MediaScraper::step() {
                 continue;
             }
 
-            const std::string remote = index_.match(job.name);
+            // Arcade first by the whole title, brackets and all: every ROM revision has its
+            // own cover, and the loose match below would pick one of them at random. The
+            // loose match stays as the fallback for a renamed .mra or a revision the server
+            // does not carry, which gets a cover for the right game, if not the right build.
+            std::string remote;
+            if (arcade_) remote = index_.matchExact(job.name);
+            if (remote.empty()) remote = index_.match(job.name);
             if (remote.empty()) continue;
             matched = true;
 

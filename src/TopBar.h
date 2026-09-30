@@ -8,18 +8,20 @@
 
 class Canvas;
 
-enum class Tab { Home, Favorites, Systems, Games, Settings };
+enum class Tab { Home, Favorites, Systems, Arcade, Games, Settings };
 
 // Clock and date on the left, tabs in the middle, network on the right — all deliberately
 // quiet so the content carries the screen.
 class TopBar {
 public:
     void update(float deltaSeconds);
-    void render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, bool showGames);
+    void render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, bool showGames,
+                bool showArcade);
 
     // The tabs actually reachable right now, in display order — Games drops out when its
-    // Settings toggle is off, everything else always shows.
-    static std::vector<Tab> visibleTabs(bool showGames);
+    // Settings toggle is off, Arcade when that one is off or there are no Arcade games to
+    // show, everything else always shows.
+    static std::vector<Tab> visibleTabs(bool showGames, bool showArcade);
     static std::string label(Tab tab);
 
 private:

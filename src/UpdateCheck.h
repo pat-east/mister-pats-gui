@@ -16,7 +16,12 @@ public:
     void run(const std::string &currentVersion);
 
     bool checked() const { return checked_; }
-    bool available() const { return !latestVersion_.empty() && latestVersion_ != currentVersion_; }
+    bool available() const { return isNewer(latestVersion_, currentVersion_); }
+
+    // Whether `latest` is a later release than `current`, compared number by number ("0.10.0"
+    // is later than "0.9.0"). Anything unparseable counts as not newer: a banner announcing an
+    // "update" to an older or unreadable version is worse than no banner at all.
+    static bool isNewer(const std::string &latest, const std::string &current);
     const std::string &latestVersion() const { return latestVersion_; }
 
 private:

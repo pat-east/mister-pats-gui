@@ -5,6 +5,69 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-09-30
+
+Arcade. Until now this GUI only knew systems that have one directory of games and one core;
+MiSTer's arcade library has neither, and needed its own treatment all the way from the scan to
+the box art. Design, measurements and the real-hardware case study behind it are in
+[ARCADE.md](ARCADE.md).
+
+### Added
+
+- **Arcade as a system** — `Systems -> Arcade`, with favourites, history, the Games tab and all
+  five presentations like any other. A game is launched by handing its `.mra` straight to
+  `load_core`; MiSTer's own arcade loader does the rest.
+- **A library of the games that actually work.** The game database records an Arcade game only
+  when its core is installed, its ROM zip is found and every part's CRC matches — the check
+  MiSTer itself effectively makes, using MiSTer's own search order (every USB drive first, the
+  SD card last) rather than a guessed one. Each game is listed once, however many drives hold a
+  copy. A full copy on the card and another on a drive is normal, and so is a library where
+  most of the catalogue has no ROMs behind it.
+- **An Arcade tab** with three rows — Games, Manufacturers, Categories. The cursor starts on a
+  row's title, and confirming it opens the whole list; Right steps onto the tiles, where a game
+  starts and a manufacturer or category opens just its games. Back from a tile returns to the
+  title first. Settings -> *Show Arcade menu item* turns the tab off; it only appears when the
+  library has Arcade games in the first place.
+- **Manufacturer and category lists** in the game database, written by the same scan: more
+  files in the row format a system's own list already uses, so a group opens in the ordinary
+  game list with nothing Arcade-specific in it. Spellings that differ only in case or spacing
+  ("Beat 'Em Up", "Beat 'em Up") are one group. A game with no manufacturer or category is
+  filed under "(Unknown)" / "(Uncategorized)", not left out.
+- **Box art for Arcade**, from the `MAME` set on the libretro thumbnail server, matched by the
+  whole title — brackets included — so each ROM revision gets its own cover. Saved in each
+  drive's own `_Arcade/media`, next to the games on that drive. Box art only for now; whether
+  MAME's gameplay screenshots make a pleasant background has not been looked at.
+- **Settings -> Manage Arcade -> Arcade Games**, a diagnostic table of every `.mra` on every
+  drive: whether its core is installed, its ROM zip found and its CRCs correct, and which zip
+  it asks for. Confirming a row launches the game. This is the screen that explains why a
+  game is *missing* from the library above.
+- **A distinct Mega CD icon.** It used to be the same gamepad as Mega Drive, because the icon
+  set it came from ships the same picture under both names; Mega CD now has the pad with a disc.
+- **`--press`**, a command-line option that feeds button presses to the interface before
+  anything else (`--press down,confirm,wait:30`), so a screen several presses deep — the
+  controller input test, say — can be captured with `--dump` without holding a controller.
+  A capture no longer takes the console from a GUI that is already running.
+- **Host-side tests** for the new parts: zip central-directory reading, `.mra` parsing and
+  both lookups, the Arcade scan end to end against scratch volumes with real zip fixtures, and
+  the thumbnail matching against the server's real names.
+
+### Changed
+
+- The game database format is now version 4. The first start after updating asks for a
+  rebuild; until then the GUI falls back to whatever Console Mode left behind, as it always
+  did without a database.
+- A machine holding only arcade games can now be scanned; the scan used to stop at "no game
+  directories found next to an installed core".
+
+### Fixed
+
+- The opt-in update check announced "v0.1.8 available" to someone already running a later
+  version: it compared the release tags for being different, not for being newer. It now
+  compares them number by number.
+- Arcade cores were only found when named `Arcade-<name>`, which almost none are — MiSTer also
+  accepts the bare `<name>`, followed by `.` or `_`. Every core outside the one the case study
+  began with therefore showed up as not installed.
+
 ## [0.1.8] - 2026-09-27
 
 ### Added
