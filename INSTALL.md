@@ -1,100 +1,120 @@
 # Installation
 
-This sets up MiSTer Pat's GUI so that the device boots straight into it.
+This sets up MiSTer Pat's GUI so that the device boots straight into it. It takes about ten
+minutes and everything is done from a terminal on your computer — the MiSTer needs to be on
+your network, and you need to be able to SSH into it.
 
 > **What it changes.** One new directory on the SD card, `/media/fat/mister-pat`, and two
 > lines added to `MiSTer.ini`. No existing file is rewritten, `/etc/inittab` is untouched,
 > and the stock MiSTer binary stays exactly where it is. Uninstalling is deleting that
 > directory and those two lines — see [Uninstalling](#uninstalling).
 
+| | |
+| --- | --- |
+| Release files | `MiSTer_gui` and `mister-gui`, from the [v0.2.0 release](https://github.com/pat-east/mister-pats-gui/releases/tag/v0.2.0) |
+| Install directory | `/media/fat/mister-pat` |
+| INI section | `[MiSTer]` in `/media/fat/MiSTer.ini` |
+| Stock binary | left in place |
+| Typeface | Akrobat, optional |
+| Rollback | remove two INI lines and the directory, then reboot |
+
 ## Requirements
 
-- A MiSTer with a working SD card setup and SSH access
-- To build from source: macOS or Linux with the cross-toolchain, see
-  [README.md](README.md#building-from-source)
+- A MiSTer with a working SD card setup, on your network, with SSH access (the stock login is
+  `root`, and unless you changed it the password is `1`)
+- The games on a USB drive or the SD card, wherever the MiSTer already finds them
+- To build from source instead of using the release: macOS or Linux with the cross-toolchain,
+  see [Building from source](#building-from-source)
 
-Console Mode is **not required**, for anything. If you already have it installed, this GUI
-picks up its typeface automatically and nothing further needs doing. If you do not, see
-[Step 0](#step-0--the-typeface-if-you-want-it) below for the one manual step that replaces it.
+Console Mode is **not required**, for anything. See
+[Console Mode is not required](#console-mode-is-not-required).
 
-## Step 0 — The typeface, if you want it
+Replace `<mister-ip>` with your MiSTer's address in every command below.
 
-This GUI builds its own catalogue of systems, its own index of games, and fetches its own box
-art — a wizard walks through the first two on first start (see
-[Step 5](#step-5--build-the-game-database)), and box art is a button in Settings once the
-database exists (**Settings → Fetch box art**). None of that needs Console Mode.
+## Install
 
-The one thing still outside the GUI is its typeface, Akrobat. It cannot be bundled here —
-Fontfabric's free-font licence permits using it in your own designs but not redistributing the
-font files themselves — so getting it is a manual, one-time step:
-
-1. Download it from Fontfabric directly: <https://www.fontfabric.com/fonts/akrobat/>
-2. Copy `Akrobat-Bold.ttf` and `Akrobat-SemiBold.ttf` onto the device:
-   ```sh
-   scp Akrobat-Bold.ttf Akrobat-SemiBold.ttf root@<ip>:/media/fat/mister-pat/fonts/
-   ```
-   (`mkdir -p /media/fat/mister-pat/fonts` first if the directory does not exist yet.)
-
-Skip this and everything still works — the GUI falls back to a built-in typeface. If Console
-Mode happens to be on the same SD card, its own copy of Akrobat is found automatically and
-this step is not needed either way.
-
-Replace `<ip>` with your MiSTer's address in every command below.
-
-## Step 1 — Build
+### 1. Connect to your MiSTer
 
 ```sh
-third_party/build.sh                                        # static zlib, libpng, freetype
-make                                                        # build/mister-gui
-
-git clone https://github.com/MiSTer-devel/Main_MiSTer third_party/Main_MiSTer
-cd third_party/Main_MiSTer
-git apply ../../patches/0001-autostart-gui.patch
-make                                                        # MiSTer, the patched main binary
-cd ../..
+ssh root@<mister-ip>
 ```
 
-The patch does two things to the MiSTer main binary. It adds one INI key, `gui=`, and it
-decouples DVI detection from `video_mode` — upstream only works out whether a display is DVI
-while it is also deriving the video mode from the EDID, so setting `video_mode` in the INI
-switches that detection off as a side effect, and a monitor on a DVI adapter stays dark.
-Everything else about the binary is unchanged, which is the point: core loading, ROM mounting
-and the in-game OSD keep working exactly as before.
+Steps 2, 5 and 6 are run in that session. Steps 3 and 4 are run on your own computer, in a
+second terminal.
 
-## Step 2 — Copy the files
+### 2. Download the release files
 
-Everything lives in one directory that belongs solely to this application.
+On the MiSTer:
 
 ```sh
-ssh root@<ip> 'mkdir -p /media/fat/mister-pat'
-
-scp build/mister-gui root@<ip>:/media/fat/mister-pat/
-scp third_party/Main_MiSTer/MiSTer root@<ip>:/media/fat/mister-pat/MiSTer_gui
-ssh root@<ip> 'chmod +x /media/fat/mister-pat/mister-gui /media/fat/mister-pat/MiSTer_gui'
+mkdir -p /media/fat/mister-pat/fonts
+cd /media/fat/mister-pat
+wget -O MiSTer_gui https://github.com/pat-east/mister-pats-gui/releases/download/v0.2.0/MiSTer_gui
+wget -O mister-gui https://github.com/pat-east/mister-pats-gui/releases/download/v0.2.0/mister-gui
+chmod +x MiSTer_gui mister-gui
 ```
 
-Then the console icons, once, about 2.8 MB:
+- **`mister-gui`** is the interface itself.
+- **`MiSTer_gui`** is the MiSTer main binary with a small patch. It adds one INI key, `gui=`,
+  and it decouples DVI detection from `video_mode` — upstream only works out whether a display
+  is DVI while it is also deriving the video mode from the EDID, so setting `video_mode` in
+  the INI switches that detection off as a side effect, and a monitor on a DVI adapter stays
+  dark. Everything else about the binary is unchanged, which is the point: core loading, ROM
+  mounting and the in-game OSD keep working exactly as before.
+
+### 3. Console icons
+
+The system tiles use small console icons, about 2.8 MB. They are not part of the release
+files; they come from the source archive. On your computer:
 
 ```sh
-tar czf /tmp/icons.tgz -C assets icons
-scp /tmp/icons.tgz root@<ip>:/tmp/
-ssh root@<ip> 'tar xzf /tmp/icons.tgz -C /media/fat/mister-pat/ --no-same-owner && rm /tmp/icons.tgz'
+curl -L -o mister-pats-gui.tar.gz https://github.com/pat-east/mister-pats-gui/archive/refs/tags/v0.2.0.tar.gz
+tar xzf mister-pats-gui.tar.gz
+tar czf /tmp/icons.tgz -C mister-pats-gui-0.2.0/assets icons
+scp /tmp/icons.tgz root@<mister-ip>:/tmp/
+ssh root@<mister-ip> 'tar xzf /tmp/icons.tgz -C /media/fat/mister-pat/ --no-same-owner && rm /tmp/icons.tgz'
 ```
 
 `--no-same-owner` is required because exFAT has no concept of file ownership and `tar` would
 otherwise abort.
 
-## Step 3 — Point the boot path at it
+You can skip this step: without icons the Systems tab shows plain typographic tiles instead.
 
-Two keys in `/media/fat/MiSTer.ini`, in the `[MiSTer]` section:
+<a id="step-0--the-typeface-if-you-want-it"></a>
+
+### 4. Optional: the typeface
+
+The interface is set in Akrobat. It cannot be bundled here — Fontfabric's free-font licence
+permits using it in your own designs but not redistributing the font files themselves — so
+getting it is a manual, one-time step. On your computer:
+
+1. Download it from Fontfabric directly: <https://www.fontfabric.com/fonts/akrobat/>
+2. Copy the two files you need onto the MiSTer:
+   ```sh
+   scp Akrobat-Bold.ttf Akrobat-SemiBold.ttf root@<mister-ip>:/media/fat/mister-pat/fonts/
+   ```
+
+This step is optional. Skip it and everything still works — the GUI draws in a built-in
+typeface, which looks blocky and all-caps but is a working state, not a bug. If Console Mode
+happens to be on the same SD card, its own copy of Akrobat is found automatically and this step
+is not needed either way.
+
+### 5. Point the boot path at it
+
+Two keys in `/media/fat/MiSTer.ini`, in the `[MiSTer]` section. On the MiSTer:
+
+```sh
+nano /media/fat/MiSTer.ini
+```
 
 ```ini
+[MiSTer]
 main=mister-pat/MiSTer_gui
 gui=mister-pat/mister-gui
 ```
 
 - **`main=`** is a stock MiSTer feature. The binary started by `/etc/inittab` reads it and
-  executes the named program in its place. So the stock binary hands over to our patched one.
+  executes the named program in its place. So the stock binary hands over to the patched one.
 - **`gui=`** is the key the patch adds. The patched binary starts that program once the menu
   core is up, and restarts it if it ever exits while the menu core is still running.
 
@@ -107,10 +127,10 @@ menu rather than at a black screen.
 > If you use per-video-mode INI files — `MiSTer_RGsB.ini`, `MiSTer_SVID.ini`,
 > `MiSTer_YPbP.ini` — add both keys there as well. Each INI is read on its own.
 
-## Step 4 — Reboot and check
+### 6. Reboot and check
 
 ```sh
-ssh root@<ip> reboot
+reboot
 ```
 
 The GUI should appear on the television. Check that:
@@ -123,7 +143,7 @@ The GUI should appear on the television. Check that:
 If something is wrong, comment out the two INI lines and reboot — you are back to your
 previous setup.
 
-## Step 5 — Build the game database
+### 7. Build your library, then fetch box art
 
 The first start has nothing to show, so a wizard opens by itself. It lists the volumes it
 found, explains what it is about to do, and waits: **A** starts the scan, **B** postpones it.
@@ -133,11 +153,21 @@ politeness — walking a large library flat out is what drops a marginally power
 the bus, and it is the failure this whole design is built around. Expect a few minutes with a
 large library, and watch the counter rather than the clock.
 
+Arcade is part of the same scan, and the slowest part of it: for every `.mra` it checks that the
+core is installed and that the ROM zip is there with the right CRCs, and lists only the games
+that pass. With a few thousand `.mra` files that adds a couple of minutes. The Arcade tab appears
+once there is at least one working Arcade game. If a game you expected is missing,
+**Settings → Manage Arcade → Arcade Games** shows what is wrong with it.
+
 The result lands in `/media/fat/mister-pat/gamesdb/`: a small `catalog.tsv` read at every
 start, and one `<System>.tsv` per system, read only when you open that system.
 
-Run it again whenever you add or remove games: **Settings → Build game database**. Nothing on
-your drives is written or changed, either time.
+Then fetch the box art: **Settings → Fetch box art**. It needs internet access, writes a small
+picture next to each game, and can be interrupted and resumed — what is already there is
+skipped.
+
+Run both again whenever you add or remove games. Nothing on your drives is written or changed
+by the scan.
 
 ## After a game
 
@@ -145,14 +175,67 @@ Starting a game releases the input devices and the screen and exits the GUI, bec
 otherwise the game would get no controller input. **Hold the menu button** for about a second
 and a half to leave the game: the menu core is reloaded and the GUI comes back on its own.
 
+## Updating
+
+There is no updater yet; an update replaces the two files. On the MiSTer:
+
+```sh
+cd /media/fat/mister-pat
+wget -O mister-gui.new https://github.com/pat-east/mister-pats-gui/releases/download/<version>/mister-gui
+chmod +x mister-gui.new
+mv mister-gui.new mister-gui
+killall mister-gui
+```
+
+Replacing the file through a rename is what lets this work while the GUI is running; the patched
+binary then starts the new one by itself after a few seconds. `MiSTer_gui` only changes when a
+release says so — the release notes mention it — and since it is the main binary, replacing it
+takes a reboot.
+
+After an update, rebuild the library (**Settings → Build game database**) if the release notes
+say the database format changed. Version 0.2.0 did, so an update from 0.1.x asks for it: until
+then the GUI falls back to whatever Console Mode left behind.
+
+## Building from source
+
+Instead of the release files:
+
+```sh
+third_party/build.sh                                        # static zlib, libpng, freetype
+make                                                        # build/mister-gui
+
+git clone https://github.com/MiSTer-devel/Main_MiSTer third_party/Main_MiSTer
+cd third_party/Main_MiSTer
+git apply ../../patches/0001-autostart-gui.patch
+make                                                        # MiSTer, the patched main binary
+cd ../..
+```
+
+and then, in place of step 2 and 3 above:
+
+```sh
+ssh root@<mister-ip> 'mkdir -p /media/fat/mister-pat/fonts'
+
+scp build/mister-gui root@<mister-ip>:/media/fat/mister-pat/
+scp third_party/Main_MiSTer/MiSTer root@<mister-ip>:/media/fat/mister-pat/MiSTer_gui
+ssh root@<mister-ip> 'chmod +x /media/fat/mister-pat/mister-gui /media/fat/mister-pat/MiSTer_gui'
+
+tar czf /tmp/icons.tgz -C assets icons
+scp /tmp/icons.tgz root@<mister-ip>:/tmp/
+ssh root@<mister-ip> 'tar xzf /tmp/icons.tgz -C /media/fat/mister-pat/ --no-same-owner && rm /tmp/icons.tgz'
+```
+
+Steps 4 to 7 are the same. The full build instructions are in
+[README.md](README.md#building-from-source).
+
 ## Uninstalling
 
 Complete, in this order:
 
 ```sh
-ssh root@<ip> "sed -i '/^main=mister-pat/d; /^gui=mister-pat/d' /media/fat/MiSTer.ini"
-ssh root@<ip> 'rm -rf /media/fat/mister-pat'
-ssh root@<ip> reboot
+ssh root@<mister-ip> "sed -i '/^main=mister-pat/d; /^gui=mister-pat/d' /media/fat/MiSTer.ini"
+ssh root@<mister-ip> 'rm -rf /media/fat/mister-pat'
+ssh root@<mister-ip> reboot
 ```
 
 The device then boots exactly as it did before. Nothing else was modified.
@@ -162,15 +245,17 @@ The device then boots exactly as it did before. Nothing else was modified.
 | Symptom | Cause and remedy |
 | --- | --- |
 | Stock menu instead of the GUI | `main=` or `gui=` points at a file that is not there. Check the paths and that both files are executable. |
-| Stock menu instead of the GUI, even though both files are right where they should be | Stock MiSTer resolves relative paths like `main=`/`gui=` against whichever storage device was last selected — persisted in `/media/fat/config/device.bin`, not necessarily the SD card. If that got switched to a USB drive (e.g. while testing a second game drive), the lookup silently fails because neither file exists there, and MiSTer falls back to itself rather than showing an error. `ssh root@<ip> rm -f /media/fat/config/device.bin` and reboot to put it back on the SD card. |
-| Black screen, device responds to SSH | `ssh root@<ip> killall mister-gui` — the patched binary restarts it after a few seconds. |
-| Blinking cursor in the top left | The console is in text mode. `ssh root@<ip> 'chvt 1'`, or reboot. |
+| Stock menu instead of the GUI, even though both files are right where they should be | Stock MiSTer resolves relative paths like `main=`/`gui=` against whichever storage device was last selected — persisted in `/media/fat/config/device.bin`, not necessarily the SD card. If that got switched to a USB drive (e.g. while testing a second game drive), the lookup silently fails because neither file exists there, and MiSTer falls back to itself rather than showing an error. `ssh root@<mister-ip> rm -f /media/fat/config/device.bin` and reboot to put it back on the SD card. |
+| Black screen, device responds to SSH | `ssh root@<mister-ip> killall mister-gui` — the patched binary restarts it after a few seconds. |
+| Blinking cursor in the top left | The console is in text mode. `ssh root@<mister-ip> 'chvt 1'`, or reboot. |
 | Nothing on a DVI monitor | Should be detected automatically. If not, set `dvi_mode=1` in `MiSTer.ini`. Note that DVI mode carries no audio. |
 | Controller moves two positions per press | A mirror input device is being read as well. It should be filtered by name; check with `grep input:` in the GUI's output. |
 | Menu button does not open the OSD | The GUI is running with `--exclusive`. Start it without that option. |
 | No games listed | The database has not been built. Settings → Build game database. |
 | No box art | The scraper has not run yet, or has not reached that system. Settings → Fetch box art. |
-| Text looks like a blocky, all-caps placeholder font | No Akrobat file was found, so the built-in fallback typeface is drawing instead — this is a working state, not a bug. See [Step 0](#step-0--the-typeface-if-you-want-it) if you want the real typeface. |
+| No Arcade tab, or an Arcade tab with few games | The tab only appears when at least one Arcade game passes the check, and only games that pass are listed: core installed, ROM zip found, every CRC right. Settings → Manage Arcade → Arcade Games shows why each one fails. Then rebuild the database. |
+| Systems show plain tiles instead of console pictures | The icons were not copied — step 3. Not a bug; the GUI works without them. |
+| Text looks like a blocky, all-caps placeholder font | No Akrobat file was found, so the built-in fallback typeface is drawing instead — this is a working state, not a bug. See [step 4](#4-optional-the-typeface) if you want the real typeface. |
 | Games on a CD-based core do not start | The core expects a different loader slot. See the table in [POC.md](POC.md) and `assets/systems.conf.example`. |
 
 A reboot is always the safe way back, and removing the two INI lines always returns the
@@ -185,7 +270,7 @@ All four things the GUI needs are covered without it:
 | System catalogue | **built here**, `/media/fat/mister-pat/gamesdb/catalog.tsv` |
 | Game index | **built here**, one `<System>.tsv` per system |
 | Box art and backgrounds | **fetched here** — Settings → Fetch box art |
-| Fonts | downloaded once by hand — [Step 0](#step-0--the-typeface-if-you-want-it) — or the built-in fallback if you skip that |
+| Fonts | downloaded once by hand — [step 4](#4-optional-the-typeface) — or the built-in fallback if you skip that |
 
 If Console Mode happens to already be on the SD card, its copy of Akrobat is picked up
 automatically and nothing changes; if it is not, nothing is missing that this GUI cannot get

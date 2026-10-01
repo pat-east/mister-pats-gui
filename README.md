@@ -291,8 +291,6 @@ Deliberately open-ended: this release gets more concrete as the tests are done.
 - [ ] **Smoother, faster menu control**, everywhere.
 - [ ] **Three-tier artwork loading** (thumbnail → medium → full) with a cross-fade. The design
       is in [PERFORMANCE.md](PERFORMANCE.md#planned-three-tier-image-quality).
-- [ ] **Reach the letter jump from a pad with only two shoulder buttons.** It sits on L2/R2
-      today, which a Saturn-style pad does not have.
 - [ ] **A much shorter first visit to Systems.** The first time the tab is opened there is
       currently a progress bar while it works out which systems have games. Extending the game
       database so that answer is already in it should remove most of that.
