@@ -104,6 +104,9 @@ public:
     // needs deciding before anything about them has actually been resolved.
     static std::string nameFor(const GameSystem &system, const std::string &path);
 
+    // Filters known boot media and utilities from both newly built and older databases.
+    static bool isSystemFile(const GameSystem &system, const std::string &path);
+
     // Fills in a stub's artwork fields. `preferSmall` picks the `-sm` variant the scraper
     // writes alongside full-size artwork when one exists — for a grid tile there is no reason
     // to decode four times the pixels that will ever be drawn. Falls back to full-size when

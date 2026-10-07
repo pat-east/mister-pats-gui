@@ -90,7 +90,6 @@ bool Icons::load(const std::string &directory) {
 
     DIR *dir = opendir(directory.c_str());
     if (!dir) {
-        std::printf("icons: %s not found, systems will use typography\n", directory.c_str());
         return false;
     }
 
@@ -101,7 +100,6 @@ bool Icons::load(const std::string &directory) {
     }
     closedir(dir);
 
-    std::printf("icons: %zu available in %s\n", available_.size(), directory.c_str());
     return !available_.empty();
 }
 

@@ -120,6 +120,32 @@ const char *kDeniedExtensions[] = {
     "log", "bak", "lic", "sbi", "md5", "sha1", "json", "csv", "pdf", "exe.bak",
 };
 
+struct SystemFile {
+    const char *system;
+    const char *name;
+};
+
+// Found among real scrape misses: these are boot media, blank disks or MiSTer utilities,
+// even when their extension is also used by games. Scope every name to its system so a
+// legitimate game with a generic name such as "Boot" elsewhere stays visible.
+const SystemFile kSystemFiles[] = {
+    {"Atari2600", "Diagnostic Cartridge (NA)"},
+    {"ATARI800", "boot0"}, {"ATARI800", "boot1"}, {"ATARI800", "boot2"},
+    {"ATARI800", "boot3"}, {"ATARI800", "sid_data"},
+    {"C64", "CP-ClockF83_1.3"}, {"C64", "Empty"},
+    {"MSX1", "boot"},
+    {"AO486", "boot0"}, {"AO486", "boot1"}, {"AO486", "boot1_opensource"},
+    {"AO486", "imgset"}, {"AO486", "MISTERFB"}, {"AO486", "misterfs"},
+    {"AO486", "modem9x"}, {"AO486", "mpuctl"}, {"AO486", "sbctl"},
+    {"AO486", "sysctl"},
+    {"X68000", "BLANK_disk_X68000"}, {"ZXNext", "boot"},
+    {"Jaguar", "boot"}, {"Jaguar", "boot1"}, {"Jaguar", "boot2"},
+    {"Intellivision", "boot0"}, {"Intellivision", "boot1"},
+    {"Intellivision", "boot2"}, {"Intellivision", "boot3"},
+    {"NES", "Nintendo NTF2 System Cartridge (U) (v1.1) [!]"},
+    {"SCV", "boot"}, {"CreatiVision", "boot"},
+};
+
 std::string lower(const std::string &s) {
     std::string out = s;
     for (char &c : out)
@@ -213,6 +239,34 @@ bool SystemCatalog::looksLikeGame(const std::string &filename,
     for (const char *denied : kDeniedExtensions)
         if (ext == denied) return false;
     return true;
+}
+
+bool SystemCatalog::isSystemFile(const std::string &systemKey, const std::string &filename) {
+    const size_t slash = filename.find_last_of('/');
+    const std::string base = filename.substr(slash == std::string::npos ? 0 : slash + 1);
+    const size_t dot = base.find_last_of('.');
+    const std::string stem = dot == std::string::npos ? base : base.substr(0, dot);
+
+    // MiSTer's own launch/test ROMs appear under many otherwise unrelated systems, while
+    // BIOS dumps are explicitly tagged in ROM sets. Neither is a game in any system.
+    if (strcasecmp(stem.c_str(), "mister-boot") == 0 ||
+        strcasecmp(stem.c_str(), "mister-demo") == 0 ||
+        strncasecmp(base.c_str(), "[BIOS] ", 7) == 0) return true;
+
+    const char *key = systemKey.c_str();
+    for (const Alias &alias : kNames) {
+        if (strcasecmp(key, alias.name) == 0) {
+            key = alias.dir;
+            break;
+        }
+    }
+
+    for (const SystemFile &file : kSystemFiles) {
+        if (strcasecmp(key, file.system) != 0) continue;
+        if (strcasecmp(base.c_str(), file.name) == 0 ||
+            strcasecmp(stem.c_str(), file.name) == 0) return true;
+    }
+    return false;
 }
 
 std::vector<std::string> SystemCatalog::gameParents(const std::string &root) {

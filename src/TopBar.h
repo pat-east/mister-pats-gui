@@ -16,7 +16,7 @@ class TopBar {
 public:
     void update(float deltaSeconds);
     void render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, bool showGames,
-                bool showArcade);
+                bool showArcade, bool tabsEnabled);
 
     // The tabs actually reachable right now, in display order — Games drops out when its
     // Settings toggle is off, Arcade when that one is off or there are no Arcade games to

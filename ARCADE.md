@@ -20,9 +20,10 @@ study was confirmed live, on real hardware, in the session this document was wri
 - [box art](#implemented-box-art) from the `MAME` thumbnail set.
 
 What has been seen on a real MiSTer: the diagnostic table and launching from it; the scan, the
-database it writes and the list it gives. The tab and the box art matching were built and
-checked on the host (the real screens rendered against a scratch library; the matching against
-the server's real listing) and get their first run on hardware with 0.2.0.
+database it writes and the list it gives; the Arcade tab and a completed run of the updated box
+art scraper. The later box-art matching audit is documented in [BOXART.md](BOXART.md); its
+checked-in miss list is from September 30, 2026, and does not include fetched/skipped/missing
+totals from the subsequent device run.
 
 Not built: telling HDD/CHD-based games apart ([Requirement 4](#requirements)), Manage Cores /
 Manage MRAs, DIP-switch editing, and backgrounds for Arcade. See [Open questions](#open-questions)
@@ -400,8 +401,9 @@ Arcade-specific code in any of those screens.
   the same `ArcadeScan` the diagnostic table uses — paced discovery of every volume's `_Arcade`
   at any depth, then parse and resolve core, ROM zip and CRCs for each `.mra` — and keeps an
   entry only when `mightWork()` says yes. The original plan listed every `.mra` and left the
-  judging to the table; in practice that gave a library of 6,400 entries of which a fraction
-  start, which is worse than no list. The table stays what explains *why* a game is missing.
+  judging to the table; in practice that gave a list of all 6,416 files across two drives,
+  including duplicates, of which only a fraction start. The table stays what explains *why* a
+  game is missing.
   - **Each game once.** A full copy on the card and another on a drive is normal, so entries are
     de-duplicated by their path below `_Arcade/`. `cores/`, `media/` and `_Organized/` are not
     walked (the last is the Arcade Organizer's tree of links to the same files).
@@ -450,16 +452,13 @@ open question settled the pragmatic way:
 - Each row's title is a stop of its own and the cursor starts there; Right steps onto the tiles;
   Back from a tile returns to the title before it leaves the tab (`App` asks
   `ArcadeScreen::wantsBack()`). Letter jump works in the Games row.
-- **Groups are plain typographic tiles** — name large inside, game count beneath — whatever the
-  presentation. That is this document's third candidate for the Boxart-large question, taken
-  because it needs nothing that does not exist. The preview rows list the biggest groups first;
-  the full list is alphabetical so the letter jump has something to work with.
+- **Groups are plain text entries, not game tiles** — each shows the group name and game count;
+  the focused entry uses the same blue underline as the tabs. Manufacturer and category entries
+  are alphabetical in both the preview rows and full lists.
 - Settings -> Show Arcade menu item, on by default; the tab only appears when the library holds
   Arcade games at all (`Library::arcadeSystem()`).
-- Rendered on the host with the real screens and a scratch library to check layout: three rows
-  fit a 1080p screen at once (tiles are 160 px against Home's 190 for that reason). The host
-  renderer uses the built-in typeface; the real one differs in glyph widths, so the layout has
-  margin rather than an exact fit. **Its first run on a real MiSTer is with 0.2.0.**
+- Rendered on the host with the real screens and a scratch library to check layout. The Arcade
+  tab has since been run on a real MiSTer.
 
 ### Implemented: box art
 
@@ -487,8 +486,9 @@ the server's real listing and the real library's names; the scrape itself runs o
 - Run it like any other system: Settings → Fetch box art.
 
 **Measured:** a full rebuild of the game database on the reference device — 58 systems, 11,352
-games of which 849 Arcade at the time (before the ROM search order fix below), the ROM check of 6,416 `.mra` files on two drives included — took
-2 min 29 s. That was not split by phase, so what the Arcade step alone costs is not known; it is
+games of which 849 Arcade at the time (before the ROM search order fix below), and a ROM check
+of 6,416 `.mra` files across two drives — about 3,200 titles represented on both volumes —
+took 2 min 29 s. That was not split by phase, so what the Arcade step alone costs is not known; it is
 paced (a few files per frame) for the same reason everything else in the scan is.
 
 **Known limits:** nothing tells an HDD/CHD-based game from one that starts unattended — Killer
@@ -780,13 +780,8 @@ it is there.
 
 ### Open question this decision adds
 
-**What do Boxart-large/Boxart-small mean for a manufacturer or category tile, which has no box
-art of its own?** Not settled. Candidates: drop those two presentations for these two views
-specifically (Grid/List/Compact only); show a representative game's art (whichever is
-alphabetically first, say) as a stand-in; or a plain generic tile regardless of presentation,
-same as this project's own console icons already stand in for a system with no box art. Worth
-deciding once the full Manufacturers/Categories screen is actually being built, not guessed at
-here.
+**Resolved:** manufacturer and category entries are not game tiles and have no box art. They use
+the same plain-text presentation regardless of the selected game view.
 
 ### This depends on Phase 2, not just Phase 1
 
@@ -832,7 +827,7 @@ The Arcade tab, freshly opened — cursor on the Games row's own title, the new 
 │    └────────┘ └────────┘ └────────┘ └────────┘ └────────┘                    │
 │                                                                                │
 ├──────────────────────────────────────────────────────────────────────────────┤
-│  A Open Games   ▶ Browse tiles   ▼ Next row   X Favorite   L2/R2 Letter      │
+│  A Open Games   ▶ Browse tiles   ▼ Next row   Hold X 2s Favorite   L2/R2     │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -899,7 +894,7 @@ tab preview) — an ordinary `GamesScreen`, filtered, with a breadcrumb saying s
 │   │  II    │  │        │  │        │  │        │  │        │  │        │     │
 │   └────────┘  └────────┘  └────────┘  └────────┘  └────────┘  └────────┘     │
 ├──────────────────────────────────────────────────────────────────────────────┤
-│  A Start   B Back   X Favorite   Y Cycle view   L2/R2 Letter                │
+│  A Start   B Back   Hold X 2s Favorite   Y Cycle view   L2/R2 Letter        │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -909,7 +904,8 @@ tab preview) — an ordinary `GamesScreen`, filtered, with a breadcrumb saying s
 
 - **Only working games are recorded**, not every `.mra`. The flow below says the parse step does
   "no core/ROM/CRC resolve, that stays the diagnostic screen's own job"; that was reversed after
-  the first real rebuild gave a 6,400-entry list of which a small fraction start.
+  the first real rebuild's all-MRA list included 6,416 files across two drives, including
+  duplicates, of which only a small fraction start.
 - The step **reuses `ArcadeScan` whole** — its paced discovery and its parse-and-resolve — rather
   than a second walk of its own inside `LibraryScan`.
 - Group spellings that differ in case or spacing are merged, and colliding file keys are
@@ -1112,7 +1108,8 @@ reapplying an already-fixed one.
 ### Open questions this decision adds
 
 - Real counts and timing for `ScanningArcade` against a library this size (10,500+ games,
-  6,400+ `.mra` files) — not measured; `ArcadeScan`'s own live-tested pacing is the only real
+  about 3,200 unique `.mra` titles (6,400+ files across two drives) — not measured;
+  `ArcadeScan`'s own live-tested pacing is the only real
   data point so far, and that included the resolve step this scan deliberately skips, so it is
   not a direct estimate either way.
 - Whether a few hundred small `Arcade-Manufacturer-*.tsv`/`Arcade-Category-*.tsv` files
@@ -1396,7 +1393,8 @@ always.
 ### Open questions this decision adds
 
 - Real download volume/time for a first full sync (621 MB of cores, 40.5 MB of MRAs, against
-  the library this session tested against — 10,500+ games, 6,400+ `.mra` files already
+  the library this session tested against — 10,500+ games, about 3,200 unique Arcade `.mra`
+  titles across two drives (6,400+ files) already
   installed) — not measured; `Update_All_MiSTer`'s own "~15 minutes the first time" is the one
   real data point so far, for its own, larger default selection.
 - Whether `ArcadeDistribution` should generalise beyond Arcade later (the same manifest covers
@@ -1457,8 +1455,8 @@ always.
    typographic tile, the same in every presentation. See [the tab](#implemented-the-arcade-tab).
 7. **Open: are MAME's `Named_Snaps` a good background** for Arcade? Not looked at; backgrounds
    are skipped for Arcade until they have been.
-8. **Open: the 201 games with no cover.** How many are genuine gaps in the thumbnail set and how
-   many are title differences between a `.mra` and MAME's name is unknown until the scraper's
-   `scrape-misses.txt` has been read from a real run.
+8. **The original 201 misses were audited.** The audit found additional title matches in the
+   Libretro index; see [BOXART.md](BOXART.md). A subsequent scrape was completed on the MiSTer,
+   though its summary totals are not recorded in this repository.
 9. **Open: how the Arcade step's cost scales** on a slower card or a bigger library than the
    reference one — unmeasured beyond the single full-rebuild figure above.

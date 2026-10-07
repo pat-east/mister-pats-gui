@@ -345,14 +345,13 @@ actually leave.
 with a click button), four face buttons, four shoulder buttons (L, R, L2, R2 — L2/R2 shown as
 the analogue trigger bars above if the pad reports them that way, as a digital light
 otherwise), Start, Select, and a Home/Guide button. This covers the large majority of pads
-someone is likely to plug in without any setup at all. The face buttons are drawn as a real
-diamond at the *physical* position each one actually reports (`BTN_NORTH`=top, `BTN_WEST`=left,
-`BTN_EAST`=right, `BTN_SOUTH`=bottom), labelled with the Xbox letter that belongs at that
-position (Y top, X left, B right, A bottom) — not the kernel's own `BTN_X`/`BTN_Y` aliases,
-which do not match a real Xbox pad's own silkscreen for the left/top pair. Getting this
-backwards is exactly what silently swapped X and Y for a real PS4 pad during a mapping run —
-see [The .map file](#the-map-file), and [Button mapping](#4-button-mapping) below for where the
-same distinction matters again and matters more.
+someone is likely to plug in without any setup at all. The face buttons are drawn in their
+physical Xbox-letter positions (Y top, X left, B right, A bottom). A freshly paired controller
+showed that this GUI receives `BTN_NORTH` from its physical left X button and `BTN_WEST` from
+its physical top Y button. The input-test display and GUI action mapping therefore treat
+those two raw codes in that order. The button-mapping wizard still captures whichever raw
+code the user presses for each physical position; its separate MiSTer `.map` slot order is
+described in [The .map file](#the-map-file) and [Button mapping](#4-button-mapping).
 
 **A "Sega layout" toggle for six-button pads (X/Y/Z top row, A/B/C bottom) was designed but is
 disabled for now**, on request, rather than left in half-finished — dropped cleanly instead of

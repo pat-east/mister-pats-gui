@@ -26,7 +26,7 @@ public:
     Color textPrimary  = Color::rgb(0xFFFFFF);
     Color textMuted    = Color::rgb(0x9AA4C0);
     Color warning      = Color::rgb(0xE06A5A);
-    Color favorite     = Color::rgb(0xFFC65C);
+    Color favorite     = Color::rgb(0x4C8DFF);
     Color shadow       = Color::rgb(0x000000);
 
     // Metrics, in design pixels
@@ -44,6 +44,8 @@ public:
     int sizeSmall() const { return px(15); }
     int sizeClock() const { return px(31); }
     int sizeTitle() const { return px(46); }
+    int sizeGameLabel() const { return regular_.usingTrueType() ? sizeBody() : px(16); }
+    int sizeGameDetail() const { return bold_.usingTrueType() ? sizeTitle() : px(32); }
 
 private:
     int width_;

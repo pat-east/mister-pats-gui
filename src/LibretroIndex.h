@@ -13,8 +13,9 @@ class Downloader;
 // against what is actually there. Building the remote filename from a local title instead
 // means reproducing libretro's escaping rules exactly, and being wrong silently.
 //
-// Matching is by normalised name — bracketed parts dropped, then letters and digits only.
-// "Super Mario Bros. 3 (USA) [!]" and "Super Mario Bros 3" both become "supermariobros3".
+// Matching starts with the normalised name — bracketed parts dropped, then letters and
+// digits only. A few exact-key variants cover known ROM-set naming differences when that
+// first lookup fails, without guessing from partial title similarity.
 // Measured against a real 1734-title PlayStation library: 91% of games find a cover.
 class LibretroIndex {
 public:
@@ -30,7 +31,7 @@ public:
     // is cached on the card rather than fetched per game.
     bool open(const std::string &platform, Downloader &downloader, const std::string &cacheDir);
 
-    // The server's filename for a title, or empty when nothing matches.
+    // The server's filename for a title, or empty when no exact or known variant matches.
     std::string match(const std::string &title) const;
 
     // The stricter lookup, for libraries where a bracketed part is the one thing that tells

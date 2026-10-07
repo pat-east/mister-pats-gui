@@ -6,8 +6,7 @@
 
 #include "Screen.h"
 
-// The home tab: what you reached for last and what you marked, as two horizontal rows.
-// Rows scroll sideways, the page scrolls down. Everything else lives under Games.
+// The home tab: a horizontal recent row followed by a scrollable favorites grid.
 class HomeScreen : public Screen {
 public:
     explicit HomeScreen(Context &context);
@@ -18,6 +17,7 @@ public:
     void render(Canvas &canvas, const Rect &area, bool fullRedraw) override;
     void handle(Action action) override;
     std::string hints() const override;
+    std::string favoritePath() const override;
     bool incremental() const override { return true; }
 
 private:
@@ -58,18 +58,20 @@ private:
     void launch();
     void toggleFavorite();
     void renderRow(Canvas &canvas, const Rect &area, Row &row, bool active);
+    void renderFavorites(Canvas &canvas, const Rect &body, int sectionY, const Metrics &m);
     bool rowChanged(const Row &row, bool active) const;
 
     // Asks the cache for whatever is currently visible in this row, independent of whether
     // the row is about to be repainted. Called every frame so a decode can still land and
     // finish on a resting screen — see the note above the call site.
     void requestImages(Row &row, int laneWidth);
+    void requestFavoriteImages(const Rect &body, int gridY, const Metrics &m);
 
     Context &context_;
     std::vector<Row> rows_;
     int activeRow_ = 0;
     int pageScroll_ = 0;
-    int rowHeight_ = 0;
+    int favoriteColumns_ = 1;
     int paintedPageScroll_ = -1;
     uint64_t paintedImages_ = 0;
 };

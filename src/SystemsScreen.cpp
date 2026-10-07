@@ -29,6 +29,21 @@ void SystemsScreen::refresh() {
     total_ = context_.library.systems().size();
     settleDelay_ = kSettleSeconds;
 
+    // The database catalog already contains only systems with games, and the Console Mode
+    // index can answer hasGames() from memory. Build the whole grid now, before the tab is
+    // shown. Keep the paced path only for an explicitly allowed live directory scan.
+    if (context_.library.usingDatabase() || !context_.library.scanningAllowed()) {
+        for (const GameSystem &system : context_.library.systems()) {
+            if (context_.library.hasGames(system) &&
+                !context_.hiddenSystems.contains(system.name)) {
+                systems_.push_back(&system);
+                focus_.push_back(0.0f);
+            }
+        }
+        scanned_ = total_;
+        settleDelay_ = 0.0f;
+    }
+
     paintedFocus_.clear();
     paintedScrollRow_ = -1;
     paintedCount_ = size_t(-1);
@@ -49,8 +64,6 @@ void SystemsScreen::scanStep(float deltaSeconds) {
         focus_.push_back(0.0f);
     }
 
-    if (scanned_ >= total_)
-        std::printf("systems: %zu with games\n", systems_.size());
 }
 
 void SystemsScreen::requestImages(int first, int last) {

@@ -43,6 +43,10 @@ public:
     static bool looksLikeGame(const std::string &filename,
                               const std::vector<std::string> &extensions);
 
+    // Known boot images, BIOS files and utilities that have ROM-like extensions.
+    // `filename` may be a basename or a full path; matching is scoped to the system.
+    static bool isSystemFile(const std::string &systemKey, const std::string &filename);
+
     // Directories that live inside a system's folder but never hold a game.
     static bool isIgnoredDirectory(const std::string &name);
 

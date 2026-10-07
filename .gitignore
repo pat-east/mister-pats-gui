@@ -25,3 +25,7 @@ poc/startscreen
 
 # Claude Code session state — local to whoever is running it, not part of the project.
 .claude/
+
+# Local release-planning notes and scrape audit output.
+VNEXT.md
+reports/

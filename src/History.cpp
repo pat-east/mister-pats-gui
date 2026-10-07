@@ -85,7 +85,6 @@ void History::mergeConsoleModeState() {
 
     // The state file does not name the system; the library resolves it from the path later.
     entries_.insert(entries_.begin(), HistoryEntry{std::string(), resume, basenameOf(resume)});
-    std::printf("history: picked up ConsoleMode resume path\n");
 }
 
 bool History::save() const {

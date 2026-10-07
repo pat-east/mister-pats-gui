@@ -236,8 +236,6 @@ void GameDatabase::resolveRoots(const std::vector<Root> &recorded) {
 
             roots_[i] = candidate;
             rootsMoved_ = true;
-            std::printf("gamesdb: root moved, %s is now %s\n", root.path.c_str(),
-                        candidate.c_str());
 
             char line[256];
             std::snprintf(line, sizeof(line), "root moved: %s is now %s (matched by %s)",
@@ -248,8 +246,6 @@ void GameDatabase::resolveRoots(const std::vector<Root> &recorded) {
 
         if (roots_[i].empty()) {
             missingRoots_.push_back(root.path);
-            std::printf("gamesdb: root %s not found (looked for %s on every mount point)\n",
-                        root.path.c_str(), root.probe.c_str());
 
             char line[256];
             std::snprintf(line, sizeof(line),
@@ -322,8 +318,6 @@ bool GameDatabase::load() {
         if (system.count) systems_.push_back(system);
     }
 
-    std::printf("gamesdb: %zu systems, %zu games, %zu roots%s\n", systems_.size(), totalGames(),
-                roots_.size(), rootsMoved_ ? " (a root moved)" : "");
 
     char summary[160];
     std::snprintf(summary, sizeof(summary), "loaded: %zu systems, %zu games, %zu roots%s",
@@ -557,7 +551,6 @@ bool GameDatabase::finishCommit() {
     std::vector<Root> recorded = writing_;
     resolveRoots(recorded);
 
-    std::printf("gamesdb: written, %zu systems, %zu games\n", systems_.size(), totalGames());
 
     char summary[160];
     std::snprintf(summary, sizeof(summary), "scan written: %zu systems, %zu games",

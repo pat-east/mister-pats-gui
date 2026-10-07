@@ -32,8 +32,6 @@ void ConsoleGuard::acquire() {
         if (ioctl(fd_, KDSETMODE, KD_GRAPHICS) == 0) {
             previousMode_ = int(previous);
             changed_ = true;
-            std::printf("console: %s in graphics mode (was %s)\n", path,
-                        previous == KD_GRAPHICS ? "graphics" : "text");
             return;
         }
 
@@ -41,7 +39,6 @@ void ConsoleGuard::acquire() {
         fd_ = -1;
     }
 
-    std::printf("console: no terminal could be switched, text may bleed through\n");
 }
 
 void ConsoleGuard::release() {

@@ -37,8 +37,8 @@ private:
     int cursor_ = 0;
     int scrollRow_ = 0;
 
-    // The library is read one directory per frame after a short settling delay:
-    // a burst of reads right after boot can pull enough current to drop a USB drive.
+    // Only an explicitly requested live directory scan uses this paced path. The saved
+    // database and Console Mode index are read immediately in refresh().
     void scanStep(float deltaSeconds);
     size_t scanned_ = 0;
     size_t total_ = 0;

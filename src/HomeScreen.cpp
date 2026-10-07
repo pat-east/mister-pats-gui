@@ -32,16 +32,16 @@ void HomeScreen::refresh() {
         const GameSystem *system = entry.system.empty()
                                        ? context_.library.systemForPath(entry.path)
                                        : context_.library.findSystem(entry.system);
-        if (!system) continue;
+        if (!system || Library::isSystemFile(*system, entry.path)) continue;
         recent.items.push_back({system, Library::makeGame(*system, entry.path)});
     }
 
     Row favorites;
     favorites.title = "Favorites";
-    favorites.emptyHint = "Press X on a game to mark it";
+    favorites.emptyHint = "Hold X for 2s on a game to mark it";
     for (const FavoriteEntry &entry : context_.favorites.entries()) {
         const GameSystem *system = context_.library.findSystem(entry.system);
-        if (!system) continue;
+        if (!system || Library::isSystemFile(*system, entry.path)) continue;
         favorites.items.push_back({system, Library::makeGame(*system, entry.path)});
     }
     // Unlike Recently played, where the order itself is the information, favourites carry
@@ -61,8 +61,6 @@ void HomeScreen::refresh() {
     paintedPageScroll_ = -1;
     paintedImages_ = uint64_t(-1);
 
-    std::printf("home: %zu recent, %zu favorites\n", rows_[0].items.size(),
-                rows_[1].items.size());
 }
 
 HomeScreen::Metrics HomeScreen::metrics() const {
@@ -93,6 +91,11 @@ const HomeScreen::Item *HomeScreen::current() const {
     return &row.items[size_t(std::min(std::max(row.cursor, 0), int(row.items.size()) - 1))];
 }
 
+std::string HomeScreen::favoritePath() const {
+    const Item *item = current();
+    return item ? item->game.path : std::string();
+}
+
 void HomeScreen::launch() {
     const Item *item = current();
     if (!item) return;
@@ -115,13 +118,13 @@ void HomeScreen::toggleFavorite() {
     context_.notify(was ? item->game.name + " removed from favorites"
                         : item->game.name + " added to favorites");
 
-    // The favourites row is one of the rows on screen, so rebuild it in place.
+    // Rebuild the favorites grid in place.
     Row &favorites = rows_[1];
     const int previous = favorites.cursor;
     favorites.items.clear();
     for (const FavoriteEntry &entry : context_.favorites.entries()) {
         const GameSystem *system = context_.library.findSystem(entry.system);
-        if (!system) continue;
+        if (!system || Library::isSystemFile(*system, entry.path)) continue;
         favorites.items.push_back({system, Library::makeGame(*system, entry.path)});
     }
     std::sort(favorites.items.begin(), favorites.items.end(), [](const Item &a, const Item &b) {
@@ -137,16 +140,32 @@ void HomeScreen::handle(Action action) {
 
     switch (action) {
     case Action::Left:
-        if (row.cursor > 0) --row.cursor;
+        if (activeRow_ == 0) {
+            if (row.cursor > 0) --row.cursor;
+        } else if (row.cursor % favoriteColumns_ > 0) {
+            --row.cursor;
+        }
         break;
     case Action::Right:
-        if (row.cursor + 1 < int(row.items.size())) ++row.cursor;
+        if (row.cursor + 1 < int(row.items.size()) &&
+            (activeRow_ == 0 || row.cursor % favoriteColumns_ + 1 < favoriteColumns_))
+            ++row.cursor;
         break;
     case Action::Up:
-        if (activeRow_ > 0) --activeRow_;
+        if (activeRow_ == 1) {
+            if (row.cursor >= favoriteColumns_) row.cursor -= favoriteColumns_;
+            else activeRow_ = 0;
+        }
         break;
     case Action::Down:
-        if (activeRow_ + 1 < int(rows_.size())) ++activeRow_;
+        if (activeRow_ == 0) {
+            activeRow_ = 1;
+        } else if (row.cursor + favoriteColumns_ < int(row.items.size())) {
+            row.cursor += favoriteColumns_;
+        } else if (row.cursor / favoriteColumns_ <
+                   (int(row.items.size()) - 1) / favoriteColumns_) {
+            row.cursor = int(row.items.size()) - 1;
+        }
         break;
     case Action::Confirm:
         launch();
@@ -291,6 +310,83 @@ void HomeScreen::requestImages(Row &row, int laneWidth) {
     }
 }
 
+void HomeScreen::requestFavoriteImages(const Rect &body, int gridY, const Metrics &m) {
+    Row &favorites = rows_[1];
+    if (favorites.items.empty()) return;
+
+    const int step = m.tileHeight + m.caption + context_.theme.gap();
+    const int firstRow = std::max(0, (body.y - gridY) / step - 1);
+    const int lastRow = std::min((int(favorites.items.size()) + favoriteColumns_ - 1) /
+                                     favoriteColumns_,
+                                 (body.bottom() - gridY) / step + 2);
+
+    // Give the selected cover first access to the per-frame decode budget.
+    if (activeRow_ == 1) {
+        const Item &item = favorites.items[size_t(favorites.cursor)];
+        context_.images.get(item.game.boxart, item.game.boxartFallback, m.tileWidth,
+                            m.tileHeight);
+    }
+    for (int i = firstRow * favoriteColumns_;
+         i < std::min(int(favorites.items.size()), lastRow * favoriteColumns_); ++i) {
+        const Item &item = favorites.items[size_t(i)];
+        context_.images.get(item.game.boxart, item.game.boxartFallback, m.tileWidth,
+                            m.tileHeight);
+    }
+}
+
+void HomeScreen::renderFavorites(Canvas &canvas, const Rect &body, int sectionY,
+                                 const Metrics &m) {
+    Theme &theme = context_.theme;
+    Row &favorites = rows_[1];
+    const int titleHeight = theme.px(40);
+    const int gridY = sectionY + titleHeight + m.growY;
+    const int step = m.tileHeight + m.caption + theme.gap();
+
+    theme.bold().draw(canvas, body.x, sectionY, favorites.title, theme.sizeBody(),
+                      activeRow_ == 1 ? theme.textPrimary : theme.textMuted.withAlpha(150));
+    if (!favorites.items.empty()) {
+        char count[32];
+        std::snprintf(count, sizeof(count), "%d", int(favorites.items.size()));
+        const int width = theme.regular().measure(count, theme.sizeSmall());
+        theme.regular().draw(canvas, body.right() - width, sectionY + theme.px(4), count,
+                             theme.sizeSmall(), theme.textMuted.withAlpha(120));
+    } else {
+        theme.regular().draw(canvas, body.x, sectionY + titleHeight + theme.px(10),
+                             favorites.emptyHint, theme.sizeSmall(),
+                             theme.textMuted.withAlpha(110));
+        return;
+    }
+
+    const int firstRow = std::max(0, (body.y - gridY) / step - 1);
+    const int lastRow = std::min((int(favorites.items.size()) + favoriteColumns_ - 1) /
+                                     favoriteColumns_,
+                                 (body.bottom() - gridY) / step + 2);
+    const int first = firstRow * favoriteColumns_;
+    const int last = std::min(int(favorites.items.size()), lastRow * favoriteColumns_);
+
+    for (int pass = 0; pass < 2; ++pass) {
+        for (int i = first; i < last; ++i) {
+            const bool isCursor = activeRow_ == 1 && i == favorites.cursor;
+            if ((pass == 0) == isCursor) continue;
+
+            const Item &item = favorites.items[size_t(i)];
+            const Rect frame{body.x + m.growX + (i % favoriteColumns_) *
+                                  (m.tileWidth + theme.gap()),
+                             gridY + (i / favoriteColumns_) * step, m.tileWidth,
+                             m.tileHeight + m.caption};
+
+            Tile::Content content;
+            content.label = item.game.name;
+            content.sublabel = item.system->name;
+            content.coverArt = true;
+            content.favorite = true;
+            content.image = context_.images.get(item.game.boxart, item.game.boxartFallback,
+                                                m.tileWidth, m.tileHeight);
+            Tile::draw(canvas, theme, frame, content, favorites.focus[size_t(i)]);
+        }
+    }
+}
+
 bool HomeScreen::rowChanged(const Row &row, bool active) const {
     if (row.paintedScroll != row.scroll || row.paintedCount != row.items.size() ||
         row.paintedActive != active || row.paintedFocus.size() != row.focus.size())
@@ -312,21 +408,40 @@ void HomeScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
 
     const Rect body{area.x, area.y + headerHeight, area.w, area.h - headerHeight};
 
-    rowHeight_ = metrics().rowHeight;
+    const Metrics m = metrics();
+    const int recentHeight = rows_[0].items.empty() ? theme.px(66) : m.rowHeight;
+    const int laneWidth = body.w - 2 * m.growX;
+    favoriteColumns_ = std::max(1, (laneWidth + theme.gap()) /
+                                      (m.tileWidth + theme.gap()));
+    const int favoriteRows = (int(rows_[1].items.size()) + favoriteColumns_ - 1) /
+                             favoriteColumns_;
+    const int favoriteHeight = rows_[1].items.empty()
+                                   ? theme.px(66)
+                                   : theme.px(40) + 2 * m.growY +
+                                         favoriteRows * (m.tileHeight + m.caption + theme.gap());
+    const int contentHeight = recentHeight + favoriteHeight;
 
-    // Keep the active row fully visible; the page slides by whole rows.
-    const int visibleRows = std::max(1, body.h / rowHeight_);
-    if (activeRow_ < pageScroll_) pageScroll_ = activeRow_;
-    if (activeRow_ >= pageScroll_ + visibleRows) pageScroll_ = activeRow_ - visibleRows + 1;
-    pageScroll_ = std::min(std::max(0, pageScroll_),
-                           std::max(0, int(rows_.size()) - visibleRows));
+    // Scroll the entire Home page until the selected grid tile is fully visible.
+    if (activeRow_ == 0) {
+        pageScroll_ = 0;
+    } else if (!rows_[1].items.empty()) {
+        const int step = m.tileHeight + m.caption + theme.gap();
+        const int top = recentHeight + theme.px(40) +
+                        (rows_[1].cursor / favoriteColumns_) * step;
+        const int bottom = top + step + m.growY;
+        if (top < pageScroll_) pageScroll_ = top;
+        if (bottom > pageScroll_ + body.h) pageScroll_ = bottom - body.h;
+    }
+    pageScroll_ = std::min(std::max(0, pageScroll_), std::max(0, contentHeight - body.h));
 
     // Asking here, before anything decides whether to repaint, is what keeps artwork
     // loading on a screen that has otherwise gone still: the request (and any decode it
     // triggers) used to live inside renderRow(), which only ran when something had
     // already changed — so once the focus animation settled, nothing ever asked again,
     // and any picture that missed the decode budget by then stayed missing forever.
-    for (Row &row : rows_) requestImages(row, body.w);
+    requestImages(rows_[0], body.w);
+    requestFavoriteImages(body, body.y + recentHeight - pageScroll_ + theme.px(40) + m.growY,
+                          m);
 
     // Taken after that request, so a decode it just triggered still counts as a change
     // this frame rather than waiting until the next one.
@@ -342,23 +457,21 @@ void HomeScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
 
     if (!anyChange) return;
 
-    // A focused tile grows and casts a shadow beyond its own row, so restoring one strip
-    // would leave debris in the neighbour. With three rows, repainting the content area is
-    // simpler and provably correct.
+    // Focus growth can reach the next section, so repaint the entire body.
     if (context_.background) canvas.restoreFrom(*context_.background, body);
 
     canvas.pushClip(body);
 
-    int y = body.y - pageScroll_ * rowHeight_;
+    const Rect recentArea{body.x, body.y - pageScroll_, body.w,
+                          recentHeight - theme.gap()};
+    if (recentArea.bottom() >= body.y && recentArea.y <= body.bottom())
+        renderRow(canvas, recentArea, rows_[0], activeRow_ == 0);
+
+    const int favoriteY = body.y + recentHeight - pageScroll_;
+    if (favoriteY + favoriteHeight >= body.y && favoriteY <= body.bottom())
+        renderFavorites(canvas, body, favoriteY, m);
+
     for (size_t r = 0; r < rows_.size(); ++r) {
-        // An empty row shrinks to its heading, so it does not waste a screenful.
-        const int height = rows_[r].items.empty() ? theme.px(66) : rowHeight_;
-        const Rect rowArea{body.x, y, body.w, height - theme.gap()};
-        y += height;
-
-        if (rowArea.bottom() >= body.y && rowArea.y <= body.bottom())
-            renderRow(canvas, rowArea, rows_[r], int(r) == activeRow_);
-
         Row &row = rows_[r];
         row.paintedFocus = row.focus;
         row.paintedScroll = row.scroll;
@@ -372,5 +485,5 @@ void HomeScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
 }
 
 std::string HomeScreen::hints() const {
-    return "A Start   X Favorite   L2/R2 Letter   D-pad Navigate";
+    return "A Start   Hold X 2s Favorite   L2/R2 Letter   D-pad Navigate";
 }

@@ -78,6 +78,10 @@ public:
     // Button legend for the bottom bar.
     virtual std::string hints() const = 0;
 
+    // The selected game's path, if this screen can mark it as a favorite. App uses it
+    // to keep a three-second hold tied to the same game from press to completion.
+    virtual std::string favoritePath() const { return {}; }
+
     // True when the screen restores the background under whatever it redraws.
     // Screens that return false get their whole area reset before rendering.
     virtual bool incremental() const { return false; }

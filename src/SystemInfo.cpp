@@ -1,8 +1,11 @@
 #include "SystemInfo.h"
 
+#include <arpa/inet.h>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <ifaddrs.h>
+#include <net/if.h>
 #include <sys/statvfs.h>
 
 #include "GameDatabase.h"
@@ -20,6 +23,30 @@ uint64_t readMemoryValue(const std::string &line) {
     const size_t colon = line.find(':');
     if (colon == std::string::npos) return 0;
     return uint64_t(std::strtoull(line.c_str() + colon + 1, nullptr, 10)) * 1024;   // kB
+}
+
+void readNetworkAddresses(std::string &ethernet, std::string &wifi) {
+    ethernet = "Offline";
+    wifi = "Offline";
+
+    ifaddrs *list = nullptr;
+    if (getifaddrs(&list) != 0) return;
+
+    for (ifaddrs *it = list; it; it = it->ifa_next) {
+        if (!it->ifa_addr || it->ifa_addr->sa_family != AF_INET ||
+            (it->ifa_flags & IFF_LOOPBACK) || !(it->ifa_flags & IFF_UP))
+            continue;
+
+        char address[INET_ADDRSTRLEN] = {};
+        const auto *ipv4 = reinterpret_cast<const sockaddr_in *>(it->ifa_addr);
+        if (!inet_ntop(AF_INET, &ipv4->sin_addr, address, sizeof(address))) continue;
+
+        // Linux wireless interfaces use the "wl" prefix (wlan0, wlp2s0, wlx...).
+        std::string &slot = std::strncmp(it->ifa_name, "wl", 2) == 0 ? wifi : ethernet;
+        if (slot == "Offline") slot = address;
+    }
+
+    freeifaddrs(list);
 }
 
 } // namespace
@@ -114,6 +141,8 @@ void SystemInfo::readOnce() {
         in >> seconds;
         uptime_ = long(seconds);
     }
+
+    readNetworkAddresses(ethernetAddress_, wifiAddress_);
 
     volumes_.clear();
     for (const std::string &mount : GameDatabase::mountPoints()) {

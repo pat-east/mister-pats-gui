@@ -39,7 +39,6 @@ private:
     void ensureSorted();
     void rebuildVisible();
     void jumpLetter(int direction);
-    void jumpPage(int direction);
     void launch();
     void renderTable(Canvas &canvas, const Rect &area);
 
@@ -56,5 +55,4 @@ private:
     std::vector<float> focus_;           // one per `visible_` entry
     int cursor_ = 0;                     // index into `visible_`
     int scroll_ = 0;
-    int lastVisibleRows_ = 1;            // rows the table last actually fit, for L2/R2 paging
 };

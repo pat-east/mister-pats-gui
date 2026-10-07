@@ -117,6 +117,7 @@ std::vector<std::string> LibraryScan::scanOne(const CatalogEntry &system) const 
     while (dirent *entry = readdir(d)) {
         const std::string name = entry->d_name;
         if (name.empty() || name[0] == '.') continue;
+        if (SystemCatalog::isSystemFile(system.key, name)) continue;
 
         const std::string full = system.dir + "/" + name;
 
@@ -152,7 +153,8 @@ std::vector<std::string> LibraryScan::scanOne(const CatalogEntry &system) const 
 
             const std::string full = sub + "/" + name;
             if (isDirectory(full)) continue;
-            if (SystemCatalog::looksLikeGame(name, system.extensions)) games.push_back(full);
+            if (SystemCatalog::looksLikeGame(name, system.extensions) &&
+                !SystemCatalog::isSystemFile(system.key, name)) games.push_back(full);
         }
         closedir(inner);
     }

@@ -14,6 +14,7 @@ enum class Action {
     Right,
     Confirm,
     Back,
+    FaceXPress, // short X press for controller-management actions
     ToggleFavorite,
     CycleView,
     TabPrev,
@@ -29,6 +30,7 @@ enum class Action {
 // the same presses, and rescanned periodically because wireless pads reappear as new nodes.
 class Input {
 public:
+    static constexpr int kFavoriteHoldMs = 2000;
     ~Input();
 
     // Exclusive reading keeps other readers out — including the MiSTer binary, which
@@ -40,6 +42,12 @@ public:
 
     // Waits up to `timeoutMs` and returns everything that happened, repeats included.
     std::vector<Action> poll(int timeoutMs);
+
+    // X/F produces ToggleFavorite only after a continuous two-second hold.
+    // A different button, a selection change, or releasing early cancels it.
+    bool favoriteHoldActive() const;
+    float favoriteHoldProgress() const;
+    void cancelFavoriteHold();
 
     // Hands the devices back, so a launched core receives input instead of us.
     void releaseAll();
@@ -118,6 +126,11 @@ private:
     Action heldDirection_ = Action::None;
     int64_t heldSince_ = 0;
     int64_t lastRepeat_ = 0;
+
+    int favoriteDeviceIndex_ = -1;
+    int64_t favoriteSince_ = 0;
+    bool favoriteTriggered_ = false;
+    bool favoriteCanceled_ = false;
 };
 
 int64_t nowMs();

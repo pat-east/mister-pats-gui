@@ -157,14 +157,6 @@ void ArcadeGamesScreen::jumpLetter(int direction) {
     context_.notify(letter == '#' ? std::string("0–9") : std::string(1, letter), 1.2f);
 }
 
-void ArcadeGamesScreen::jumpPage(int direction) {
-    if (visible_.empty()) return;
-
-    const int count = int(visible_.size());
-    const int step = std::max(1, lastVisibleRows_);
-    cursor_ = std::min(std::max(0, cursor_ + direction * step), count - 1);
-}
-
 void ArcadeGamesScreen::launch() {
     if (cursor_ < 0 || cursor_ >= int(visible_.size())) return;
 
@@ -186,17 +178,11 @@ void ArcadeGamesScreen::handle(Action action) {
     case Action::Down:
         if (cursor_ + 1 < int(visible_.size())) ++cursor_;
         break;
-    case Action::TabPrev:
+    case Action::JumpPrev:
         jumpLetter(-1);
         break;
-    case Action::TabNext:
-        jumpLetter(1);
-        break;
-    case Action::JumpPrev:
-        jumpPage(-1);
-        break;
     case Action::JumpNext:
-        jumpPage(1);
+        jumpLetter(1);
         break;
     case Action::Confirm:
         launch();
@@ -294,7 +280,6 @@ void ArcadeGamesScreen::renderTable(Canvas &canvas, const Rect &area) {
                     area.h - headerRowHeight - theme.px(4)};
     const int rowHeight = theme.px(38);
     const int visibleRows = std::max(1, list.h / rowHeight);
-    lastVisibleRows_ = visibleRows;
 
     if (cursor_ < scroll_) scroll_ = cursor_;
     if (cursor_ >= scroll_ + visibleRows) scroll_ = cursor_ - visibleRows + 1;
@@ -352,7 +337,7 @@ std::string ArcadeGamesScreen::hints() const {
 
     char buffer[112];
     std::snprintf(buffer, sizeof(buffer),
-                 "A Start   Up/Down Row   LB/RB Letter   L2/R2 Page   Y Filter: %s   B Back",
+                 "A Start   Up/Down Row   L2/R2 Letter   Y Filter: %s   B Back",
                  filterLabel(filter_));
     return buffer;
 }

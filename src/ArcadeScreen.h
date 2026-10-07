@@ -36,6 +36,7 @@ public:
     void render(Canvas &canvas, const Rect &area, bool fullRedraw) override;
     void handle(Action action) override;
     std::string hints() const override;
+    std::string favoritePath() const override;
 
     // The kind of rows this screen builds, worth testing without a canvas.
     size_t rowCount() const { return rows_.size(); }

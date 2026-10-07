@@ -189,7 +189,7 @@ void ControllersScreen::handleListAction(Action action) {
         if (cursor_ == rowCount && bluetoothAvailable_) enterBluetooth();
         else if (selectedRow()) enterInputTest();
         break;
-    case Action::ToggleFavorite: // physical X — deadzone
+    case Action::FaceXPress: // physical X — deadzone needs no hold
         if (const Row *row = selectedRow()) {
             int32_t lo, hi;
             if (input_.absInfo(currentSlot(*row), ABS_X, lo, hi)) enterDeadzone();
@@ -457,13 +457,8 @@ void ControllersScreen::renderInputTest(Canvas &canvas, const Rect &area) {
     drawButton(body.x, y + theme.px(92), colWidth, "D-pad Left", dpadLeft);
     drawButton(body.x, y + theme.px(138), colWidth, "D-pad Right", dpadRight);
 
-    // Face buttons — a real diamond, at the position this pad's own driver actually reports
-    // (BTN_NORTH=top, BTN_WEST=left, BTN_EAST=right, BTN_SOUTH=bottom), labelled with the
-    // Xbox letter that belongs at each *physical* position (Y top, X left, B right, A
-    // bottom) — not the kernel's own BTN_X/BTN_Y aliases, which do not match a real Xbox
-    // pad's own silkscreen for the left/top pair. Getting this backwards is exactly what
-    // made a captured mapping silently swap X and Y on real hardware — see CONTROLLER.md,
-    // "The .map file".
+    // Label the physical Xbox positions. This controller reports BTN_NORTH for its left
+    // X button and BTN_WEST for its top Y button; use the same mapping as Input.
     const int faceX = body.x + colWidth + gap;
     const int diamondCx = faceX + colWidth + gap / 2;
     const int diamondCy = y + theme.px(100);
@@ -475,8 +470,8 @@ void ControllersScreen::renderInputTest(Canvas &canvas, const Rect &area) {
         theme.regular().drawCentered(canvas, frame, label, theme.sizeSmall(),
                                      pressed ? theme.textPrimary : theme.textMuted);
     };
-    drawFaceButton(diamondCx, diamondCy - diamondR, "Y", input_.keyState(slot, BTN_NORTH));
-    drawFaceButton(diamondCx - diamondR, diamondCy, "X", input_.keyState(slot, BTN_WEST));
+    drawFaceButton(diamondCx, diamondCy - diamondR, "Y", input_.keyState(slot, BTN_WEST));
+    drawFaceButton(diamondCx - diamondR, diamondCy, "X", input_.keyState(slot, BTN_NORTH));
     drawFaceButton(diamondCx + diamondR, diamondCy, "B", input_.keyState(slot, BTN_EAST));
     drawFaceButton(diamondCx, diamondCy + diamondR, "A", input_.keyState(slot, BTN_SOUTH));
 

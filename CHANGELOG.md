@@ -5,6 +5,42 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-10-07
+
+### Added
+
+- **Networking details in Settings** — shows the current Ethernet and Wi-Fi IPv4 addresses.
+- **A box art miss audit tool** — compares missed titles with the Libretro thumbnail index.
+
+### Changed
+
+- **Arcade group browsing** — manufacturer and category previews are alphabetical and use
+  simple text entries with game counts instead of game-style tiles.
+- **Box art matching** — recognizes more regional, subtitle, series-name, and catalogue-title
+  variations while leaving ambiguous matches unresolved; Arcade titles retain revision-aware
+  exact matching.
+- **Favorites** — adding or removing a favorite now requires holding X for two seconds, with a
+  progress indicator and cancellation if the selection changes.
+- **Font fallback sizing** — the built-in bitmap typeface uses smaller, proportional sizing;
+  game labels and details adapt when Akrobat is unavailable.
+- **Status-bar spacing** — separates the date from the clock and the IP address from the
+  network label.
+- **Console output** — removes routine startup and shutdown messages while retaining the
+  persistent debug log and error output.
+
+### Fixed
+
+- **System files mistaken for games** — known boot media, BIOS entries, and MiSTer utilities
+  are excluded from game listings, favorites, and scraping.
+- **Controller diagrams** — corrects the displayed physical positions of the X and Y buttons.
+
+### Verified
+
+- **Font fallback on MiSTer** — tested with both Akrobat files absent; the interface remains
+  usable with the built-in typeface. Akrobat was restored after the test.
+- **Updated box art scraper on MiSTer** — a scrape was completed; see [BOXART.md](BOXART.md)
+  for the available audit data and its limits.
+
 ## [0.2.0] - 2026-09-30
 
 Arcade. Until now this GUI only knew systems that have one directory of games and one core;

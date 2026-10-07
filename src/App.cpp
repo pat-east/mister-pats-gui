@@ -23,7 +23,6 @@ bool App::initialize(const Options &options) {
         DebugLog::error("could not open the framebuffer, giving up");
         return false;
     }
-    std::printf("framebuffer: %s\n", framebuffer_.describe().c_str());
     DebugLog::info("framebuffer: " + framebuffer_.describe());
 
     canvas_ = std::make_unique<Canvas>(framebuffer_.width(), framebuffer_.height());
@@ -239,6 +238,12 @@ void App::toggleGamesTab() {
 
 bool App::arcadeTabShown() const {
     return preferences_.showArcadeTab() && library_.arcadeSystem() != nullptr;
+}
+
+bool App::tabNavigationAvailable() const {
+    // These screens consume input before the global tab actions in dispatch().
+    return !context_->errorActive && !scanActive_ && !visibilityActive_ &&
+           !controllersActive_ && !arcadeGamesActive_ && !arcadeSettingsActive_;
 }
 
 std::vector<Tab> App::visibleTabs() const {
@@ -461,11 +466,32 @@ void App::renderBottomBar(const Rect &area) {
     Theme &theme = *theme_;
     Canvas &canvas = *canvas_;
 
+    const bool favoriteHolding = input_.favoriteHoldActive() &&
+                                 favoriteHoldScreen_ == activeScreen() &&
+                                 !favoriteHoldPath_.empty();
     const std::string hints = activeScreen()->hints();
     const int y = area.y + (area.h - theme.regular().lineHeight(theme.sizeSmall())) / 2;
 
-    theme.regular().draw(canvas, area.x + theme.marginX(), y, hints, theme.sizeSmall(),
-                         theme.textMuted.withAlpha(110));
+    if (favoriteHolding) {
+        const bool removing = favorites_.contains(favoriteHoldPath_);
+        const std::string label = removing ? "Hold X for 2s to remove favorite" :
+                                             "Hold X for 2s to add favorite";
+        const int x = area.x + theme.marginX();
+        theme.bold().draw(canvas, x, area.y + theme.px(8), "*", theme.sizeBody(),
+                          theme.favorite);
+        theme.regular().draw(canvas, x + theme.px(24), area.y + theme.px(9), label,
+                             theme.sizeSmall(), theme.textPrimary);
+
+        const int barWidth = std::min(theme.px(480), area.w / 2);
+        const Rect track{x, area.bottom() - theme.px(16), barWidth, theme.px(6)};
+        canvas.fillRoundedRect(track, theme.px(3), theme.surfaceHi);
+        const int filled = std::max(1, int(barWidth * input_.favoriteHoldProgress()));
+        canvas.fillRoundedRect({track.x, track.y, filled, track.h}, theme.px(3),
+                               theme.favorite);
+    } else {
+        theme.regular().draw(canvas, area.x + theme.marginX(), y, hints, theme.sizeSmall(),
+                             theme.textMuted.withAlpha(110));
+    }
 
     // Small and out of the way in the corner — a build identifier for bug reports, not
     // something meant to draw the eye. A newer release found on GitHub (see UpdateCheck,
@@ -479,7 +505,7 @@ void App::renderBottomBar(const Rect &area) {
                          updateCheck_.available() ? theme.accent.withAlpha(200)
                                                    : theme.textMuted.withAlpha(90));
 
-    if (context_->messageTimer > 0.0f && !context_->message.empty()) {
+    if (!favoriteHolding && context_->messageTimer > 0.0f && !context_->message.empty()) {
         // Sits to the left of the version string so the two never overlap.
         const int width = theme.regular().measure(context_->message, theme.sizeSmall());
         const uint8_t alpha = uint8_t(std::min(1.0f, context_->messageTimer) * 235);
@@ -533,8 +559,43 @@ int App::run() {
 
         const bool suppressActions = controllersActive_ && controllersScreen_->wantsRawInput();
         std::vector<Action> actions = input_.poll(kTargetFrameMs);
-        if (!suppressActions)
-            for (Action action : actions) dispatch(action);
+        if (!suppressActions) {
+            if (input_.favoriteHoldActive()) {
+                Screen *screen = activeScreen();
+                const std::string path = screen->favoritePath();
+                if (path.empty() ||
+                    (favoriteHoldScreen_ &&
+                     (favoriteHoldScreen_ != screen || favoriteHoldPath_ != path))) {
+                    input_.cancelFavoriteHold();
+                } else if (!favoriteHoldScreen_) {
+                    favoriteHoldScreen_ = screen;
+                    favoriteHoldPath_ = path;
+                }
+            }
+
+            for (Action action : actions) {
+                if (action == Action::ToggleFavorite) {
+                    // The input layer emits this only after 2 seconds. Check the exact
+                    // selected path again before a removal can happen.
+                    if (favoriteHoldScreen_ == activeScreen() &&
+                        !favoriteHoldPath_.empty() &&
+                        favoriteHoldPath_ == activeScreen()->favoritePath())
+                        dispatch(action);
+                } else {
+                    dispatch(action);
+                    if (favoriteHoldScreen_ &&
+                        (favoriteHoldScreen_ != activeScreen() ||
+                         favoriteHoldPath_ != activeScreen()->favoritePath()))
+                        input_.cancelFavoriteHold();
+                }
+            }
+        } else {
+            input_.cancelFavoriteHold();
+        }
+        if (!input_.favoriteHoldActive()) {
+            favoriteHoldScreen_ = nullptr;
+            favoriteHoldPath_.clear();
+        }
         if (!running_) break;
 
         // A core was started: hand the devices and the console straight back.
@@ -597,7 +658,8 @@ int App::run() {
             canvas_->restoreFrom(*background_, top);
             canvas_->restoreFrom(*background_, bottom);
         }
-        topBar_.render(*canvas_, theme, top, tab_, preferences_.showGamesTab(), arcadeTabShown());
+        topBar_.render(*canvas_, theme, top, tab_, preferences_.showGamesTab(), arcadeTabShown(),
+                       tabNavigationAvailable());
         renderBottomBar(bottom);
         const int64_t t2 = nowMs();
 
@@ -636,6 +698,5 @@ int App::run() {
     if (!options_.dumpPath.empty()) writeCanvas(options_.dumpPath);
 
     console_.release();
-    std::printf("app: stopped\n");
     return 0;
 }

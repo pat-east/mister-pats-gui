@@ -115,7 +115,6 @@ artificial backdrops, every game brings its own.
 `/media/fat/ConsoleMode/themeconfig/resources/`:
 
 - `Akrobat-Bold.ttf`, `Akrobat-SemiBold.ttf` — a modern geometric sans, a good fit for the target look
-- `promptfont.ttf` — controller button glyphs, ideal for the button hints along the bottom
 - `back22.png` — background texture
 
 ### Network and time
@@ -144,14 +143,15 @@ Applies to every screen. Dimensions are for 1920×1080.
 
 - **Top left:** the time, large (32 px, SemiBold), with the date below it in a small size
   (18 px, 55 % opacity).
-- **Top center:** the three tabs. The active tab is white and bold with a 3 px underline in the
-  accent color; inactive ones sit at 45 % opacity. When you switch tabs, the underline glides
-  to its new position (180 ms).
+- **Top center:** the tabs. The active tab is white and bold with a 3 px underline in the
+  accent color; inactive ones sit at 45 % opacity. In a modal submenu or error dialog, the
+  underline turns gray to show that L1/R1 cannot switch tabs. When you switch tabs, the
+  underline glides to its new position (180 ms).
 - **Top right:** connection type plus signal strength as bars, with the IP address below it in
   a small size. On a wired connection the bars are omitted. With no connection at all, a muted
   red "Offline" appears there instead.
-- **Bottom:** button hints, context-dependent, with glyphs from `promptfont.ttf`. Restrained,
-  at 40 % opacity.
+- **Bottom:** context-dependent button hints, rendered as compact text. Restrained, at 40 %
+  opacity.
 - **Safe area:** 80 px left/right, 40 px top/bottom — televisions crop the edges.
 
 ## 5. Screens
@@ -312,9 +312,9 @@ interpolated together.
 | D-pad / stick | Move the focus within the grid or the list, freely in four directions |
 | A | Select (open a system, start a game) |
 | B | Back; no effect at the topmost level |
-| X | Toggle favorite |
+| Hold X for 2 seconds | Add or remove the selected game from favorites; a progress bar fills while held |
 | Y | Change view (search is still to come) |
-| L / R | Switch tabs (Systems ↔ Games ↔ Settings) |
+| L1 / R1 | Switch tabs when the underline is blue |
 | L2 / R2 | Jump to the previous/next initial letter |
 | Start | Context menu |
 
@@ -347,7 +347,6 @@ Behavior:
 | Tile caption | Akrobat-SemiBold 18 px |
 | Secondary text | Akrobat-SemiBold 15 px, 55 % opacity |
 | Time | Akrobat-SemiBold 32 px |
-| Button glyphs | promptfont 20 px |
 
 Colors (placeholders, still to be agreed on):
 

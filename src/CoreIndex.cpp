@@ -91,7 +91,6 @@ void CoreIndex::scan(const std::vector<std::string> &roots) {
         }
     }
 
-    std::printf("cores: %zu indexed on %zu volume(s)\n", cores_.size(), roots.size());
 }
 
 std::string CoreIndex::find(const std::vector<std::string> &names) const {

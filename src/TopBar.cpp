@@ -99,15 +99,17 @@ void TopBar::update(float deltaSeconds) {
 }
 
 void TopBar::render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, bool showGames,
-                    bool showArcade) {
+                    bool showArcade, bool tabsEnabled) {
     Font &bold = theme.bold();
     Font &regular = theme.regular();
 
     // Left: time over date.
     const int left = area.x + theme.marginX();
-    bold.draw(canvas, left, area.y + theme.px(16), time_, theme.sizeClock(), theme.textPrimary);
-    regular.draw(canvas, left, area.y + theme.px(16) + bold.lineHeight(theme.sizeClock()) - theme.px(4),
-                 date_, theme.sizeSmall(), theme.textMuted.withAlpha(170));
+    const int timeY = area.y + theme.px(16);
+    bold.draw(canvas, left, timeY, time_, theme.sizeClock(), theme.textPrimary);
+    const int dateY = timeY + bold.lineHeight(theme.sizeClock()) + theme.px(6);
+    regular.draw(canvas, left, dateY, date_, theme.sizeSmall(),
+                 theme.textMuted.withAlpha(170));
 
     // Centre: tabs.
     const std::vector<Tab> tabs = visibleTabs(showGames, showArcade);
@@ -143,7 +145,8 @@ void TopBar::render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, 
     if (indicatorX_ >= 0) {
         const Rect underline{int(indicatorX_), tabY + bold.lineHeight(tabSize) + theme.px(4),
                              int(indicatorW_), theme.px(3)};
-        canvas.fillRoundedRect(underline, theme.px(2), theme.accent);
+        canvas.fillRoundedRect(underline, theme.px(2),
+                               tabsEnabled ? theme.accent : Color::rgb(0x808080));
     }
 
     // Right: link type over address.
@@ -152,13 +155,14 @@ void TopBar::render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, 
     const int labelWidth = regular.measure(label, theme.sizeBody());
     const int right = area.right() - theme.marginX();
 
-    regular.draw(canvas, right - labelWidth, area.y + theme.px(18), label, theme.sizeBody(),
+    const int networkY = area.y + theme.px(18);
+    regular.draw(canvas, right - labelWidth, networkY, label, theme.sizeBody(),
                  online ? theme.textMuted : theme.warning);
 
     if (online) {
         const int addressWidth = regular.measure(address_, theme.sizeSmall());
         regular.draw(canvas, right - addressWidth,
-                     area.y + theme.px(18) + regular.lineHeight(theme.sizeBody()) - theme.px(2),
+                     networkY + regular.lineHeight(theme.sizeBody()) + theme.px(6),
                      address_, theme.sizeSmall(), theme.textMuted.withAlpha(150));
     }
 }

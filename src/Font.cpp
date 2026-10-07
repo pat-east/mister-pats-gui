@@ -1,5 +1,6 @@
 #include "Font.h"
 
+#include <algorithm>
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
@@ -9,6 +10,20 @@
 namespace {
 
 constexpr int kBuiltinCell = 8;
+
+// Preserve the bitmap face's pixel edges while taking the harshness out of its old
+// whole-cell scaling. At typical UI sizes this reduces the glyph height by about a quarter;
+// at the smallest sizes it keeps the existing 8-pixel glyphs from getting any larger.
+int builtinHeight(int size) {
+    const int stepped = std::max(1, size / kBuiltinCell) * kBuiltinCell;
+    const int compact = std::max(kBuiltinCell, size * 3 / 4);
+    return std::min(stepped, compact);
+}
+
+int builtinAdvance(int size) {
+    const int height = builtinHeight(size);
+    return (height * (kBuiltinCell + 1) + kBuiltinCell - 1) / kBuiltinCell;
+}
 
 FT_Library asLibrary(void *p) { return static_cast<FT_Library>(p); }
 FT_Face asFace(void *p) { return static_cast<FT_Face>(p); }
@@ -68,7 +83,7 @@ bool Font::load(const std::vector<std::string> &candidates) {
 }
 
 int Font::ascender(int size) {
-    if (!face_) return kBuiltinCell * size / kBuiltinCell;
+    if (!face_) return builtinHeight(size);
 
     auto it = ascenders_.find(size);
     if (it != ascenders_.end()) return it->second;
@@ -84,7 +99,7 @@ int Font::ascender(int size) {
 }
 
 int Font::lineHeight(int size) {
-    if (!face_) return size;
+    if (!face_) return builtinHeight(size);
     ascender(size);
     auto it = lineHeights_.find(size);
     return (it != lineHeights_.end()) ? it->second : size;
@@ -125,8 +140,7 @@ int Font::measure(const std::string &text, int size) {
     const std::vector<unsigned int> codepoints = decodeUtf8(text);
 
     if (!face_) {
-        const int cell = std::max(1, size / kBuiltinCell);
-        return int(codepoints.size()) * (kBuiltinCell + 1) * cell;
+        return int(codepoints.size()) * builtinAdvance(size);
     }
 
     int width = 0;
@@ -141,16 +155,23 @@ void Font::draw(Canvas &canvas, int x, int y, const std::string &text, int size,
     const std::vector<unsigned int> codepoints = decodeUtf8(text);
 
     if (!face_) {
-        const int cell = std::max(1, size / kBuiltinCell);
-        canvas.markDamage({x, y, measure(text, size), kBuiltinCell * cell});
+        const int height = builtinHeight(size);
+        const int advance = builtinAdvance(size);
+        canvas.markDamage({x, y, measure(text, size), height});
         int pen = x;
         for (unsigned int cp : codepoints) {
             const unsigned char *rows = builtin_font::glyph(cp);
-            for (int gy = 0; gy < kBuiltinCell; ++gy)
-                for (int gx = 0; gx < kBuiltinCell; ++gx)
-                    if (rows[gy] & (0x80 >> gx))
-                        canvas.fillRect({pen + gx * cell, y + gy * cell, cell, cell}, color);
-            pen += (kBuiltinCell + 1) * cell;
+            for (int gy = 0; gy < kBuiltinCell; ++gy) {
+                const int top = y + gy * height / kBuiltinCell;
+                const int bottom = y + (gy + 1) * height / kBuiltinCell;
+                for (int gx = 0; gx < kBuiltinCell; ++gx) {
+                    if (!(rows[gy] & (0x80 >> gx))) continue;
+                    const int left = pen + gx * height / kBuiltinCell;
+                    const int right = pen + (gx + 1) * height / kBuiltinCell;
+                    canvas.fillRect({left, top, right - left, bottom - top}, color);
+                }
+            }
+            pen += advance;
         }
         return;
     }

@@ -9,6 +9,7 @@
 #include "DebugLog.h"
 #include "Image.h"
 #include "Library.h"
+#include "SystemCatalog.h"
 
 namespace {
 
@@ -211,6 +212,12 @@ bool MediaScraper::prepareNextSystem() {
 
         const std::string mediaDir = system.dir + "/media";
         for (const std::string &path : database_->pathsFor(system.key)) {
+            // An older database may still contain boot media until it is rebuilt. Do not
+            // waste thumbnail lookups on those entries or list them as missing artwork.
+            if (SystemCatalog::isSystemFile(system.key, path)) {
+                ++doneGames_;
+                continue;
+            }
             // Every other system keeps its games in one directory, so one media folder does
             // for all of them. Arcade's .mra files sit on every mounted volume, each with
             // its own _Arcade folder, and artwork belongs next to the volume its game is on

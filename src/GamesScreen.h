@@ -47,6 +47,7 @@ public:
     void render(Canvas &canvas, const Rect &area, bool fullRedraw) override;
     void handle(Action action) override;
     std::string hints() const override;
+    std::string favoritePath() const override;
 
 private:
     // A stub (path + name, no I/O — see Library::makeStub) until it is actually about to be

@@ -25,11 +25,8 @@ const std::vector<std::string> kRegularCandidates = {
 } // namespace
 
 Theme::Theme(int screenWidth, int screenHeight) : width_(screenWidth), height_(screenHeight) {
-    if (!bold_.load(kBoldCandidates)) std::printf("theme: no bold font, using built-in face\n");
-    else std::printf("theme: bold font %s\n", bold_.path().c_str());
-
-    if (!regular_.load(kRegularCandidates)) std::printf("theme: no regular font, using built-in face\n");
-    else std::printf("theme: regular font %s\n", regular_.path().c_str());
+    bold_.load(kBoldCandidates);
+    regular_.load(kRegularCandidates);
 }
 
 int Theme::px(int designPx) const {

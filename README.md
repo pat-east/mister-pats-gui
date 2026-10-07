@@ -59,7 +59,23 @@ The constraint that shapes everything: the DE10-Nano has two Cortex-A9 cores at 
 toolkits and rules in careful, measured software rendering — see
 [PERFORMANCE.md](PERFORMANCE.md) for what that costs and where the budget went.
 
-## Features
+## The premise: easy to use, easy to understand
+
+Every decision in this project is measured against one premise: **easy to use, easy to
+understand.** It is drawn on throughout development, and a feature that cannot meet it is
+changed until it does, or left out.
+
+In practice that means:
+
+- **No explanation needed.** Someone who picks up the pad for the first time should know what
+  a screen does and what the buttons do, without a manual.
+- **Order and behaviour can be worked out.** Either an arrangement is logical on its face —
+  alphabetical order is the standard example — or it is made visible on screen, for instance by
+  showing a count next to each entry. A clever ordering that the user has to guess at fails
+  both tests.
+- **Reduction first.** When both are possible, prefer the simpler one that needs no extra
+  visual explanation. Less on screen, fewer rules to learn.
+
 
 - **Tile grid** with box art, five presentations per system: list with a large preview,
   large box art, grid with titles, small box art, and a compact view that fits 65 games on
@@ -257,9 +273,10 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 
 Working: booting into the GUI, browsing every system, box art, favourites, history, letter
 navigation, launching games, returning from a game with a long press on the menu button, and
-hiding systems or the Games tab from Settings for a large library. Arcade (since 0.2.0) works
-end to end; the tab and the box art matching are the newest parts and have seen the least
-time on hardware — [ARCADE.md](ARCADE.md) says exactly which parts were verified where.
+hiding systems or the Games tab from Settings for a large library. Arcade has been exercised
+on real hardware, including its updated box art scraper. The built-in font fallback has also
+been checked on the MiSTer with both Akrobat files absent; details are in [CHANGELOG.md](CHANGELOG.md)
+and [BOXART.md](BOXART.md).
 
 ## Roadmap
 
@@ -276,15 +293,16 @@ for.
 
 #### 0.3.0 — Tests and bug fixes
 
-- [ ] **Test what 0.2.0 brought on real hardware** — the Arcade library and tab, box art
-      matching, the rebuilt game database — and fix what turns up.
-- [ ] **Bug fixes** from that testing, and from day-to-day use.
-- [ ] **Better box art scraping.** Where it gets better will show in the testing; two starting
-      points are already known from measuring 0.2.0 against a real library — a game with no
-      cover at all (201 of 849 Arcade games found none) and a cover that is for the right
-      game but not the right revision (the looser fallback match).
+- [x] **Test the Arcade library, tab, and updated scraper on real hardware.**
+- [x] **Improve box art matching** using the real scrape-miss list and an audit of Libretro's
+      index. See [BOXART.md](BOXART.md) for results and the limits of the available counts.
+- [x] **Font fallback and interface fixes** — test without Akrobat, tune fallback sizing,
+      improve spacing, and show Ethernet and Wi-Fi addresses in Settings.
+- [x] **Navigation and input fixes** — alphabetize Arcade group previews and require a
+      two-second hold to change a favorite.
 
-Deliberately open-ended: this release gets more concrete as the tests are done.
+See [CHANGELOG.md](CHANGELOG.md) for the complete 0.3.0 change list. The next release's scope
+will be defined separately.
 
 #### 0.4.0 — Optimisation
 
@@ -342,6 +360,11 @@ Also to be made concrete by testing, in particular by measuring where time actua
 
 ### Ideas, not committed
 
+- [ ] **Group language and revision variants of one game.** Show one entry for titles such as
+      Pokémon Sapphire even when the library has separate Europe, Japan and USA ROMs or
+      multiple revisions; let the player choose a specific version when needed. Keep the ROMs
+      and their language/revision details intact. This is an idea for later, not part of the
+      current scraper work.
 - [ ] **A web interface for managing the library** from a computer or phone, rather than with
       a game pad: everything under *Library management* above, plus a better search, uploading
       new games to the MiSTer, deleting and renaming them, managing box art, and editing

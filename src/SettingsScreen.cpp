@@ -118,6 +118,11 @@ std::vector<SettingsScreen::Fact> SettingsScreen::facts() const {
     out.push_back({"Running for", SystemInfo::formatDuration(system_.uptimeSeconds())});
 
     out.push_back({"", ""});
+    out.push_back({"Networking", ""});
+    out.push_back({"Ethernet", system_.ethernetAddress()});
+    out.push_back({"Wi-Fi", system_.wifiAddress()});
+
+    out.push_back({"", ""});
     out.push_back({"Storage", ""});
     for (const SystemInfo::Volume &volume : system_.volumes()) {
         const uint64_t used = volume.totalBytes - volume.freeBytes;
@@ -222,17 +227,27 @@ void SettingsScreen::renderInfo(Canvas &canvas, const Rect &area) {
 
     canvas.fillRoundedRect(area, theme.radius(), theme.surface.withAlpha(110));
 
-    const Rect body = area.inset(theme.px(26));
+    const Rect body = area.inset(theme.px(24));
     int y = body.y;
 
-    const int lineStep = theme.regular().lineHeight(theme.sizeBody()) + theme.px(9);
-    const int headingStep = theme.bold().lineHeight(theme.sizeBody()) + theme.px(12);
+    const int factSize = theme.sizeBody();
+    const int lineStep = theme.regular().lineHeight(factSize) + theme.px(3);
+    const int headingStep = theme.bold().lineHeight(theme.sizeBody()) + theme.px(8);
+    const int columnGap = theme.px(16);
+    const std::vector<Fact> allFacts = facts();
+    int labelColumnWidth = 0;
+    for (const Fact &fact : allFacts) {
+        if (fact.label.empty() || fact.value.empty()) continue;
+        labelColumnWidth = std::max(labelColumnWidth,
+                                    theme.regular().measure(fact.label, factSize));
+    }
+    labelColumnWidth = std::min(labelColumnWidth, body.w * 38 / 100);
 
-    for (const Fact &fact : facts()) {
+    for (const Fact &fact : allFacts) {
         if (y + lineStep > body.bottom()) break;
 
         if (fact.label.empty() && fact.value.empty()) {   // spacer between groups
-            y += theme.px(12);
+            y += theme.px(6);
             continue;
         }
 
@@ -243,13 +258,15 @@ void SettingsScreen::renderInfo(Canvas &canvas, const Rect &area) {
             continue;
         }
 
-        theme.regular().draw(canvas, body.x, y, fact.label, theme.sizeBody(),
+        const std::string label =
+            theme.regular().elide(fact.label, factSize, labelColumnWidth);
+        theme.regular().draw(canvas, body.x, y, label, factSize,
                              theme.textMuted.withAlpha(170));
 
-        const std::string value =
-            theme.regular().elide(fact.value, theme.sizeBody(), body.w / 2);
-        const int width = theme.regular().measure(value, theme.sizeBody());
-        theme.regular().draw(canvas, body.right() - width, y, value, theme.sizeBody(),
+        const int valueX = body.x + labelColumnWidth + columnGap;
+        const std::string value = theme.regular().elide(
+            fact.value, factSize, std::max(0, body.right() - valueX));
+        theme.regular().draw(canvas, valueX, y, value, factSize,
                              theme.textPrimary);
         y += lineStep;
     }

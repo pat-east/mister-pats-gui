@@ -39,6 +39,7 @@ Input::~Input() { releaseAll(); }
 
 void Input::forget(size_t slot) {
     Device &device = devices_[slot];
+    if (favoriteDeviceIndex_ == device.index) favoriteDeviceIndex_ = -1;
     if (device.fd >= 0) {
         if (exclusive_) ioctl(device.fd, EVIOCGRAB, 0);
         close(device.fd);
@@ -58,6 +59,7 @@ void Input::releaseAll() {
     devices_.clear();
     for (bool &opened : opened_) opened = false;
     heldDirection_ = Action::None;
+    favoriteDeviceIndex_ = -1;
 }
 
 void Input::rescan() {
@@ -73,14 +75,12 @@ void Input::rescan() {
         ioctl(fd, EVIOCGNAME(sizeof(name)), name);
 
         if (isIgnored(name)) {
-            std::printf("input: %s = %s [ignored, mirror device]\n", path, name);
             close(fd);
             opened_[i] = true;   // do not reopen it on the next scan
             continue;
         }
 
         if (exclusive_) ioctl(fd, EVIOCGRAB, 1);
-        std::printf("input: %s = %s%s\n", path, name, exclusive_ ? " [exclusive]" : "");
 
         opened_[i] = true;
         Device device;
@@ -129,6 +129,7 @@ bool Input::probeHat(int fd) {
 
 void Input::emitDirection(Action action, bool pressed, std::vector<Action> &out) {
     if (pressed) {
+        if (favoriteDeviceIndex_ >= 0) favoriteCanceled_ = true;
         out.push_back(action);
         heldDirection_ = action;
         heldSince_ = nowMs();
@@ -140,6 +141,22 @@ void Input::emitDirection(Action action, bool pressed, std::vector<Action> &out)
 
 void Input::handleKey(const Device &device, uint16_t code, int32_t value, std::vector<Action> &out) {
     const bool pressed = value != 0;
+
+    // On the controllers used with this GUI, the raw north/west codes arrive opposite
+    // to their Xbox-labelled physical positions: north is the left X face button.
+    if (code == BTN_NORTH || code == KEY_F) {
+        if (value == 1 && favoriteDeviceIndex_ < 0) {
+            favoriteDeviceIndex_ = device.index;
+            favoriteSince_ = nowMs();
+            favoriteTriggered_ = false;
+            favoriteCanceled_ = false;
+            out.push_back(Action::FaceXPress);
+        } else if (value == 0 && favoriteDeviceIndex_ == device.index) {
+            favoriteDeviceIndex_ = -1;
+        }
+        return;
+    }
+    if (value == 1 && favoriteDeviceIndex_ >= 0) favoriteCanceled_ = true;
 
     // Some pads report the D-pad as BTN_DPAD_* keys in addition to the ABS_HAT0X/Y axes
     // handled in handleAbs; acting on both would move the cursor twice per press.
@@ -164,10 +181,7 @@ void Input::handleKey(const Device &device, uint16_t code, int32_t value, std::v
     case BTN_EAST: case KEY_ESC: case KEY_BACKSPACE:
         out.push_back(Action::Back);
         break;
-    case BTN_WEST: case KEY_F:
-        out.push_back(Action::ToggleFavorite);
-        break;
-    case BTN_NORTH: case KEY_V:
+    case BTN_WEST: case KEY_V:
         out.push_back(Action::CycleView);
         break;
     case BTN_TL: case KEY_PAGEUP:
@@ -239,6 +253,17 @@ void Input::appendRepeats(std::vector<Action> &out) {
     out.push_back(heldDirection_);
 }
 
+bool Input::favoriteHoldActive() const {
+    return favoriteDeviceIndex_ >= 0 && !favoriteCanceled_ && !favoriteTriggered_;
+}
+
+float Input::favoriteHoldProgress() const {
+    if (!favoriteHoldActive()) return 0.0f;
+    return std::min(1.0f, float(nowMs() - favoriteSince_) / kFavoriteHoldMs);
+}
+
+void Input::cancelFavoriteHold() { favoriteCanceled_ = true; }
+
 std::vector<Action> Input::poll(int timeoutMs) {
     std::vector<Action> out;
 
@@ -289,6 +314,10 @@ std::vector<Action> Input::poll(int timeoutMs) {
     }
 
     appendRepeats(out);
+    if (favoriteHoldActive() && nowMs() - favoriteSince_ >= kFavoriteHoldMs) {
+        favoriteTriggered_ = true;
+        out.push_back(Action::ToggleFavorite);
+    }
     return out;
 }
 

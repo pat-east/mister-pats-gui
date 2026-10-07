@@ -125,7 +125,7 @@ void GamesScreen::reload() {
     if (favoritesMode_) {
         for (const FavoriteEntry &favorite : context_.favorites.entries()) {
             const GameSystem *system = context_.library.findSystem(favorite.system);
-            if (!system) continue;
+            if (!system || Library::isSystemFile(*system, favorite.path)) continue;
             entries_.push_back({system, Library::makeStub(*system, favorite.path), false, false});
         }
     } else if (allMode_) {
@@ -151,7 +151,6 @@ void GamesScreen::reload() {
     char line[160];
     std::snprintf(line, sizeof(line), "games: %zu entries for %s", entries_.size(),
                  title_.c_str());
-    std::printf("%s\n", line);
     DebugLog::info(line);
 }
 
@@ -166,6 +165,11 @@ const GamesScreen::Entry *GamesScreen::current() const {
     if (entries_.empty()) return nullptr;
     const int index = std::min(std::max(cursor_, 0), int(entries_.size()) - 1);
     return &entries_[size_t(index)];
+}
+
+std::string GamesScreen::favoritePath() const {
+    const Entry *entry = current();
+    return entry ? entry->game.path : std::string();
 }
 
 void GamesScreen::moveCursor(int dx, int dy) {
@@ -332,9 +336,9 @@ void GamesScreen::renderDetail(Canvas &canvas, const Rect &area, const Entry &en
 
     const Rect titleArea{area.x + pad, artArea.bottom() + theme.px(14), area.w - 2 * pad,
                          theme.px(44)};
-    const std::string name =
-        theme.bold().elide(entry.game.name, theme.sizeTitle(), titleArea.w);
-    theme.bold().draw(canvas, titleArea.x, titleArea.y, name, theme.sizeTitle(),
+    const int titleSize = theme.sizeGameDetail();
+    const std::string name = theme.bold().elide(entry.game.name, titleSize, titleArea.w);
+    theme.bold().draw(canvas, titleArea.x, titleArea.y, name, titleSize,
                       theme.textPrimary);
 
     std::string meta = entry.system->name;
@@ -378,9 +382,10 @@ void GamesScreen::renderList(Canvas &canvas, const Rect &area) {
         const int textX = row.x + theme.px(20);
         const int textW = row.w - theme.px(40) - (isFavorite ? theme.px(28) : 0);
 
-        const std::string name = theme.regular().elide(entry.game.name, theme.sizeBody(), textW);
-        theme.regular().draw(canvas, textX, row.y + (row.h - theme.regular().lineHeight(theme.sizeBody())) / 2,
-                             name, theme.sizeBody(),
+        const int nameSize = theme.sizeGameLabel();
+        const std::string name = theme.regular().elide(entry.game.name, nameSize, textW);
+        theme.regular().draw(canvas, textX, row.y + (row.h - theme.regular().lineHeight(nameSize)) / 2,
+                             name, nameSize,
                              Color::lerp(theme.textMuted, theme.textPrimary, focus));
 
         if (isFavorite) {
@@ -476,7 +481,7 @@ void GamesScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*/) 
 
     if (entries_.empty()) {
         const char *text = favoritesMode_
-                               ? "No favorites yet - press X on a game to mark it"
+                               ? "No favorites yet - hold X for 2s on a game to mark it"
                            : allMode_
                                ? "No games yet - build the game database in the settings"
                                : "No games in this directory";
@@ -489,5 +494,5 @@ void GamesScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*/) 
 }
 
 std::string GamesScreen::hints() const {
-    return "A Start   B Back   X Favorite   Y View   L2/R2 Letter";
+    return "A Start   B Back   Hold X 2s Favorite   Y View   L2/R2 Letter";
 }

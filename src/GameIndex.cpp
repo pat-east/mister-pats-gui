@@ -91,7 +91,6 @@ bool GameIndex::load(const std::string &cacheDir) {
 
     DIR *dir = opendir(cacheDir.c_str());
     if (!dir) {
-        std::printf("index: no cache directory at %s\n", cacheDir.c_str());
         return false;
     }
 
@@ -116,7 +115,6 @@ bool GameIndex::load(const std::string &cacheDir) {
 
         const std::string root = resolveRoot(entries, candidates);
         if (root.empty()) {
-            std::printf("index: %s matches no attached volume, skipped\n", file.c_str());
             continue;
         }
 
@@ -125,12 +123,6 @@ bool GameIndex::load(const std::string &cacheDir) {
         if (!source_.empty()) source_ += ", ";
         source_ += file;
     }
-
-    if (available())
-        std::printf("index: %zu games in %zu systems from the ConsoleMode cache\n", total_,
-                    bySystem_.size());
-    else
-        std::printf("index: no usable cache, falling back to scanning directories\n");
 
     return available();
 }

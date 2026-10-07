@@ -327,7 +327,6 @@ void Library::applyOverrides() {
         }
     }
 
-    if (applied) std::printf("library: %zu system overrides from %s\n", applied, kOverridesFile);
 }
 
 bool Library::loadFromDatabase() {
@@ -389,7 +388,6 @@ bool Library::load(const std::string &sectionDir) {
         indexCores();
         applySlotDefaults();
         applyOverrides();
-        std::printf("library: %zu systems from the game database\n", systems_.size());
         return true;
     }
 
@@ -402,8 +400,6 @@ bool Library::load(const std::string &sectionDir) {
     applySlotDefaults();
     applyOverrides();
 
-    std::printf("library: %zu cores indexed, %zu systems with directories (no own database)\n",
-                cores_.size(), systems_.size());
     return !systems_.empty();
 }
 
@@ -420,6 +416,10 @@ std::string Library::nameFor(const GameSystem &system, const std::string &path) 
         if (!system.discBased || isDiscExtension(extension)) return filename.substr(0, dot);
     }
     return filename;
+}
+
+bool Library::isSystemFile(const GameSystem &system, const std::string &path) {
+    return SystemCatalog::isSystemFile(system.dbKey.empty() ? system.name : system.dbKey, path);
 }
 
 Game Library::makeStub(const GameSystem &system, const std::string &path) {
@@ -462,7 +462,11 @@ void Library::resolveArtwork(const GameSystem &system, Game &game, bool preferSm
 
 bool Library::hasGames(const GameSystem &system) const {
     if (!system.dbKey.empty()) return true;
-    if (index_.pathsFor(system.name)) return true;
+    if (const std::vector<std::string> *paths = index_.pathsFor(system.name)) {
+        for (const std::string &path : *paths)
+            if (!isSystemFile(system, path)) return true;
+        return false;
+    }
     if (!scanningAllowed_) return false;
 
     for (const std::string &dir : system.romDirs) {
@@ -477,7 +481,7 @@ bool Library::hasGames(const GameSystem &system) const {
             for (const std::string &ext : system.romExts)
                 if (hasSuffix(filename, ext)) match = true;
 
-            if (match) { closedir(d); return true; }
+            if (match && !isSystemFile(system, filename)) { closedir(d); return true; }
         }
         closedir(d);
     }
@@ -511,9 +515,21 @@ const GameSystem *Library::systemForPath(const std::string &path) const {
 }
 
 std::vector<std::string> Library::pathsOf(const GameSystem &system) const {
-    if (!system.dbKey.empty()) return database_.pathsFor(system.dbKey);
+    if (!system.dbKey.empty()) {
+        std::vector<std::string> paths = database_.pathsFor(system.dbKey);
+        paths.erase(std::remove_if(paths.begin(), paths.end(), [&](const std::string &path) {
+                        return isSystemFile(system, path);
+                    }), paths.end());
+        return paths;
+    }
 
-    if (const std::vector<std::string> *paths = index_.pathsFor(system.name)) return *paths;
+    if (const std::vector<std::string> *paths = index_.pathsFor(system.name)) {
+        std::vector<std::string> filtered;
+        filtered.reserve(paths->size());
+        for (const std::string &path : *paths)
+            if (!isSystemFile(system, path)) filtered.push_back(path);
+        return filtered;
+    }
 
     std::vector<std::string> paths;
     if (!scanningAllowed_) return paths;
@@ -530,7 +546,7 @@ std::vector<std::string> Library::pathsOf(const GameSystem &system) const {
             for (const std::string &ext : system.romExts)
                 if (hasSuffix(filename, ext)) match = true;
 
-            if (match) paths.push_back(dir + "/" + filename);
+            if (match && !isSystemFile(system, filename)) paths.push_back(dir + "/" + filename);
         }
         closedir(d);
     }
@@ -543,7 +559,7 @@ std::vector<Game> Library::gamesOf(const GameSystem &system) const {
     // One file, read only now that this system is actually being opened, and already sorted
     // when it was written.
     if (!system.dbKey.empty()) {
-        const std::vector<std::string> paths = database_.pathsFor(system.dbKey);
+        const std::vector<std::string> paths = pathsOf(system);
         games.reserve(paths.size());
         for (const std::string &path : paths) games.push_back(makeGame(system, path));
         return games;
@@ -553,7 +569,8 @@ std::vector<Game> Library::gamesOf(const GameSystem &system) const {
     // marginally powered drive on the bus.
     if (const std::vector<std::string> *paths = index_.pathsFor(system.name)) {
         games.reserve(paths->size());
-        for (const std::string &path : *paths) games.push_back(makeGame(system, path));
+        for (const std::string &path : *paths)
+            if (!isSystemFile(system, path)) games.push_back(makeGame(system, path));
 
         std::sort(games.begin(), games.end(), [](const Game &a, const Game &b) {
             return strcasecmp(a.name.c_str(), b.name.c_str()) < 0;
@@ -576,7 +593,8 @@ std::vector<Game> Library::gamesOf(const GameSystem &system) const {
                 if (hasSuffix(filename, ext)) match = true;
             if (!match) continue;
 
-            games.push_back(makeGame(system, dir + "/" + filename));
+            if (!isSystemFile(system, filename))
+                games.push_back(makeGame(system, dir + "/" + filename));
         }
         closedir(d);
     }

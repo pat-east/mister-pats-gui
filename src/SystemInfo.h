@@ -33,6 +33,8 @@ public:
 
     long uptimeSeconds() const { return uptime_; }
     const std::vector<Volume> &volumes() const { return volumes_; }
+    const std::string &ethernetAddress() const { return ethernetAddress_; }
+    const std::string &wifiAddress() const { return wifiAddress_; }
 
     // "1.4 GB", "93 MB" — one decimal only where it carries information.
     static std::string formatBytes(uint64_t bytes);
@@ -53,6 +55,8 @@ private:
     uint64_t memAvailable_ = 0;
     long uptime_ = 0;
     std::vector<Volume> volumes_;
+    std::string ethernetAddress_ = "Offline";
+    std::string wifiAddress_ = "Offline";
 
     unsigned long long lastBusy_ = 0;
     unsigned long long lastTotal_ = 0;

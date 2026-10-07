@@ -133,8 +133,9 @@ void Tile::draw(Canvas &canvas, Theme &theme, const Rect &frame, const Content &
     if (content.showLabel && !nameInside) {
         const Rect labelArea{outer.x, body.bottom() + theme.px(4), outer.w, theme.px(24)};
         Font &font = theme.regular();
-        const std::string label = font.elide(content.label, theme.sizeBody(), labelArea.w);
-        font.drawCentered(canvas, labelArea, label, theme.sizeBody(),
+        const int labelSize = content.coverArt ? theme.sizeGameLabel() : theme.sizeBody();
+        const std::string label = font.elide(content.label, labelSize, labelArea.w);
+        font.drawCentered(canvas, labelArea, label, labelSize,
                           Color::lerp(theme.textMuted, theme.textPrimary, focus));
         labelBottom = labelArea.bottom();
     }

@@ -98,6 +98,7 @@ private:
     void toggleGamesTab();
     void toggleArcadeTab();
     bool arcadeTabShown() const;
+    bool tabNavigationAvailable() const;
     std::vector<Tab> visibleTabs() const;
     void openArcadeFull(ArcadeScreen::Dimension dimension);
     void openArcadeGroup(ArcadeScreen::Dimension dimension, const DatabaseGroup &group);
@@ -125,6 +126,8 @@ private:
     std::unique_ptr<Context> context_;
 
     Input input_;
+    Screen *favoriteHoldScreen_ = nullptr;
+    std::string favoriteHoldPath_;
     TopBar topBar_;
     Tab tab_ = Tab::Home;
 

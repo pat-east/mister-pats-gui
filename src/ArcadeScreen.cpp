@@ -74,6 +74,14 @@ bool ArcadeScreen::wantsBack() const {
     return !rows_.empty() && active().cursor >= 0;
 }
 
+std::string ArcadeScreen::favoritePath() const {
+    if (rows_.empty()) return {};
+    const Row &row = active();
+    if (!system_ || row.dimension != Dimension::Games || row.cursor < 0 ||
+        row.cursor >= int(row.items.size())) return {};
+    return row.items[size_t(row.cursor)].game.path;
+}
+
 ArcadeScreen::Metrics ArcadeScreen::metrics() const {
     Theme &theme = context_.theme;
 
@@ -282,23 +290,39 @@ void ArcadeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool is
             const Rect frame{lane.x + (i - row.scroll) * (m.tileWidth + gap), lane.y,
                              m.tileWidth, m.tileHeight + caption};
 
-            Tile::Content content;
             if (games) {
+                Tile::Content content;
                 content.label = item.game.name;
                 content.coverArt = true;
                 content.favorite = context_.favorites.contains(item.game.path);
                 content.image = context_.images.get(item.game.boxart, item.game.boxartFallback,
                                                     m.tileWidth, m.tileHeight);
+                Tile::draw(canvas, theme, frame, content, row.focus[size_t(i)]);
             } else {
-                // A group has no artwork of its own, so its name is the tile: set large
-                // inside it, with the game count beneath. See ARCADE.md on why this stays
-                // a plain typographic tile whatever the presentation.
-                content.label = item.group.name;
-                content.sublabel = countText(item.group.count);
-                content.showLabel = false;
-            }
+                // Manufacturers and categories are navigation entries, not games. Keep them
+                // as plain text with a small count and the same blue underline used for tabs.
+                const float focus = row.focus[size_t(i)];
+                const Rect nameArea{frame.x + theme.px(6), frame.y + theme.px(48),
+                                    frame.w - theme.px(12), theme.px(30)};
+                const std::string name = theme.bold().elide(
+                    item.group.name, theme.sizeBody(), nameArea.w);
+                theme.bold().drawCentered(canvas, nameArea, name, theme.sizeBody(),
+                    Color::lerp(theme.textMuted, theme.textPrimary, focus));
 
-            Tile::draw(canvas, theme, frame, content, row.focus[size_t(i)]);
+                const Rect countArea{frame.x, nameArea.bottom() + theme.px(4), frame.w,
+                                     theme.px(20)};
+                const std::string count = countText(item.group.count);
+                theme.regular().drawCentered(canvas, countArea, count, theme.sizeSmall(),
+                                             theme.textMuted.withAlpha(190));
+
+                const int lineWidth = theme.px(48);
+                const int lineHeight = std::max(1, theme.px(3));
+                const Rect focusLine{frame.x + (frame.w - lineWidth) / 2,
+                                     countArea.bottom() + theme.px(7), lineWidth, lineHeight};
+                if (focus > 0.01f)
+                    canvas.fillRect(focusLine,
+                                    theme.accent.withAlpha(uint8_t(255 * focus)));
+            }
         }
     }
     canvas.popClip();
@@ -354,7 +378,7 @@ std::string ArcadeScreen::hints() const {
         return "A Open all " + row.title + "   Right Browse   Up/Down Row   LB/RB Tabs";
 
     if (row.dimension == Dimension::Games)
-        return "A Start   X Favorite   B Back to title   L2/R2 Letter";
+        return "A Start   Hold X 2s Favorite   B Back to title   L2/R2 Letter";
 
     return "A Open " + row.items[size_t(row.cursor)].group.name + "   B Back to title";
 }
