@@ -60,6 +60,7 @@ void HomeScreen::refresh() {
     pageScroll_ = 0;
     paintedPageScroll_ = -1;
     paintedImages_ = uint64_t(-1);
+    needsPaint_ = true;
 
 }
 
@@ -259,7 +260,8 @@ void HomeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool acti
     // See the identical note in GamesScreen::renderGrid: the focused tile is drawn last so
     // its shadow sits above its neighbours, which used to mean its own image request was
     // also last and lost the frame's decode budget to whichever tile came before it.
-    if (active && row.cursor >= row.scroll && row.cursor < last) {
+    if (context_.preferences.showBoxArt() && active && row.cursor >= row.scroll &&
+        row.cursor < last) {
         const Item &focused = row.items[size_t(row.cursor)];
         context_.images.get(focused.game.boxart, focused.game.boxartFallback, tileWidth,
                             tileHeight);
@@ -279,8 +281,9 @@ void HomeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool acti
             content.sublabel = item.system->name;
             content.coverArt = true;
             content.favorite = context_.favorites.contains(item.game.path);
-            content.image = context_.images.get(item.game.boxart, item.game.boxartFallback,
-                                                tileWidth, tileHeight);
+            if (context_.preferences.showBoxArt())
+                content.image = context_.images.get(item.game.boxart, item.game.boxartFallback,
+                                                    tileWidth, tileHeight);
 
             Tile::draw(canvas, theme, frame, content, row.focus[size_t(i)]);
         }
@@ -290,7 +293,7 @@ void HomeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool acti
 }
 
 void HomeScreen::requestImages(Row &row, int laneWidth) {
-    if (row.items.empty()) return;
+    if (!context_.preferences.showBoxArt() || row.items.empty()) return;
 
     const Metrics m = metrics();
     const int gap = context_.theme.gap();
@@ -311,6 +314,7 @@ void HomeScreen::requestImages(Row &row, int laneWidth) {
 }
 
 void HomeScreen::requestFavoriteImages(const Rect &body, int gridY, const Metrics &m) {
+    if (!context_.preferences.showBoxArt()) return;
     Row &favorites = rows_[1];
     if (favorites.items.empty()) return;
 
@@ -380,8 +384,9 @@ void HomeScreen::renderFavorites(Canvas &canvas, const Rect &body, int sectionY,
             content.sublabel = item.system->name;
             content.coverArt = true;
             content.favorite = true;
-            content.image = context_.images.get(item.game.boxart, item.game.boxartFallback,
-                                                m.tileWidth, m.tileHeight);
+            if (context_.preferences.showBoxArt())
+                content.image = context_.images.get(item.game.boxart, item.game.boxartFallback,
+                                                    m.tileWidth, m.tileHeight);
             Tile::draw(canvas, theme, frame, content, favorites.focus[size_t(i)]);
         }
     }
@@ -450,7 +455,7 @@ void HomeScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
     // The caller may have already wiped the canvas this frame for a reason of its own — a
     // tab switch, returning from a detail view — in which case skipping our own repaint
     // because nothing *we* track has changed would leave that wipe on screen.
-    bool anyChange = fullRedraw || pageScroll_ != paintedPageScroll_ ||
+    bool anyChange = needsPaint_ || fullRedraw || pageScroll_ != paintedPageScroll_ ||
                      imagesBefore != paintedImages_;
     for (size_t r = 0; r < rows_.size() && !anyChange; ++r)
         anyChange = rowChanged(rows_[r], int(r) == activeRow_);
@@ -482,6 +487,7 @@ void HomeScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
     canvas.popClip();
     paintedPageScroll_ = pageScroll_;
     paintedImages_ = imagesBefore;
+    needsPaint_ = false;
 }
 
 std::string HomeScreen::hints() const {

@@ -258,7 +258,7 @@ void GamesScreen::update(float deltaSeconds) {
     // The current entry's artwork is what the detail-fade tracking below reads, and in the
     // grid views it is what the focus animation grows — both need it resolved before this
     // frame, not whenever renderGrid() next happens to ask for it.
-    if (!entries_.empty()) {
+    if (context_.preferences.showBoxArt() && !entries_.empty()) {
         const int index = std::min(std::max(cursor_, 0), int(entries_.size()) - 1);
         ensureArtwork(entries_[size_t(index)], prefersSmallArtwork(view_));
     }
@@ -297,24 +297,27 @@ void GamesScreen::renderDetail(Canvas &canvas, const Rect &area, const Entry &en
     Theme &theme = context_.theme;
 
     // Background artwork, heavily dimmed so the foreground stays readable.
-    if (ImagePtr background = context_.images.get(entry.game.background, entry.game.backgroundFallback,
-                                                  area.w, area.h)) {
-        // Cover the panel instead of fitting into it: scale up until both sides are filled
-        // and let the clip crop the overhang, so no bars appear beside the artwork.
-        const long scaleW = long(area.w) * background->height();
-        const long scaleH = long(area.h) * background->width();
-        const int coverW = (scaleW > scaleH) ? area.w
-                                             : int(long(background->width()) * area.h /
-                                                   background->height());
-        const int coverH = (scaleW > scaleH) ? int(long(background->height()) * area.w /
-                                                  background->width())
-                                             : area.h;
-        const Rect cover{area.x + (area.w - coverW) / 2, area.y + (area.h - coverH) / 2, coverW,
-                         coverH};
+    if (context_.preferences.showBoxArt()) {
+        if (ImagePtr background = context_.images.get(entry.game.background,
+                                                       entry.game.backgroundFallback,
+                                                       area.w, area.h)) {
+            // Cover the panel instead of fitting into it: scale up until both sides are filled
+            // and let the clip crop the overhang, so no bars appear beside the artwork.
+            const long scaleW = long(area.w) * background->height();
+            const long scaleH = long(area.h) * background->width();
+            const int coverW = (scaleW > scaleH) ? area.w
+                                                 : int(long(background->width()) * area.h /
+                                                       background->height());
+            const int coverH = (scaleW > scaleH) ? int(long(background->height()) * area.w /
+                                                      background->width())
+                                                 : area.h;
+            const Rect cover{area.x + (area.w - coverW) / 2, area.y + (area.h - coverH) / 2,
+                             coverW, coverH};
 
-        canvas.pushClip(area);
-        canvas.drawImage(*background, cover, uint8_t(90 * detailFade_), 0);
-        canvas.popClip();
+            canvas.pushClip(area);
+            canvas.drawImage(*background, cover, uint8_t(90 * detailFade_), 0);
+            canvas.popClip();
+        }
     }
     canvas.fillRoundedRect(area, theme.radius(), theme.backgroundLo.withAlpha(150));
 
@@ -323,14 +326,19 @@ void GamesScreen::renderDetail(Canvas &canvas, const Rect &area, const Entry &en
     const Rect artArea{area.x + pad, area.y + pad, area.w - 2 * pad,
                        area.h - 2 * pad - textBlock};
 
-    if (ImagePtr art = context_.images.get(entry.game.boxart, entry.game.boxartFallback,
-                                             artArea.w, artArea.h)) {
+    ImagePtr art;
+    if (context_.preferences.showBoxArt())
+        art = context_.images.get(entry.game.boxart, entry.game.boxartFallback,
+                                  artArea.w, artArea.h);
+    if (art) {
         const Rect target = artArea.fitAspect(art->width(), art->height());
         canvas.dropShadow(target, theme.px(6), theme.px(18), theme.shadow.withAlpha(170));
         canvas.drawImage(*art, target, 255, theme.px(6));
     } else {
         canvas.fillRoundedRect(artArea, theme.radius(), theme.surface.withAlpha(120));
-        theme.regular().drawCentered(canvas, artArea, "No boxart", theme.sizeBody(),
+        const char *placeholder =
+            context_.preferences.showBoxArt() ? "No boxart" : "Box art off";
+        theme.regular().drawCentered(canvas, artArea, placeholder, theme.sizeBody(),
                                      theme.textMuted.withAlpha(140));
     }
 
@@ -433,8 +441,10 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area) {
     // into a library that was never scrolled there.
     const bool preferSmall = prefersSmallArtwork(view_);
     const int64_t resolveDeadline = nowMs() + kResolveBudgetMs;
-    for (int i = first; i < last && nowMs() < resolveDeadline; ++i)
-        ensureArtwork(entries_[size_t(i)], preferSmall);
+    if (context_.preferences.showBoxArt()) {
+        for (int i = first; i < last && nowMs() < resolveDeadline; ++i)
+            ensureArtwork(entries_[size_t(i)], preferSmall);
+    }
 
     // Ask for the focused tile's picture before anything else. The two passes below draw it
     // last on purpose — so its shadow and grown edge sit above its neighbours rather than
@@ -442,7 +452,7 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area) {
     // decode budget is normally spent by the first cache miss it meets. On a screen full of
     // misses the focused tile lost every single time; asking here first means it never has to
     // wait on whichever neighbour happened to be drawn before it.
-    if (cursor_ >= first && cursor_ < last) {
+    if (context_.preferences.showBoxArt() && cursor_ >= first && cursor_ < last) {
         const Entry &focused = entries_[size_t(cursor_)];
         context_.images.get(focused.game.boxart, focused.game.boxartFallback,
                             grid_.tileWidth(), grid_.tileHeight());
@@ -461,8 +471,9 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area) {
             content.showLabel = spec.showLabel;
             content.coverArt = spec.coverArt;
             content.favorite = context_.favorites.contains(entry.game.path);
-            content.image = context_.images.get(entry.game.boxart, entry.game.boxartFallback,
-                                                grid_.tileWidth(), grid_.tileHeight());
+            if (context_.preferences.showBoxArt())
+                content.image = context_.images.get(entry.game.boxart, entry.game.boxartFallback,
+                                                    grid_.tileWidth(), grid_.tileHeight());
 
             Tile::draw(canvas, theme, frame, content, focus_[size_t(i)]);
         }

@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Show box art setting** — hides game covers and background artwork across Home, Games,
+  Favorites and Arcade, making it possible to compare menu responsiveness without artwork
+  loading and drawing.
+
+### Fixed
+
+- **Home screen could start without its games drawn** — the initial contents are now painted
+  explicitly after startup or refresh, without requiring a controller action to trigger a
+  screen update.
+
 ## [0.3.0] - 2026-10-07
 
 ### Added

@@ -20,6 +20,9 @@ public:
     bool showArcadeTab() const { return showArcadeTab_; }
     void setShowArcadeTab(bool show);
 
+    bool showBoxArt() const { return showBoxArt_; }
+    void setShowBoxArt(bool show);
+
     // One of GamesScreen's --view names ("grid", "list", "large", "small", "compact") — kept
     // as a plain string here rather than the GameView enum so this class does not need to
     // know about GamesScreen at all, consistent with everything else in it.
@@ -39,6 +42,7 @@ private:
 
     bool showGamesTab_ = true;
     bool showArcadeTab_ = true;
+    bool showBoxArt_ = true;
     std::string defaultView_ = "grid";
     bool checkForUpdates_ = false;
     std::string file_ = kDefaultFile;

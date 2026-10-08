@@ -104,6 +104,8 @@ In practice that means:
   being useful.
 - **A default presentation**, in Settings — pick Grid, List, Boxart large, Boxart small or
   Compact once and it applies everywhere from then on.
+- **A box art switch**, in Settings — hide cover and background artwork while browsing, useful
+  for comparing menu responsiveness with image loading out of the way.
 - **Multiple game drives**, resolved live rather than assumed — a drive can come back at a
   different `/media/usbN` after a reboot, or a second volume can hold more games, and box art
   and launching both keep working either way.
@@ -309,7 +311,7 @@ will be defined separately.
 - [ ] **Smoother, faster menu control**, everywhere.
 - [ ] **Three-tier artwork loading** (thumbnail → medium → full) with a cross-fade. The design
       is in [PERFORMANCE.md](PERFORMANCE.md#planned-three-tier-image-quality).
-- [ ] **A much shorter first visit to Systems.** The first time the tab is opened there is
+- [x] **A much shorter first visit to Systems.** The first time the tab is opened there is
       currently a progress bar while it works out which systems have games. Extending the game
       database so that answer is already in it should remove most of that.
 

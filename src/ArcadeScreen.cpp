@@ -267,7 +267,7 @@ void ArcadeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool is
 
     // Artwork for what is about to be drawn, at most once per game; see GamesScreen, which
     // resolves lazily for the same reason.
-    if (games && system_) {
+    if (games && system_ && context_.preferences.showBoxArt()) {
         for (int i = row.scroll; i < last; ++i) {
             Item &item = row.items[size_t(i)];
             if (item.artworkResolved) continue;
@@ -295,8 +295,9 @@ void ArcadeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool is
                 content.label = item.game.name;
                 content.coverArt = true;
                 content.favorite = context_.favorites.contains(item.game.path);
-                content.image = context_.images.get(item.game.boxart, item.game.boxartFallback,
-                                                    m.tileWidth, m.tileHeight);
+                if (context_.preferences.showBoxArt())
+                    content.image = context_.images.get(item.game.boxart, item.game.boxartFallback,
+                                                        m.tileWidth, m.tileHeight);
                 Tile::draw(canvas, theme, frame, content, row.focus[size_t(i)]);
             } else {
                 // Manufacturers and categories are navigation entries, not games. Keep them

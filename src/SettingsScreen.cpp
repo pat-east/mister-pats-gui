@@ -71,6 +71,12 @@ void SettingsScreen::buildRows() {
                      [this] { return std::string(context_.preferences.showArcadeTab() ? "On" : "Off"); },
                      [this] { onToggleArcadeTab_(); }});
 
+    rows_.push_back({"Show box art",
+                     [this] { return std::string(context_.preferences.showBoxArt() ? "On" : "Off"); },
+                     [this] {
+                         context_.preferences.setShowBoxArt(!context_.preferences.showBoxArt());
+                     }});
+
     rows_.push_back({"Default view",
                      [this] {
                          return std::string(

@@ -74,4 +74,5 @@ private:
     int favoriteColumns_ = 1;
     int paintedPageScroll_ = -1;
     uint64_t paintedImages_ = 0;
+    bool needsPaint_ = true;
 };
