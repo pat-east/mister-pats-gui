@@ -1,8 +1,8 @@
 # GUI Design
 
 Design document: layout, behavior and rendering rules. Some sketches and proposals below
-record earlier design choices; the current 0.4.0 implementation is summarized in
-[VNEXT.md](VNEXT.md), with measurements in [PERFORMANCE.md](PERFORMANCE.md).
+record earlier design choices; the current 0.4.0 changes are summarized in
+[CHANGELOG.md](CHANGELOG.md), with measurements in [PERFORMANCE.md](PERFORMANCE.md).
 
 **Implementation status.** The basic framework is built and running; screenshots taken on the
 device are in `build/shots/`. Deviations from this design that came out of the implementation:

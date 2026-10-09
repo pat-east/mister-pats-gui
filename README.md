@@ -278,7 +278,6 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 | [INSTALL.md](INSTALL.md) | Installing, verifying and uninstalling |
 | [GUI.md](GUI.md) | The interface design: layout, tiles, navigation, typography |
 | [PERFORMANCE.md](PERFORMANCE.md) | What was measured, what it cost, and what made it fast |
-| [VNEXT.md](VNEXT.md) | Current 0.4.0 implementation, observations and remaining checks |
 | [BOXART.md](BOXART.md) | Artwork preparation, formats and scraper matching audit |
 | [WIFI.md](WIFI.md) | MiSTer Wi-Fi configuration notes for a later Settings feature |
 | [POC.md](POC.md) | How the MiSTer boots, where a frontend hooks in, and what was proven on hardware |
@@ -292,8 +291,7 @@ navigation, launching games, returning from a game with a long press on the menu
 hiding systems or the Games tab from Settings for a large library. Arcade and the built-in
 font fallback have been exercised on the MiSTer. The 0.4.0 box-art preparation run over
 11,502 entries completed; the user reports that the current interface looks and feels very
-good. See [CHANGELOG.md](CHANGELOG.md), [BOXART.md](BOXART.md)
-and [VNEXT.md](VNEXT.md).
+good. See [CHANGELOG.md](CHANGELOG.md) and [BOXART.md](BOXART.md).
 
 ## Roadmap
 
@@ -325,7 +323,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.3.0 change list.
 - [x] **Smoother, faster menu control**, everywhere. Confirmed by user testing on the MiSTer.
 - [x] **View-sized artwork files and bounded background decoding.** Prepare box art creates
       five BMP sizes with JPEG/PNG fallback; cover decoding runs in a bounded worker queue.
-      See [VNEXT.md](VNEXT.md) for implementation details and observations.
+      See [CHANGELOG.md](CHANGELOG.md) for the release details.
 - [x] **Optional box art and faster icon startup.** Settings can hide artwork; the one-second
       splash then loads system icons sequentially, preferring native-size BMPs.
 - [x] **A much shorter first visit to Systems.** The game database already records which
