@@ -6,9 +6,9 @@ per frame.
 
 ## 0.4.0 implementation and measurement status
 
-The detailed frame and icon benchmarks below are historical measurements. The current
-development build now:
+The detailed frame and icon benchmarks below are historical measurements. The 0.4.0 build:
 
+- lets Settings → Show box art disable cover and background requests across browsing screens;
 - loads system icons during the splash: one second to 25%, then one icon per frame through
   the remaining 75%; it prefers 163×163 opaque BMPs and falls back to PNGs;
 - stores five view-sized BMP box-art variants (Home 178×178, Arcade 148×148, Grid 245×245,
@@ -19,15 +19,89 @@ development build now:
   thread. The focused image is prioritized, queued requests are discarded after each
   frame, and in-flight decoding is allowed to finish safely;
 - computes the scraper ETA from whole-run elapsed time and the displayed progress counts:
-  `remaining = elapsed × (total - done) / done`.
+  `remaining = elapsed × (total - done) / done`, displayed as an approximate completion
+  clock time in the MiSTer's time zone;
+- stops automatic relaunch after a fatal error, displays a crash screen requesting a manual
+  reboot, and writes `logs/crash.log` when possible. Local builds retain debug symbols.
 
 A 11,502-entry Prepare box art run completed on the MiSTer. The user reports improved
-browsing so far. The new ETA was deployed after that run, so it has no full-run accuracy
-measurement yet. There is also no new cold/warm frame-time comparison for the current BMP
-and worker path. The earlier icon benchmark compared 300×300 PNG with 160×160 BMP; it
+browsing and good to very good menu responsiveness, especially with box art hidden. The ETA
+shown during that run changed but was not a useful prediction. The new whole-run formula was
+deployed after that run, so it has no full-run accuracy measurement yet. There is also no new
+cold/warm frame-time comparison for the current BMP and worker path. The earlier icon
+benchmark compared 300×300 PNG with 160×160 BMP; it
 does not measure the current 163×163 no-resize path or isolate file format from resolution.
-The user has approved the 0.4.0 menu feel on the MiSTer. The measurements and repeated
-stress checks above remain useful follow-up data; they are not a measured 30 fps claim.
+The user approved the 0.4.0 menu feel on the MiSTer. The historical idle measurements below
+were 7.8 ms/frame for Systems and 13.3 ms/frame for Games, versus 38.1 and 39.6 ms with
+full redraw. They do not establish 30 fps during animation, scrolling, asynchronous image
+arrival or a cold cache. The earlier first-visit Systems improvement was a completed database
+change, rather than new 0.4.0 work.
+
+## 0.4.0 user observations and responsiveness checks
+
+On 2026-10-08, the tab underline animation was reported smooth on Home and on Systems once
+its graphics had loaded. Favorites, Arcade, Games and Settings still showed a noticeable
+slowdown. This is an observation, not a diagnosis: artwork visibility and cold versus warm
+assets should be recorded when repeating it. On 2026-10-09, a Prepare box art run over
+11,502 entries completed and the user approved the overall 0.4.0 feel. The updated ETA was
+deployed only after that run.
+
+The following matrix is for ordinary device use. The final column records how a screen feels
+with box art shown or hidden; it does not assume the cause of a delay.
+
+| # | Action | What to notice | Observation |
+| --- | --- | --- | --- |
+| 1 | Switch between each pair of tabs | Underline smoothness; delay until the new screen responds | |
+| 2 | Open Systems the first time after launch | Delay before tiles appear; whether the screen is immediately usable | |
+| 3 | Open a system with a small library | Time from confirm to first usable game screen | |
+| 4 | Open a large system, then repeat | Time to first entries; whether the second visit differs | |
+| 5 | Scroll through already-seen games | Focus movement and animation while artwork is cached | |
+| 6 | Scroll into games whose artwork has not been seen this session | Stalls, placeholders and delay until cover art appears | |
+| 7 | Use L2/R2 for a distant letter jump | Delay before focus and the destination list settle | |
+| 8 | Open Home with recent games and favorites | Initial tile appearance and response while rows populate | |
+| 9 | Open Arcade games, then Manufacturers/Categories | Delay to first row and response while navigating | |
+| 10 | Choose Build game database, confirm the warning, then wait for progress | Previously reported: several seconds of apparent stillness. Recheck the gap to first visible progress and whether controls respond | |
+| 11 | Choose Reload library and confirm | Time until visible feedback and first progress; any pause before it | |
+| 12 | Choose Prepare box art | Time until visible feedback and first progress; whether the screen remains alive | |
+| 13 | Open Manage systems or Manage Arcade | Time until the list or table appears and can be navigated | |
+| 14 | Toggle Show box art off, browse, then turn it on again | Difference in tab switching, scrolling and screen entry; any layout change | |
+
+For each observation, note the screen, whether the library or artwork is accessed for the
+first time, and whether the pause happens before feedback, before the first progress update,
+or during ongoing work. The library-build example needs the time from confirming the warning
+to the first progress display; total scan duration does not describe that initial dead time.
+
+## 0.4.0 threading decisions and further device checks
+
+Earlier attempts to put the tab underline animation or splash icon loading in their own
+threads caused GUI exits on the MiSTer and were removed. The underline, framebuffer and
+splash icon loading remain on the app thread. The cover worker is a separate design for image
+decoding only, introduced after crash handling and the static pthread-link fix.
+
+The worker starts lazily on the first cover request. The app thread queues paths, adopts
+completed images at the start of a frame, owns cache entries and draws them. The worker never
+draws or mutates the cache. Queued requests made obsolete by a tab switch or letter jump are
+discarded; an image already being decoded finishes safely. The queue and cache bounds stop a
+10,000-entry library from creating 10,000 pending images. Failed reads can be retried later.
+If worker startup fails, synchronous loading remains available.
+
+JPEG/PNG fallback keeps older libraries usable while BMP variants are generated, including
+after an interrupted Prepare box art run. An existing but invalid BMP is a separate case:
+file existence alone does not prove that decoding will succeed.
+
+- Repeat rapid tab switching, A-to-Z letter jumps, directional input and immediate returns
+  between Home, Favorites, Systems, Arcade, Games and Settings on a 10,000+ entry library.
+  Watch for stale art, flicker, memory growth, long pauses and crashes.
+- Repeat with Show box art off and on, with cold and warm image caches. Record which tabs
+  fall below 30 fps and whether the underline remains smooth.
+- Check missing BMP variants, legacy PNG/JPEG-only covers, covers arriving after a canceled
+  preparation run, and incomplete or corrupt BMP files.
+- Check the first visible feedback for Build game database, Reload library and Prepare box
+  art. Record the interval from confirmation to first progress.
+- Check the whole-run ETA on a subsequent long preparation run. The 11,502-entry run finished
+  before this ETA version was deployed.
+- Record active on-device frame times, RAM use and storage behavior. Compare with
+  `--full-redraw` where useful; the target remains smooth 30 fps at native 1080p (33 ms/frame).
 
 ## Measurement Method
 
