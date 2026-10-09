@@ -8,7 +8,7 @@
 #include "Screen.h"
 
 // The Arcade tab: three rows, Home-style — Games, Manufacturers, Categories — over one
-// underlying list of games (see ARCADE.md, "Decision: a dedicated Arcade tab").
+// underlying list of games (see docs/ARCADE.md, "Decision: a dedicated Arcade tab").
 //
 // What Home's rows do not have is that each row's title is itself a stop, to the left of its
 // first tile, and it is where a row starts. Confirming on it opens the whole dimension in a

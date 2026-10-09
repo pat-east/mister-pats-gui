@@ -1,4 +1,4 @@
-// Host-side checks for MiSTer's binary `.map` button-mapping format — see CONTROLLER.md,
+// Host-side checks for MiSTer's binary `.map` button-mapping format — see docs/CONTROLLER.md,
 // "The .map file", for the byte-for-byte layout this reproduces. A read-modify-write bug
 // here produces a file that looks well-formed but silently maps the wrong button, which is
 // exactly the failure mode this test is meant to catch before a real pad ever sees it.

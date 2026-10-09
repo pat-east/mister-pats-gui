@@ -89,7 +89,7 @@ void Input::rescan() {
         device.name = name;
 
         // The kernel's own vendor/product for this evdev node — not the same thing lsusb
-        // reports for the underlying USB hardware (see CONTROLLER.md: confirmed to differ
+        // reports for the underlying USB hardware (see docs/CONTROLLER.md: confirmed to differ
         // for a Wireless Receiver's Xbox 360 pads this project ran into). Anything that keys
         // off a controller's identity the way MiSTer itself does must read it this way.
         input_id id{};

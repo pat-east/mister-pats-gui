@@ -31,7 +31,7 @@ const std::vector<uint16_t> &candidateButtonCodes() {
 
 // Stick axes only — ABS_Z/ABS_RZ are excluded deliberately, same as Input.cpp's own trigger
 // detection: those two carry analogue triggers on plenty of pads, and this project has
-// nowhere in the .map format's slot table to put a captured trigger yet (see CONTROLLER.md,
+// nowhere in the .map format's slot table to put a captured trigger yet (see docs/CONTROLLER.md,
 // "Also not accounted for: analogue triggers" — flagged there as needing its own look, not
 // guessed at here).
 const uint16_t kStickAxisCodes[4] = {ABS_X, ABS_Y, ABS_RX, ABS_RY};
@@ -114,7 +114,7 @@ void ControllersScreen::handle(Action action) {
     case Mode::Deadzone: handleDeadzoneAction(action); return;
     case Mode::Wizard:
         // Only the opening confirmation screen (before any capture starts) uses the
-        // ordinary Action path — see CONTROLLER.md, "Button mapping": once capturing
+        // ordinary Action path — see docs/CONTROLLER.md, "Button mapping": once capturing
         // begins, only a raw evdev event (routed through updateWizard(), not here) can mean
         // anything, precisely so an in-progress capture step's own button press is never
         // also misread as this project's own Back/Confirm.
@@ -372,7 +372,7 @@ void ControllersScreen::updateInputTest(float deltaSeconds) {
     if (slot < 0) { mode_ = Mode::List; refresh(); return; }
 
     // The two ways out of this screen: everything else is deliberately just a reading, not
-    // a command (see CONTROLLER.md's premise for this screen — read-only).
+    // a command (see docs/CONTROLLER.md's premise for this screen — read-only).
     if (input_.keyState(slot, BTN_START)) {
         inputTestStartHold_ += deltaSeconds;
         if (inputTestStartHold_ >= 5.0f) {
@@ -407,7 +407,7 @@ void ControllersScreen::renderInputTest(Canvas &canvas, const Rect &area) {
                       theme.sizeHeading(), theme.textPrimary);
 
     // A disconnect here falls back to the list, same as everywhere else in this feature —
-    // see CONTROLLER.md, open question 7.
+    // see docs/CONTROLLER.md, open question 7.
     const int slot = currentSlot(*row);
     if (slot < 0) { mode_ = Mode::List; refresh(); return; }
 
@@ -447,7 +447,7 @@ void ControllersScreen::renderInputTest(Canvas &canvas, const Rect &area) {
 
     // D-pad — lit by either a literal BTN_DPAD_* key or a hat's digital edge: a D-pad-only
     // pad (a Saturn-style pad, for one) reports its D-pad as a hat axis, not as keys at all.
-    // See CONTROLLER.md and the wizard's own capture logic below for the same distinction.
+    // See docs/CONTROLLER.md and the wizard's own capture logic below for the same distinction.
     const bool dpadUp = input_.keyState(slot, BTN_DPAD_UP) || hatEdge(slot, ABS_HAT0Y) == 1;
     const bool dpadDown = input_.keyState(slot, BTN_DPAD_DOWN) || hatEdge(slot, ABS_HAT0Y) == 2;
     const bool dpadLeft = input_.keyState(slot, BTN_DPAD_LEFT) || hatEdge(slot, ABS_HAT0X) == 1;
@@ -475,7 +475,7 @@ void ControllersScreen::renderInputTest(Canvas &canvas, const Rect &area) {
     drawFaceButton(diamondCx + diamondR, diamondCy, "B", input_.keyState(slot, BTN_EAST));
     drawFaceButton(diamondCx, diamondCy + diamondR, "A", input_.keyState(slot, BTN_SOUTH));
 
-    // The Sega six-button display toggle is disabled for now (see CONTROLLER.md's own open
+    // The Sega six-button display toggle is disabled for now (see docs/CONTROLLER.md's own open
     // questions): dropped rather than left in as dead, unreachable code now that nothing can
     // turn it on any more.
 
@@ -631,7 +631,7 @@ void ControllersScreen::beginWizard() {
     wizardSteps_.push_back({"D-pad Up", ControllerMap::DpadUp, false, PadHighlight::DpadUp});
     // Confirmed on real hardware: MiSTer's own A/B/X/Y slots follow SNES-style *positions*
     // (right=A, bottom=B, top=X, left=Y), not the Xbox letters most modern pads are
-    // physically labelled with (bottom=A, right=B, left=X, top=Y) — see CONTROLLER.md, "The
+    // physically labelled with (bottom=A, right=B, left=X, top=Y) — see docs/CONTROLLER.md, "The
     // .map file". This wizard keeps the familiar Xbox letters in its own prompts, so each one
     // has to target the MiSTer slot that means the *same physical position*, not the slot
     // with the matching letter — writing straight into the same-named slot is exactly what
@@ -648,7 +648,7 @@ void ControllersScreen::beginWizard() {
     wizardSteps_.push_back({"Stick 2: move left/right", ControllerMap::Stick2X, true, PadHighlight::Stick2Horizontal});
     wizardSteps_.push_back({"Stick 2: move up/down", ControllerMap::Stick2Y, true, PadHighlight::Stick2Vertical});
     // Three separate prompts here, matching stock MiSTer's own wizard exactly (menu.cpp:
-    // "Menu", "Menu: OK", "Menu: Back" — see CONTROLLER.md, "The .map file", for the full
+    // "Menu", "Menu: OK", "Menu: Back" — see docs/CONTROLLER.md, "The .map file", for the full
     // trace through input.cpp that pinned this down after an earlier, wrong assumption broke
     // OSD confirm on real hardware). These are genuinely three different things:
     //  - "Menu" opens the OSD from inside a running core (captured into slots 21/22 —
@@ -801,7 +801,7 @@ void ControllersScreen::captureWizardStep() {
             // "Open the menu from inside a running game": mirrored into both combo halves
             // for the common single-button case. A genuine two-button hold-combo (per
             // Main_MiSTer's own input.cpp) is not offered by this wizard yet — see
-            // CONTROLLER.md.
+            // docs/CONTROLLER.md.
             wizardSlots_.values[ControllerMap::OsdComboPrimary] = code;
             wizardSlots_.values[ControllerMap::OsdComboSecondary] = code;
         } else if (step.slot == -2) {
@@ -1129,7 +1129,7 @@ void ControllersScreen::updateBluetooth(float deltaSeconds) {
     while (bluetooth_.nextLine(line)) btLastLine_ = line;
 
     // The device-list diff, not btpair's own log text, is what actually decides "a new
-    // controller connected" — see CONTROLLER.md, "Detecting 'a new controller just paired'".
+    // controller connected" — see docs/CONTROLLER.md, "Detecting 'a new controller just paired'".
     const std::vector<Input::DeviceInfo> now = input_.listDevices();
     for (const Input::DeviceInfo &device : now) {
         bool wasThere = false;
@@ -1146,7 +1146,7 @@ void ControllersScreen::updateBluetooth(float deltaSeconds) {
         return;
     }
 
-    // Placeholder, unmeasured against real hardware — see CONTROLLER.md, open question 11.
+    // Placeholder, unmeasured against real hardware — see docs/CONTROLLER.md, open question 11.
     if (btTimer_ >= 120.0f) {
         bluetooth_.cancel();
         btState_ = BtState::Timeout;

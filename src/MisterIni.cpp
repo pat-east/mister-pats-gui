@@ -33,7 +33,7 @@ bool parseDeadzoneLine(const std::string &line, uint32_t &vidPid, int &value) {
     const std::string numPart = trim(rhs.substr(comma + 1));
 
     // Only the full `0x<8 hex digits>` form is matched here — the `VID:`/`PID:`-prefixed
-    // partial form exists in MiSTer's own parser (see CONTROLLER.md) but was never exercised
+    // partial form exists in MiSTer's own parser (see docs/CONTROLLER.md) but was never exercised
     // against real hardware this project has access to. Leaving it unmatched is the safe
     // choice for a file that must never be corrupted by a writer's own misunderstanding of a
     // form it does not fully know: worst case, a line in that form is left untouched and a
@@ -97,7 +97,7 @@ bool readDeadzone(uint32_t vidPid, int &value, const std::string &iniPath) {
 
 bool writeDeadzone(uint32_t vidPid, int value, const std::string &iniPath,
                   const std::string &backupDir) {
-    // Mandatory, no exceptions — see CONTROLLER.md, "Writing MiSTer.ini safely". Also doubles
+    // Mandatory, no exceptions — see docs/CONTROLLER.md, "Writing MiSTer.ini safely". Also doubles
     // as this function's own "can the file even be read" check: backupBeforeWrite refuses
     // (and touches nothing) if it cannot read `iniPath`, which is exactly the condition this
     // writer must refuse on too.

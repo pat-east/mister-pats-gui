@@ -38,7 +38,7 @@ struct GameSystem {
 
     // Arcade is the one system with no single core: every .mra names its own, and MiSTer's
     // own loader picks it. `core` stays empty, and launching hands the .mra straight to
-    // load_core instead of going through an .mgl (see ARCADE.md).
+    // load_core instead of going through an .mgl (see docs/ARCADE.md).
     bool isArcade = false;
 
     bool launchable() const { return isArcade || !core.empty(); }

@@ -107,7 +107,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **Font fallback on MiSTer** — tested with both Akrobat files absent; the interface remains
   usable with the built-in typeface. Akrobat was restored after the test.
-- **Updated box art scraper on MiSTer** — a scrape was completed; see [BOXART.md](BOXART.md)
+- **Updated box art scraper on MiSTer** — a scrape was completed; see [BOXART.md](docs/BOXART.md)
   for the available audit data and its limits.
 
 ## [0.2.0] - 2026-09-30
@@ -115,7 +115,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Arcade. Until now this GUI only knew systems that have one directory of games and one core;
 MiSTer's arcade library has neither, and needed its own treatment all the way from the scan to
 the box art. Design, measurements and the real-hardware case study behind it are in
-[ARCADE.md](ARCADE.md).
+[ARCADE.md](docs/ARCADE.md).
 
 ### Added
 
@@ -200,7 +200,7 @@ the box art. Design, measurements and the real-hardware case study behind it are
   - **Bluetooth pairing** — only offered where an adapter is present; reuses stock MiSTer's
     own `btpair` helper rather than reimplementing pairing, and offers the button-mapping
     wizard right away for a newly paired, still-unmapped pad.
-  - See [CONTROLLER.md](CONTROLLER.md) for the full design and, further down, the trail of
+  - See [CONTROLLER.md](docs/CONTROLLER.md) for the full design and, further down, the trail of
     real hardware findings below that shaped it along the way.
 
 ### Fixed
@@ -457,13 +457,13 @@ source alone — see CONTROLLER.md for the full trace on each:
 ### Changed
 
 - Console Mode is no longer required for anything. The typeface (Akrobat) is now a one-time
-  manual download straight from Fontfabric — see `INSTALL.md` — since its licence does not
+  manual download straight from Fontfabric — see `docs/INSTALL.md` — since its licence does not
   allow redistributing the font file itself; the built-in fallback typeface is used until you
   do.
 - Removed a font fallback path that pointed at a desktop-Linux location never actually present
   on the MiSTer. The one guaranteed fallback is now clearly the built-in bitmap typeface,
   which needs no file at all.
-- `INSTALL.md` and `README.md` brought back in line with the above, and with the box art
+- `docs/INSTALL.md` and `README.md` brought back in line with the above, and with the box art
   scraper being the GUI's own rather than Console Mode's.
 
 ## [0.1.0] - 2026-09-22

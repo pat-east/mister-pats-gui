@@ -305,7 +305,7 @@ Two reading traps: the `S` in `FS1` is not part of the number, it announces save
 (`menu.cpp:2110` skips one optional `S` and one optional `C`). And prefixes such as `H7` are
 visibility conditions that are cut off before evaluation — the index stays 1. The values ship as
 defaults in `Library.cpp` and can be overridden via
-[`assets/systems.conf.example`](assets/systems.conf.example) → `/media/fat/mister-pat/systems.conf`.
+[`assets/systems.conf.example`](../assets/systems.conf.example) → `/media/fat/mister-pat/systems.conf`.
 
 #### CD games are folders, not files
 
@@ -401,11 +401,11 @@ directly.
 
 ## Proof of concept
 
-Sources under [`poc/`](poc/), deployed to `/media/fat/mister-pat` on the device.
+Sources under [`poc/`](../poc/), deployed to `/media/fat/mister-pat` on the device.
 
 ### PoC 1 — cross-compile and execute ✅
 
-[`poc/hello.cpp`](poc/hello.cpp): a minimal C++ program printing one line and its own PID.
+[`poc/hello.cpp`](../poc/hello.cpp): a minimal C++ program printing one line and its own PID.
 
 ```sh
 cd poc
@@ -438,7 +438,7 @@ execute 32-bit ARM natively. Real hardware is the more meaningful test anyway.
 
 ### PoC 2 — framebuffer ✅
 
-[`poc/fbhello.cpp`](poc/fbhello.cpp): mmaps `/dev/fb0` and paints text with an embedded 8x8 bitmap
+[`poc/fbhello.cpp`](../poc/fbhello.cpp): mmaps `/dev/fb0` and paints text with an embedded 8x8 bitmap
 font.
 
 ```sh
@@ -474,7 +474,7 @@ Two findings from this PoC:
 
 ### PoC 3 — "Press Start to Play" with game launch ✅
 
-[`poc/startscreen.cpp`](poc/startscreen.cpp) plus [`poc/gfx.h`](poc/gfx.h) (the renderer as a
+[`poc/startscreen.cpp`](../poc/startscreen.cpp) plus [`poc/gfx.h`](../poc/gfx.h) (the renderer as a
 component of its own: offscreen canvas, one `memcpy` per frame, range-based glyph table).
 
 Done and verified on the device:
@@ -483,7 +483,7 @@ Done and verified on the device:
 - **Controller input** over evdev, all 7 devices detected, `EVIOCGRAB` exclusive (Console Mode
   keeps the devices open but does *not* grab them exclusively — our grab succeeds)
 - **Game selection** — 788 SNES and 369 NES ROMs found, random pick
-- **Zip resolution** ([`poc/zip.h`](poc/zip.h)) — reads the central directory itself and finds the
+- **Zip resolution** ([`poc/zip.h`](../poc/zip.h)) — reads the central directory itself and finds the
   ROM name inside the archive. Necessary because 786 of 788 SNES games are packed.
 - **MGL generation** with the correct index and the relative path form
 - **Game launch** — handed to the FIFO via `load_core`, the game ran on the device
@@ -502,12 +502,12 @@ every second) or watch `/dev/input` with inotify.
 
 ### Bitstream loader ✅
 
-[`poc/fpga.h`](poc/fpga.h) — a port of the FPGA manager sequence from Main_MiSTer/U-Boot
+[`poc/fpga.h`](../poc/fpga.h) — a port of the FPGA manager sequence from Main_MiSTer/U-Boot
 (GPL-2.0+; the project is going to be published as open source anyway).
 
 Done in two stages to avoid freezing the machine:
 
-**1. Read-only probe** ([`poc/fpgaprobe.cpp`](poc/fpgaprobe.cpp)) — validates the mapping and
+**1. Read-only probe** ([`poc/fpgaprobe.cpp`](../poc/fpgaprobe.cpp)) — validates the mapping and
 register offsets before anything is written:
 
 ```
@@ -519,7 +519,7 @@ The values match exactly what `fpgamgr_program_init` would compute from `msel=0x
 32-bit configuration width; `msel & 3 == 2` → CDRATIO x8 → `ctrl = 0x2C0`). That confirmed the
 layout.
 
-**2. Writing** ([`poc/loadcore.cpp`](poc/loadcore.cpp)) — successful on the device:
+**2. Writing** ([`poc/loadcore.cpp`](../poc/loadcore.cpp)) — successful on the device:
 
 ```
 before: mode=4 ready=1
@@ -602,7 +602,7 @@ main=mister-pat/MiSTer_gui      # the stock binary hands over to our fork
 gui=mister-pat/mister-gui       # our fork starts the frontend
 ```
 
-The patch is small on purpose (see [`patches/`](patches/)): a `gui[1024]` field in the config
+The patch is small on purpose (see [`patches/`](../patches/)): a `gui[1024]` field in the config
 struct, a `GUI` INI key, and a block in `menu.cpp` that starts the configured program once the
 menu core is up. It starts it through MiSTer's own scripts mechanism — writing `/tmp/script`
 and triggering it — which is what puts the framebuffer overlay on screen in the first place.
@@ -644,7 +644,7 @@ MiSTer_ConsoleMode           (main binary, FIFO)
 If you terminate the renderer, the script session ends and the main binary switches the overlay
 **off** — your own application keeps running but is invisible. The right move is to only
 **suspend** the renderer (`kill -STOP`) and resume it later. That is exactly what
-[`tools/run-gui.sh`](tools/run-gui.sh) does.
+[`tools/run-gui.sh`](../tools/run-gui.sh) does.
 
 **2. The console has to go into graphics mode.** Otherwise the kernel draws the cursor and
 terminal output into the same framebuffer. `KDSETMODE`/`KD_GRAPHICS` on `/dev/tty0`.

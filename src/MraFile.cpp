@@ -29,7 +29,7 @@ std::string readWholeFile(const std::string &path) {
     return buffer.str();
 }
 
-// A real .mra routinely has a comment right before the block it documents (see ARCADE.md's
+// A real .mra routinely has a comment right before the block it documents (see docs/ARCADE.md's
 // own Killer Instinct example) — stripped first so a naive tag scan cannot be confused by one.
 void stripComments(std::string &xml) {
     size_t pos = 0;
@@ -340,7 +340,7 @@ void MraFile::resolveRom(ArcadeEntry &entry, const std::vector<std::string> &gam
         // folder directly on the .mra's own volume. Simplified from the real search (which also
         // tries a bare "<root>/mame" on every volume before falling back this far) — that
         // legacy layout is rare enough on a modern install that the extra per-root check was
-        // judged not worth it; see ARCADE.md.
+        // judged not worth it; see docs/ARCADE.md.
         const std::string fallback = entry.root + "/mame";
         if (directoryExists(fallback)) mameDir = fallback;
     }

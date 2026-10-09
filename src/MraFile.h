@@ -51,7 +51,7 @@ struct ArcadeEntry {
 };
 
 // Parses one .mra, and resolves the two lookups MiSTer's own arcade loader does at load time
-// (see ARCADE.md, "Two independent root lookups" — these are deliberately two different
+// (see docs/ARCADE.md, "Two independent root lookups" — these are deliberately two different
 // searches, not one, and conflating them is exactly the bug that document's own case study
 // found on real hardware).
 class MraFile {
@@ -77,7 +77,7 @@ public:
     // Every mounted volume, in the order MiSTer's own file_io.cpp (findPrefixDir) actually
     // searches them for a "games/..." directory: /media/usb0 .. /media/usb5, then /media/fat
     // last. Deliberately not the order GameDatabase::mountPoints() uses — that order exists for
-    // a different reason (device enumeration) and is the wrong one here; see ARCADE.md, "Two
+    // a different reason (device enumeration) and is the wrong one here; see docs/ARCADE.md, "Two
     // independent root lookups".
     static std::vector<std::string> misterGameSearchOrder(const std::vector<std::string> &mountedRoots);
 

@@ -1,7 +1,7 @@
 // Host-side checks for the `deadzone=` reader/writer.
 //
 // This is the one file this project's controller-management feature must never be allowed to
-// corrupt — see CONTROLLER.md, "Writing MiSTer.ini safely". Every line not owned by this
+// corrupt — see docs/CONTROLLER.md, "Writing MiSTer.ini safely". Every line not owned by this
 // writer has to survive a round trip untouched, the backup has to actually happen before any
 // write, and the backup directory has to stay capped rather than growing forever.
 //

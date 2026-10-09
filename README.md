@@ -57,7 +57,7 @@ screen. It aims to look like a console's own dashboard rather than a directory l
 The constraint that shapes everything: the DE10-Nano has two Cortex-A9 cores at 800 MHz and
 **no GPU**. Every pixel is drawn by the CPU into a framebuffer. That rules out the usual
 toolkits and rules in careful, measured software rendering — see
-[PERFORMANCE.md](PERFORMANCE.md) for what that costs and where the budget went.
+[PERFORMANCE.md](docs/PERFORMANCE.md) for what that costs and where the budget went.
 
 ## The premise: easy to use, easy to understand
 
@@ -88,7 +88,7 @@ In practice that means:
   treatment: a library of the games that actually work — core installed, ROM zip found,
   every CRC correct, checked the way MiSTer searches for them — an Arcade tab that browses
   it by manufacturer and category, box art matched to the exact ROM revision, and a
-  diagnostic table that explains why a game is missing. See [ARCADE.md](ARCADE.md).
+  diagnostic table that explains why a game is missing. See [ARCADE.md](docs/ARCADE.md).
 - **Its own game database.** A scan works out which systems are installed and what is in
   them, and writes one index file per system. Opening a console reads that one file and
   nothing else.
@@ -138,7 +138,7 @@ a dependency for any of that:
 | The catalogue of systems | **built by this GUI** |
 | The index of games | **built by this GUI** |
 | Box art and background images | **prepared and fetched by this GUI** — Settings → *Prepare box art* |
-| Fonts | downloaded once by hand — see [INSTALL.md](INSTALL.md#step-0--the-typeface-if-you-want-it) — or the built-in fallback if you skip that |
+| Fonts | downloaded once by hand — see [INSTALL.md](docs/INSTALL.md#step-0--the-typeface-if-you-want-it) — or the built-in fallback if you skip that |
 
 The typeface, Akrobat, can't be bundled here — Fontfabric's free-font licence allows using it
 in your own designs but not redistributing the font files — so getting it stays a one-time
@@ -150,7 +150,7 @@ font files are still read, if present.
 
 ## Installation
 
-See **[INSTALL.md](INSTALL.md)** for the full procedure, including how to undo it.
+See **[INSTALL.md](docs/INSTALL.md)** for the full procedure, including how to undo it.
 
 In short: everything the GUI owns lives in one directory on the SD card,
 `/media/fat/mister-pat`. Two lines in `MiSTer.ini` point the boot path at it. Nothing else on
@@ -217,11 +217,11 @@ devices exclusively.
 | --- | --- | --- |
 | Xbox Series X pad | 8BitDo Adapter 2 | The daily driver used for most of this project's own development |
 | Retro-Bit Sega Saturn pad | 2.4 GHz wireless adapter | D-pad only, no analogue stick. Works great once switched to X-Input mode — see the [pad's manual](https://retro-bit.com/sitepad-data/uploads/2025/07/NA-Saturn-Pro-2.4-GHz-Wireless-Controller_11-16-23.pdf) for the mode switch |
-| Xbox 360 pad ×2 | Xbox 360 Wireless Receiver for Windows | Needs a `deadzone=` set to behave — see [CONTROLLER.md](CONTROLLER.md#3-deadzone) — and [INSTALL.md](INSTALL.md) for the vendor/product gotcha that surfaced along the way |
+| Xbox 360 pad ×2 | Xbox 360 Wireless Receiver for Windows | Needs a `deadzone=` set to behave — see [CONTROLLER.md](docs/CONTROLLER.md#3-deadzone) — and [INSTALL.md](docs/INSTALL.md) for the vendor/product gotcha that surfaced along the way |
 | PS4 controller (DualShock 4) | Wired (USB cable), and Bluetooth | Bluetooth pairing survives a reboot — the pad reconnects on its own, no re-pairing needed |
 | 8BitDo Arcade Stick (Xbox version) | 2.4 GHz wireless dongle, and wired (USB cable) | Works flawlessly over both, no extra setup needed |
 
-Still to try: PS5 (DualSense) and the Saturn pad wired. See [CONTROLLER.md](CONTROLLER.md) for
+Still to try: PS5 (DualSense) and the Saturn pad wired. See [CONTROLLER.md](docs/CONTROLLER.md) for
 the controller-management feature this is building towards.
 
 ## Configuration
@@ -265,6 +265,7 @@ captured without a controller:
 src/              the GUI, one class per file
 tests/            host-side checks (damage tracking, letter jump, game database)
 tools/            deploy, screenshot and run helpers
+docs/             installation, design and performance documentation
 assets/           console icons, example configuration
 patches/          the patch that makes the MiSTer main binary start this GUI
 poc/              the standalone experiments the design was proven with
@@ -275,14 +276,14 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 
 | Document | What it covers |
 | --- | --- |
-| [INSTALL.md](INSTALL.md) | Installing, verifying and uninstalling |
-| [GUI.md](GUI.md) | The interface design: layout, tiles, navigation, typography |
-| [PERFORMANCE.md](PERFORMANCE.md) | What was measured, what it cost, and what made it fast |
-| [BOXART.md](BOXART.md) | Artwork preparation, formats and scraper matching audit |
-| [WIFI.md](WIFI.md) | MiSTer Wi-Fi configuration notes for a later Settings feature |
-| [POC.md](POC.md) | How the MiSTer boots, where a frontend hooks in, and what was proven on hardware |
-| [CONTROLLER.md](CONTROLLER.md) | Controller-first setup — listing pads, an input test, deadzone, button mapping and Bluetooth pairing: the design, and what real hardware testing found along the way |
-| [ARCADE.md](ARCADE.md) | Arcade support — the analysis, the design and what was built from it. The MRA format, a ROM-storage-priority bug found on real hardware, how the library, the tab and the box art work, and what is still open |
+| [INSTALL.md](docs/INSTALL.md) | Installing, verifying and uninstalling |
+| [GUI.md](docs/GUI.md) | The interface design: layout, tiles, navigation, typography |
+| [PERFORMANCE.md](docs/PERFORMANCE.md) | What was measured, what it cost, and what made it fast |
+| [BOXART.md](docs/BOXART.md) | Artwork preparation, formats and scraper matching audit |
+| [WIFI.md](docs/WIFI.md) | MiSTer Wi-Fi configuration notes for a later Settings feature |
+| [POC.md](docs/POC.md) | How the MiSTer boots, where a frontend hooks in, and what was proven on hardware |
+| [CONTROLLER.md](docs/CONTROLLER.md) | Controller-first setup — listing pads, an input test, deadzone, button mapping and Bluetooth pairing: the design, and what real hardware testing found along the way |
+| [ARCADE.md](docs/ARCADE.md) | Arcade support — the analysis, the design and what was built from it. The MRA format, a ROM-storage-priority bug found on real hardware, how the library, the tab and the box art work, and what is still open |
 
 ## Status
 
@@ -291,7 +292,7 @@ navigation, launching games, returning from a game with a long press on the menu
 hiding systems or the Games tab from Settings for a large library. Arcade and the built-in
 font fallback have been exercised on the MiSTer. The 0.4.0 box-art preparation run over
 11,502 entries completed; the user reports that the current interface looks and feels very
-good. See [CHANGELOG.md](CHANGELOG.md) and [BOXART.md](BOXART.md).
+good. See [CHANGELOG.md](CHANGELOG.md) and [BOXART.md](docs/BOXART.md).
 
 ## Roadmap
 
@@ -310,7 +311,7 @@ for.
 
 - [x] **Test the Arcade library, tab, and updated scraper on real hardware.**
 - [x] **Improve box art matching** using the real scrape-miss list and an audit of Libretro's
-      index. See [BOXART.md](BOXART.md) for results and the limits of the available counts.
+      index. See [BOXART.md](docs/BOXART.md) for results and the limits of the available counts.
 - [x] **Font fallback and interface fixes** — test without Akrobat, tune fallback sizing,
       improve spacing, and show Ethernet and Wi-Fi addresses in Settings.
 - [x] **Navigation and input fixes** — alphabetize Arcade group previews and require a
@@ -339,12 +340,12 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.3.0 change list.
       updating this GUI fits into the way MiSTer users already keep their device current.
 - [ ] **Manage Cores / Manage MRAs** for Arcade, syncing against the official distribution
       manifest — the same download-and-verify machinery an installer and updater need. Design
-      in [ARCADE.md](ARCADE.md#decision-manage-cores-and-manage-mras).
+      in [ARCADE.md](docs/ARCADE.md#decision-manage-cores-and-manage-mras).
 
 #### 0.6.0 — Settings, sound and search
 
 - [ ] **More settings**, such as Wi-Fi, and whatever else turns out to be useful to reach from
-      the couch. MiSTer-specific Wi-Fi notes are in [WIFI.md](WIFI.md).
+      the couch. MiSTer-specific Wi-Fi notes are in [WIFI.md](docs/WIFI.md).
 - [ ] **A switch for the time format:** 12-hour or 24-hour.
 - [ ] **Set the time zone** used for the clock shown in the interface.
 - [ ] **Menu sounds.**
@@ -368,7 +369,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.3.0 change list.
 - [ ] **Ordering the systems** in the Systems tab. Hiding the ones you do not use already works.
 - [ ] **Telling HDD/CHD-based Arcade games apart** — boards such as Killer Instinct — from those
       that start unattended. Nothing found can automate the one-time manual step itself; see
-      [ARCADE.md](ARCADE.md#hddchd-based-games-no-automated-mount-found).
+      [ARCADE.md](docs/ARCADE.md#hddchd-based-games-no-automated-mount-found).
 - [ ] **A separately remembered view per tab** — Home, Favorites, Systems and Games — instead
       of the one default view for all of them.
 - [ ] **Localisation.** Everything is English today, with the strings still inline; extracting
@@ -406,7 +407,7 @@ from its use, including but not limited to a corrupted SD card, a bricked device
 data, or any other harm to your hardware or data.
 
 The installer modifies boot-time files on your MiSTer's SD card and replaces the main binary.
-Care has been taken to make that reversible — see [INSTALL.md](INSTALL.md) — but as with any
+Care has been taken to make that reversible — see [INSTALL.md](docs/INSTALL.md) — but as with any
 change to a device's boot path, something going wrong is always possible.
 
 This project does not provide, host, link to, or in any way distribute copyrighted game ROMs,

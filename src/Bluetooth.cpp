@@ -13,7 +13,7 @@ namespace {
 // Not `hci_get_route()` (BlueZ) — this project's own GUI does not link libbluetooth, only
 // Main_MiSTer's patched binary does. The sysfs node an adapter registers is the cheaper
 // equivalent; confirmed present on the reference device's own dmesg
-// (CONTROLLER.md, "Bluetooth pairing"), not yet proven bit-for-bit equivalent to what
+// (docs/CONTROLLER.md, "Bluetooth pairing"), not yet proven bit-for-bit equivalent to what
 // hci_get_route checks.
 bool hciNodePresent() {
     for (int i = 0; i < 4; ++i) {

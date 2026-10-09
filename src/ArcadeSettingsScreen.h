@@ -8,7 +8,7 @@
 
 // Settings -> Manage Arcade. A short menu of its own, the same way "Manage systems" and
 // "Controllers" get one, reached from Settings — room to grow into DIP switches, rescanning,
-// and whatever else ARCADE.md's own roadmap ends up needing, without the main Settings list
+// and whatever else docs/ARCADE.md's own roadmap ends up needing, without the main Settings list
 // itself growing a second, unrelated section for just this.
 class ArcadeSettingsScreen : public Screen {
 public:

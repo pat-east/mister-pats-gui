@@ -9,7 +9,7 @@
 #   index        number of the file option in the core's own menu
 #   f | s        f = file (default), s = disk slot, used by CD-based systems
 #
-# Most systems do not need an entry here: the values are built in, read from each core's
+# Most systems do not need an entry here: the values are built in, based on each core's
 # CONF_STR. This file exists for cores that are missing from that table and for unusual
 # setups.
 #
@@ -18,7 +18,7 @@
 #   NES, SNES, NINTENDO 64 and the other cartridge systems   1   f
 #   PLAYSTATION                                              1   s
 #   NEO GEO CD                                               1   s
-#   SATURN, SEGA CD, TURBOGRAFX-16 CD, 3DO                   0   s
+#   SATURN, MEGA CD, TURBOGRAFX-16 CD, 3DO                   0   s
 #   TURBOGRAFX-16                                            0   f
 #
 # Still unknown - fill in here once you have tested them:
@@ -32,4 +32,4 @@
 #
 # If a real launch does nothing, the slot matches none of the core's F/S options; the MGL
 # playback then aborts silently and the core sits in its own menu. The slot each core
-# expects is listed in POC.md.
+# expects is listed in docs/POC.md.

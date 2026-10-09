@@ -2,7 +2,7 @@
 
 Design document: layout, behavior and rendering rules. Some sketches and proposals below
 record earlier design choices; the current 0.4.0 changes are summarized in
-[CHANGELOG.md](CHANGELOG.md), with measurements in [PERFORMANCE.md](PERFORMANCE.md).
+[CHANGELOG.md](../CHANGELOG.md), with measurements in [PERFORMANCE.md](PERFORMANCE.md).
 
 **Implementation status.** The basic framework is built and running; screenshots taken on the
 device are in `build/shots/`. Deviations from this design that came out of the implementation:
@@ -268,7 +268,7 @@ Two columns: the list on the left, a large presentation of the focused game on t
 
 The current screen is a single settings list with system facts beside it. It includes Build
 game database, Prepare box art, Download System-Icons, Show box art, view and menu toggles,
-controller management, and other actions. See [README.md](README.md) for the user-facing
+controller management, and other actions. See [README.md](../README.md) for the user-facing
 feature list.
 
 ## 6. The Tile — the Central GUI Element

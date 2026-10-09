@@ -1,5 +1,5 @@
 // Host-side checks for MraFile: parsing an .mra, and the two lookups it replicates from
-// MiSTer's own arcade loader — see ARCADE.md, "Two independent root lookups", and its Killer
+// MiSTer's own arcade loader — see docs/ARCADE.md, "Two independent root lookups", and its Killer
 // Instinct case study, which is exactly the bug the resolveRom() checks below exist to catch
 // before it ever reaches a real device again.
 //

@@ -73,6 +73,6 @@ For titles with
 multiple regional versions, the current index often prefers a US cover even when the
 ROM is from another region.
 
-The local audit tool is at [tools/scrape_misses_audit.cpp](tools/scrape_misses_audit.cpp).
+The local audit tool is at [tools/scrape_misses_audit.cpp](../tools/scrape_misses_audit.cpp).
 It reads a `scrape-misses.txt` file from the MiSTer and writes its detailed results to a
 local report directory, which is excluded from version control.

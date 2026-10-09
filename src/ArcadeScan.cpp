@@ -13,7 +13,7 @@ constexpr size_t kBatchPerStep = 8;
 // kBatchPerStep, and deliberately small: a real library's _Arcade tree can hold hundreds of
 // manufacturer/genre subfolders (see ArcadeScan.h), and listing all of them in one unbroken
 // burst is exactly what blocked the UI for a noticeable moment on real hardware before this was
-// paced — see ARCADE.md.
+// paced — see docs/ARCADE.md.
 constexpr size_t kDirsPerStep = 6;
 
 bool hasMraSuffix(const std::string &s) {

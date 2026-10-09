@@ -12,7 +12,7 @@
 // single "might work" verdict combining all of that.
 //
 // Exists because none of that could be told at a glance the day this feature was designed —
-// see ARCADE.md's own Killer Instinct case study, which needed an SSH session and reading
+// see docs/ARCADE.md's own Killer Instinct case study, which needed an SSH session and reading
 // MiSTer's source directly to explain a game that looked fully installed and still would not
 // start. This screen is that same check, done once for the whole library instead of one game
 // at a time by hand.

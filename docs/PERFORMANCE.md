@@ -154,7 +154,7 @@ immediately whether they come from incremental drawing.
 
 Incremental drawing fails on small details that are hard to spot on a TV: an area that is not
 reported while drawing leaves stray old pixels behind. Because `Canvas` only depends on
-`Color` and `Geometry`, it can be compiled and tested on the Mac — see [`tests/`](tests/), run
+`Color` and `Geometry`, it can be compiled and tested on the Mac — see [`tests/`](../tests/), run
 with `make -C tests`.
 
 The load-bearing guarantee is: *draw, then copy the reported area back from the background,

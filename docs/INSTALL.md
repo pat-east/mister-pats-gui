@@ -213,7 +213,7 @@ ssh root@<mister-ip> 'tar xzf /tmp/icons.tgz -C /media/fat/mister-pat/ --no-same
 ```
 
 Steps 4 to 6 are the same. The full build instructions are in
-[README.md](README.md#building-from-source).
+[README.md](../README.md#building-from-source).
 
 ## Uninstalling
 

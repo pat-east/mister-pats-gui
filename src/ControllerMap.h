@@ -5,7 +5,7 @@
 
 // MiSTer's own default-mapping file format: `/media/fat/config/inputs/input_<idstr>_v3.map`,
 // 32 little-endian uint32 values, 128 bytes, fixed slots. Reverse-engineered byte-for-byte
-// from MiSTer's own source and cross-checked against a real file — see CONTROLLER.md, "The
+// from MiSTer's own source and cross-checked against a real file — see docs/CONTROLLER.md, "The
 // .map file", for the full slot table and the reasoning behind each design choice below.
 namespace ControllerMap {
 
@@ -33,7 +33,7 @@ enum Slot {
     // 20–23 confirmed against Main_MiSTer/input.cpp's own mapping-capture state machine
     // (`SYS_BTN_OSD_KTGL`/`SYS_BTN_CNT_OK`/`SYS_BTN_CNT_ESC`/`SYS_BTN_MENU_FUNC`) and its own
     // three prompts for this area ("Menu", "Menu: OK", "Menu: Back" — menu.cpp) after an
-    // earlier, wrong assumption here broke OSD confirm on real hardware. See CONTROLLER.md,
+    // earlier, wrong assumption here broke OSD confirm on real hardware. See docs/CONTROLLER.md,
     // "The .map file", for the full trace.
     OsdToggleKeyboard = 20,  // keyboard-session-only "open OSD" key; always 0 for a gamepad
     OsdComboPrimary = 21,    // "open OSD from inside a core": primary/first button
@@ -52,7 +52,7 @@ enum Slot {
 
 // A whole file's worth of slots. Deliberately one fixed-size struct rather than 32 separate
 // fields or a map: MiSTer's own reader/writer treats this as one atomic 128-byte unit (see
-// CONTROLLER.md), so a writer here has to construct — and a reader has to hand back — the
+// docs/CONTROLLER.md), so a writer here has to construct — and a reader has to hand back — the
 // entire thing as one unit too, never a single slot in isolation.
 struct Slots {
     uint32_t values[kSlotCount] = {};
@@ -88,7 +88,7 @@ bool read(const std::string &idstr, Slots &out, const std::string &inputsDir = k
 
 // Always writes the whole 128-byte struct — see Slots above for why a partial update is not
 // a safe operation for this format. Atomic (temp file + rename); deliberately no backup (see
-// CONTROLLER.md: not load-bearing for booting, and a missing/corrupt one already falls back
+// docs/CONTROLLER.md: not load-bearing for booting, and a missing/corrupt one already falls back
 // to MiSTer's own built-in default per `load_map`).
 bool write(const std::string &idstr, const Slots &slots,
           const std::string &inputsDir = kDefaultInputsDir);

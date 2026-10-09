@@ -1,4 +1,4 @@
-// Host-side check that LibraryScan records Arcade in the game database the way ARCADE.md plans
+// Host-side check that LibraryScan records Arcade in the game database the way docs/ARCADE.md plans
 // it: the games that actually work (core, ROM zip and CRCs all present — judged by the same
 // check the diagnostic table uses), each once however many volumes hold it, sorted by name —
 // plus one list per manufacturer and per category, with a catalogue naming them.

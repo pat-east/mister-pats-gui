@@ -1,6 +1,6 @@
 # Controller Management — Design
 
-Design document for the "Controller management" item on the [README roadmap](README.md#roadmap).
+Design document for the "Controller management" item on the [README roadmap](../README.md#roadmap).
 Originally written as analysis and a proposed design, before any code changes, so the shape of
 the feature was settled first. **Now implemented and verified on real hardware** (Settings →
 Controllers) — kept up to date as a record of the design *and* of what hardware testing turned
@@ -248,7 +248,7 @@ Confirmed by reading `menu.cpp`'s own `MENU_BTPAIR`/`MENU_BTPAIR2` states (the s
 "Pair Bluetooth device" screen). Since then, confirmed end to end on real hardware too: a PS4
 controller (DualShock 4) paired through this feature's own modal, and — separately worth
 noting — the pairing survives a reboot on its own, with no re-pairing step needed (see
-[README](README.md#tested-controllers)).
+[README](../README.md#tested-controllers)).
 
 - **Not every MiSTer has Bluetooth**, and stock MiSTer already checks for that the right way:
   `hci_get_route(0) < 0` (from `<bluetooth.h>`, i.e. BlueZ) — an adapter either answers or it
@@ -496,7 +496,7 @@ should be trivially dismissible:
 
 All mockups below use this project's existing bottom-bar hint convention (see any current
 screen) and reuse the tile-grid list style already established for
-[SystemVisibilityScreen](src/SystemVisibilityScreen.h) ("Manage systems") — a full-height list
+[SystemVisibilityScreen](../src/SystemVisibilityScreen.h) ("Manage systems") — a full-height list
 on the left, detail/preview on the right, since a controller list is structurally the same kind
 of screen.
 

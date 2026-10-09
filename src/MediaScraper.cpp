@@ -368,7 +368,7 @@ void MediaScraper::step() {
 
             // MAME's "snaps" are gameplay screenshots, which may not make a pleasant
             // full-screen background the way console fan art does. Not looked at yet, so
-            // not fetched — see ARCADE.md. Box art only for Arcade until that is settled.
+            // not fetched — see docs/ARCADE.md. Box art only for Arcade until that is settled.
             if (arcade_ && kind.suffix[0] == '-') continue;
 
             anyWanted = true;

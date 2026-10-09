@@ -4,7 +4,7 @@
 
 // Shared plumbing for every write this project makes to a file it does not exclusively own
 // (MiSTer.ini) or that a game core reads while running (a `.map` file). Both classes of file
-// are things a torn write can leave silently, dangerously wrong — see CONTROLLER.md, "Writing
+// are things a torn write can leave silently, dangerously wrong — see docs/CONTROLLER.md, "Writing
 // MiSTer.ini safely" and "The .map file" — so both go through the same two primitives rather
 // than each writer growing its own, easy-to-get-subtly-wrong version.
 namespace SafeFileWrite {

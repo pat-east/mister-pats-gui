@@ -7,7 +7,7 @@
 namespace {
 
 // Console Mode's own copy first, so an existing install needs nothing further; then a copy
-// placed by hand (see INSTALL.md). Nothing beyond that is worth listing — MiSTer's own OSD
+// placed by hand (see docs/INSTALL.md). Nothing beyond that is worth listing — MiSTer's own OSD
 // draws from a bitmap font compiled into its binary, not a loose TTF on disk, so there is no
 // third system location to reliably find one at. If neither candidate opens, Font::load()
 // reports it and every caller falls back to the built-in bitmap face, which needs no file at

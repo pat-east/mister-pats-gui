@@ -15,7 +15,7 @@ SSH_OPTS=${SSH_OPTS:--o BatchMode=yes}
 [ -f "$BINARY" ] || { echo "not found: $BINARY"; exit 1; }
 [ -f "$MISTER_BINARY" ] || {
     echo "not found: $MISTER_BINARY" >&2
-    echo "Build the patched Main_MiSTer binary first (see INSTALL.md)." >&2
+    echo "Build the patched Main_MiSTer binary first (see docs/INSTALL.md)." >&2
     exit 1
 }
 

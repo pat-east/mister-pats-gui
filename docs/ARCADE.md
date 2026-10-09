@@ -1,6 +1,6 @@
 # Arcade Support — Analysis, Design and What Was Built
 
-Design document for the "Arcade" item on the [README roadmap](README.md#roadmap).
+Design document for the "Arcade" item on the [README roadmap](../README.md#roadmap).
 Written the same way [CONTROLLER.md](CONTROLLER.md) was — analysis and a proposed design before
 any code changes — because Arcade genuinely does not fit the one-system-one-core model the rest
 of this GUI is built on, and that needs to be settled before anything gets built. It was then

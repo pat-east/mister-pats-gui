@@ -1,5 +1,5 @@
 // Host-side checks for LibretroIndex's arcade lookup: a cover is chosen by the whole title,
-// brackets included, because in MAME's set every ROM revision has its own — see ARCADE.md,
+// brackets included, because in MAME's set every ROM revision has its own — see docs/ARCADE.md,
 // "Scraper and box art", for the real wrong-cover bug the loose match alone would have shipped.
 //
 // Build and run:  make -C tests

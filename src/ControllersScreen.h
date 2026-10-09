@@ -9,13 +9,13 @@
 #include "ControllerMap.h"
 #include "Screen.h"
 
-// Settings -> Controllers. Everything CONTROLLER.md's design covers lives in this one
+// Settings -> Controllers. Everything docs/CONTROLLER.md's design covers lives in this one
 // screen, as internal modes rather than five separate Screen subclasses App would have to
 // wire up individually — the modes share one entry point (the controller list) and never
 // appear except reached from it, so App only ever needs to know about one of them, exactly
 // like ScanScreen/SystemVisibilityScreen already do for their own modal flows.
 //
-// Controller-first throughout, per CONTROLLER.md's premise: every mode below is fully
+// Controller-first throughout, per docs/CONTROLLER.md's premise: every mode below is fully
 // operable from a pad alone, including the one mode that is normally hardest to do that way
 // (button-mapping capture).
 class ControllersScreen : public Screen {
@@ -86,13 +86,13 @@ private:
     void renderDeadzone(Canvas &canvas, const Rect &area);
     void handleDeadzoneAction(Action action);
 
-    // Button-mapping wizard — see CONTROLLER.md, "Button mapping", for the full rule set
+    // Button-mapping wizard — see docs/CONTROLLER.md, "Button mapping", for the full rule set
     // this implements (Start captured first, then hold-5s/press-once/1-minute-idle for
     // every step after).
 
     // Which part of the on-screen pad diagram lights up for the current step — a *physical
     // position*, independent of which underlying `.map` slot the press ends up written to
-    // (those two can differ; see CONTROLLER.md, "The .map file", on why MiSTer's own A/B/X/Y
+    // (those two can differ; see docs/CONTROLLER.md, "The .map file", on why MiSTer's own A/B/X/Y
     // slots follow SNES-style positions while this wizard's own prompts stay in the more
     // familiar Xbox ones). None for the two "Menu: OK"/"Menu: Back" steps, which reuse
     // whatever button the person likes rather than pointing at one fixed spot.

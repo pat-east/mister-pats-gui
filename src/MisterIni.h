@@ -7,7 +7,7 @@
 
 // The one small corner of `/media/fat/MiSTer.ini` this project's controller-management
 // feature touches: the `deadzone=` line. Everything else in that file is read back verbatim
-// and rewritten unchanged — see CONTROLLER.md, "Writing MiSTer.ini safely", for why this is
+// and rewritten unchanged — see docs/CONTROLLER.md, "Writing MiSTer.ini safely", for why this is
 // as conservative as it is: this file is what everything else this project's boot patch
 // depends on, and it must never be allowed to end up broken.
 namespace MisterIni {
