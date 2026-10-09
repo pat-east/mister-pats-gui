@@ -261,6 +261,7 @@ void Canvas::drawImage(const Image &img, const Rect &dst, uint8_t alpha, int rad
     markDamage(t);
 
     const int rad = std::max(0, std::min(radius, std::min(dst.w, dst.h) / 2));
+    const bool sourceOpaque = img.opaque();
 
     for (int y = t.y; y < t.bottom(); ++y) {
         const int sy = int(long(y - dst.y) * img.height() / dst.h);
@@ -272,7 +273,7 @@ void Canvas::drawImage(const Image &img, const Rect &dst, uint8_t alpha, int rad
             const int sx = int(long(x - dst.x) * img.width() / dst.w);
             const uint32_t p = src[std::min(sx, img.width() - 1)];
 
-            uint32_t a = ((p >> 24) & 0xFF) * alpha / 255;
+            uint32_t a = sourceOpaque ? alpha : ((p >> 24) & 0xFF) * alpha / 255;
             if (!a) continue;
 
             if (rad > 0) {

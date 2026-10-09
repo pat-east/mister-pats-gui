@@ -1,16 +1,179 @@
 #include <csignal>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <exception>
+#include <execinfo.h>
+#include <fcntl.h>
 #include <string>
+#include <sys/types.h>
+#include <typeinfo>
+#include <ucontext.h>
+#include <unistd.h>
 
 #include "App.h"
+#include "CrashScreen.h"
+#include "DebugLog.h"
 #include "LibraryScan.h"
 
 namespace {
 
 App *g_app = nullptr;
+volatile sig_atomic_t g_crashHandlerEntered = 0;
+volatile sig_atomic_t g_stopSignal = 0;
 
-void onSignal(int) {
+void writeLiteral(int fd, const char *text) {
+    size_t length = 0;
+    while (text[length]) ++length;
+    while (length) {
+        const ssize_t written = write(fd, text, length);
+        if (written <= 0) return;
+        text += written;
+        length -= size_t(written);
+    }
+}
+
+void writeHex(int fd, uintptr_t value) {
+    static const char digits[] = "0123456789abcdef";
+    char buffer[2 + sizeof(value) * 2];
+    size_t end = sizeof(buffer);
+    do {
+        buffer[--end] = digits[value & 0x0fu];
+        value >>= 4;
+    } while (value && end > 2);
+    buffer[--end] = 'x';
+    buffer[--end] = '0';
+    while (end < sizeof(buffer)) {
+        const ssize_t written = write(fd, buffer + end, sizeof(buffer) - end);
+        if (written <= 0) return;
+        end += size_t(written);
+    }
+}
+
+void writeDecimal(int fd, int value) {
+    char buffer[16];
+    size_t end = sizeof(buffer);
+    unsigned int magnitude = value < 0 ? 0u - unsigned(value) : unsigned(value);
+    do {
+        buffer[--end] = char('0' + magnitude % 10u);
+        magnitude /= 10u;
+    } while (magnitude && end > 1);
+    if (value < 0) buffer[--end] = '-';
+    while (end < sizeof(buffer)) {
+        const ssize_t written = write(fd, buffer + end, sizeof(buffer) - end);
+        if (written <= 0) return;
+        end += size_t(written);
+    }
+}
+
+// The patched MiSTer launcher retries a GUI that exits every five seconds. Stop that retry
+// loop after a fatal error: otherwise every failed start adds more log writes and repeats the
+// same failure indefinitely. The marker lives in /tmp (RAM) and a reboot clears it.
+void pauseAutomaticRelaunch() {
+    const int fd = open(App::kSuspendMarkerPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (fd < 0) return;
+    writeLiteral(fd, "fatal GUI exit\n");
+    close(fd);
+}
+
+const char *signalName(int signalNumber) {
+    switch (signalNumber) {
+    case SIGSEGV: return "SIGSEGV";
+    case SIGBUS:  return "SIGBUS";
+    case SIGILL:  return "SIGILL";
+    case SIGFPE:  return "SIGFPE";
+    case SIGABRT: return "SIGABRT";
+    default:      return "SIGUNKNOWN";
+    }
+}
+
+void onFatalSignal(int signalNumber, siginfo_t *info, void *context) {
+    if (g_crashHandlerEntered) {
+        pauseAutomaticRelaunch();
+        _exit(128 + signalNumber);
+    }
+    g_crashHandlerEntered = 1;
+    pauseAutomaticRelaunch();
+
+    const int fd = open("/media/fat/mister-pat/logs/crash.log",
+                        O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd >= 0) {
+        writeLiteral(fd, "fatal ");
+        writeLiteral(fd, signalName(signalNumber));
+        writeLiteral(fd, " number=");
+        writeDecimal(fd, signalNumber);
+        writeLiteral(fd, " code=");
+        writeDecimal(fd, info ? info->si_code : 0);
+        writeLiteral(fd, " address=");
+        writeHex(fd, info ? reinterpret_cast<uintptr_t>(info->si_addr) : 0);
+#if defined(__arm__)
+        if (context) {
+            const ucontext_t *uc = static_cast<const ucontext_t *>(context);
+            writeLiteral(fd, " pc=");
+            writeHex(fd, uintptr_t(uc->uc_mcontext.arm_pc));
+            writeLiteral(fd, " lr=");
+            writeHex(fd, uintptr_t(uc->uc_mcontext.arm_lr));
+            writeLiteral(fd, " sp=");
+            writeHex(fd, uintptr_t(uc->uc_mcontext.arm_sp));
+        }
+#endif
+        writeLiteral(fd, " pid=");
+        writeDecimal(fd, int(getpid()));
+        writeLiteral(fd, " auto_relaunch=paused");
+        writeLiteral(fd, "\n");
+        close(fd);
+    }
+
+    // Leave the saved record on disk and terminate this process. The launch wrapper sees the
+    // nonzero status and opens the separate crash screen instead of starting the GUI again.
+    _exit(128 + signalNumber);
+}
+
+void onTerminate() {
+    pauseAutomaticRelaunch();
+    void *frames[32];
+    const int count = backtrace(frames, int(sizeof(frames) / sizeof(frames[0])));
+    const std::exception_ptr exception = std::current_exception();
+    const int fd = open("/media/fat/mister-pat/logs/crash.log",
+                        O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (fd >= 0) {
+        writeLiteral(fd, "std::terminate backtrace:");
+        for (int i = 0; i < count; ++i) {
+            writeLiteral(fd, " ");
+            writeHex(fd, reinterpret_cast<uintptr_t>(frames[i]));
+        }
+        writeLiteral(fd, " exception=");
+        if (!exception) {
+            writeLiteral(fd, "none");
+        } else {
+            try {
+                std::rethrow_exception(exception);
+            } catch (const std::exception &error) {
+                writeLiteral(fd, typeid(error).name());
+                writeLiteral(fd, " what=");
+                writeLiteral(fd, error.what() ? error.what() : "(null)");
+            } catch (...) {
+                writeLiteral(fd, "non-std-exception");
+            }
+        }
+        writeLiteral(fd, " auto_relaunch=paused");
+        writeLiteral(fd, "\n");
+        close(fd);
+    }
+    _exit(134);
+}
+
+void installFatalSignalLogging() {
+    struct sigaction action{};
+    action.sa_sigaction = onFatalSignal;
+    action.sa_flags = SA_SIGINFO | SA_RESETHAND;
+    sigemptyset(&action.sa_mask);
+    const int signals[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT};
+    for (int signalNumber : signals) sigaction(signalNumber, &action, nullptr);
+}
+
+void onSignal(int signalNumber) {
+    g_stopSignal = signalNumber;
     if (g_app) g_app->stop();
 }
 
@@ -22,7 +185,7 @@ void usage() {
     std::printf(
         "mister-gui [options]\n"
         "  --tab home|favorites|systems|arcade|games|settings  screen to open\n"
-        "  --view list|large|grid|small|compact     game presentation\n"
+        "  --view list|grid|small                  game presentation\n"
         "  --system NAME                            preselect a system\n"
         "  --frames N                               render N frames, then exit\n"
         "  --dump PATH                              write the finished canvas to PATH\n"
@@ -35,7 +198,7 @@ void usage() {
         "  --exclusive                              grab inputs (blocks the MiSTer OSD)\n"
         "  --full-redraw                            repaint everything every frame\n"
         "  --no-splash                              skip the startup splash delay\n"
-        "  --splash-ms N                            splash delay in ms (default 2500)\n");
+        "  --splash-ms N                            splash settle wait in ms (default 1000)\n");
 }
 
 bool parse(int argc, char **argv, App::Options &options) {
@@ -113,8 +276,16 @@ int runScanOnly() {
 }
 
 int main(int argc, char **argv) {
+    if (argc >= 2 && std::strcmp(argv[1], "--crash-screen") == 0) {
+        const int exitStatus = argc >= 3 ? std::atoi(argv[2]) : 1;
+        return CrashScreen::show(exitStatus);
+    }
+
+    std::set_terminate(onTerminate);
+    installFatalSignalLogging();
+
     App::Options options;
-    options.splashMs = 2500;   // real boots show the splash unless told not to
+    options.splashMs = 1000;   // first quarter of the splash is the drive settle wait
     if (!parse(argc, argv, options)) return 0;
 
     if (options.scanOnly) return runScanOnly();
@@ -134,5 +305,8 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    return app.run();
+    const int result = app.run();
+    if (g_stopSignal == SIGINT) DebugLog::warn("run: stopped by SIGINT");
+    else if (g_stopSignal == SIGTERM) DebugLog::warn("run: stopped by SIGTERM");
+    return result;
 }

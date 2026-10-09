@@ -1,19 +1,20 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
 #include "Downloader.h"
 #include "GameDatabase.h"
+#include "Image.h"
 #include "LibretroIndex.h"
 
 // Fetches box art and background images for everything in the game database.
 //
-// Shrinks and re-encodes each picture before it is written, so the drive only ever sees the
-// finished file — roughly 76 KB instead of 400. Everything in between happens in /tmp, which
-// is a RAM disk on a MiSTer. That matters more than it sounds: a full library is some fifteen
-// thousand images, and writing a gigabyte to a marginally powered USB drive is exactly the
-// load that knocks one off the bus.
+// Writes JPEG fallbacks plus pre-sized, uncompressed BMPs for each view. A full library uses
+// more space for those variants, but the GUI can decode them without a JPEG pass or a load-time
+// resize. Existing local artwork is converted during the same paced job; missing artwork is
+// fetched from the network.
 //
 // Runs one game per step, driven from the frame loop. A download takes about a second, so
 // that also sets the pace: the drive sees a small write about once a second rather than a
@@ -28,10 +29,8 @@ public:
         bool backgrounds = true;
         bool overwrite = false;   // off means "fill the gaps", which is also how it resumes
         int maxEdge = 512;        // long side after shrinking
-        // A second, smaller copy written alongside the full-size one — `<name>-sm.jpg` — for
-        // grid tiles, which never draw anything close to 512 pixels wide. 300 covers every
-        // tile size up to Boxart large (see GamesScreen's kSmallArtworkMaxTile) with room to
-        // spare, while still being a third of the source's pixel count to decode.
+        // A smaller JPEG fallback for installations where the view-specific BMP has not been
+        // generated yet. The normal GUI path prefers the native-size BMP variant.
         int smallMaxEdge = 300;
         int quality = 85;
 
@@ -53,9 +52,13 @@ public:
     bool finished() const { return state_ == State::Done || state_ == State::Failed; }
 
     float progress() const;
+    // Estimated remaining seconds from elapsed time and completed games, or -1 before
+    // the first game is complete.
+    int64_t estimatedRemainingSeconds() const;
     std::string statusLine() const;
 
     size_t fetched() const { return fetched_; }
+    size_t prepared() const { return prepared_; }
     size_t skipped() const { return skipped_; }
     size_t missing() const { return missing_; }
     const std::string &error() const { return error_; }
@@ -79,12 +82,14 @@ private:
     };
 
     bool prepareNextSystem();
-    // `base` is the destination without an extension — this writes both `base.jpg` (full
-    // size) and `base-sm.jpg` (grid size) from the one download.
-    bool fetchOne(const std::string &url, const std::string &base);
+    // `base` is the destination without an extension. A box-art download also creates the
+    // view-specific BMPs from the decoded source image.
+    bool fetchOne(const std::string &url, const std::string &base, bool makeViewVariants);
     // For a game scraped before `-sm.jpg` existed: makes the small copy from the full-size
     // file already on disk, no network access at all.
     bool refreshSmall(const std::string &base);
+    bool prepareViewVariants(const std::string &base, ImagePtr source = nullptr,
+                             bool overwrite = false);
     void noteMiss(const std::string &system, const std::string &title);
 
     State state_ = State::Idle;
@@ -100,10 +105,13 @@ private:
 
     std::vector<Job> jobs_;
     size_t jobPosition_ = 0;
+    bool indexAvailable_ = false;
 
     size_t totalGames_ = 0;
     size_t doneGames_ = 0;
+    int64_t startedAtMs_ = 0;
     size_t fetched_ = 0;
+    size_t prepared_ = 0;
     size_t skipped_ = 0;
     size_t missing_ = 0;
     bool missesOpened_ = false;

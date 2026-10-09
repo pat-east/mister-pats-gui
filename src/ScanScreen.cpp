@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <ctime>
 
 #include "Canvas.h"
 #include "LoadingIndicator.h"
@@ -154,20 +155,19 @@ void ScanScreen::renderArtworkOffer(Canvas &canvas, const Rect &panel) {
     Theme &theme = context_.theme;
     const Rect body = panel.inset(theme.px(44));
 
-    theme.bold().draw(canvas, body.x, body.y, "Fetch box art", theme.sizeTitle(),
+    theme.bold().draw(canvas, body.x, body.y, "Prepare box art", theme.sizeTitle(),
                       theme.textPrimary);
 
     int y = body.y + theme.px(78);
     drawParagraph(canvas, body,
-                  {"Covers and background images come from the libretro thumbnail",
-                   "server. No account, no key.",
+                  {"Covers come from the libretro thumbnail server; existing local covers",
+                   "are converted too. No account or key is needed.",
                    "",
-                   "Each picture is shrunk and re-encoded before it is written, so the",
-                   "drive only ever sees the finished file — about 45 KB instead of 300.",
+                   "Five uncompressed BMP sizes are stored per cover, up to about",
+                   "1.7 MB per game. The JPEG fallback stays in place.",
                    "",
-                   "This takes a while: roughly a second per game, and it needs the",
-                   "network. Stopping is safe. Whatever arrived stays, and running it",
-                   "again fills in the rest."},
+                   "Missing covers need the network. Existing covers can be converted",
+                   "offline. Stopping is safe; run it again to continue."},
                   theme.sizeBody(), theme.textMuted, y);
 
     y += theme.px(14);
@@ -181,10 +181,27 @@ void ScanScreen::renderArtworkOffer(Canvas &canvas, const Rect &panel) {
 void ScanScreen::renderArtworkWorking(Canvas &canvas, const Rect &panel) {
     Theme &theme = context_.theme;
     char counts[128];
-    std::snprintf(counts, sizeof(counts), "%zu fetched  ·  %zu already there  ·  %zu not found",
-                  scraper_.fetched(), scraper_.skipped(), scraper_.missing());
-    LoadingIndicator::draw(canvas, theme, panel.inset(theme.px(44)), "Fetching box art",
-                           scraper_.progress(), scraper_.statusLine(), counts);
+    std::snprintf(counts, sizeof(counts),
+                  "%zu fetched  ·  %zu optimized  ·  %zu already there  ·  %zu not found",
+                  scraper_.fetched(), scraper_.prepared(), scraper_.skipped(),
+                  scraper_.missing());
+    char eta[64];
+    const int64_t remaining = scraper_.estimatedRemainingSeconds();
+    if (remaining < 0) {
+        std::snprintf(eta, sizeof(eta), "ETA calculating…");
+    } else {
+        const std::time_t finish = std::time(nullptr) + remaining;
+        std::tm local{};
+        char clock[32]{};
+        if (localtime_r(&finish, &local) &&
+            std::strftime(clock, sizeof(clock), "%H:%M %Z", &local)) {
+            std::snprintf(eta, sizeof(eta), "ETA ~%s", clock);
+        } else {
+            std::snprintf(eta, sizeof(eta), "ETA unavailable");
+        }
+    }
+    LoadingIndicator::draw(canvas, theme, panel.inset(theme.px(44)), "Preparing box art",
+                           scraper_.progress(), scraper_.statusLine(), counts, eta);
 }
 
 void ScanScreen::renderDone(Canvas &canvas, const Rect &panel) {
@@ -227,8 +244,10 @@ void ScanScreen::renderDone(Canvas &canvas, const Rect &panel) {
 
     if (scraper_.state() != MediaScraper::State::Idle) {
         char art[160];
-        std::snprintf(art, sizeof(art), "%zu fetched, %zu already there, %zu missing.",
-                      scraper_.fetched(), scraper_.skipped(), scraper_.missing());
+        std::snprintf(art, sizeof(art),
+                      "%zu fetched, %zu optimized for views, %zu already there, %zu missing.",
+                      scraper_.fetched(), scraper_.prepared(), scraper_.skipped(),
+                      scraper_.missing());
         y += theme.px(10);
 
         std::vector<std::string> lines = {art};

@@ -17,6 +17,8 @@ public:
     SettingsScreen(Context &context, std::function<void()> onReload,
                    std::function<void()> onQuit, std::function<void()> onBuildDatabase,
                    std::function<void()> onFetchArtwork,
+                   std::function<void()> onDownloadSystemIcons,
+                   std::function<std::string()> systemIconDownloadStatus,
                    std::function<void()> onManageSystems,
                    std::function<void()> onManageControllers,
                    std::function<void()> onManageArcade,
@@ -55,6 +57,8 @@ private:
     std::function<void()> onQuit_;
     std::function<void()> onBuildDatabase_;
     std::function<void()> onFetchArtwork_;
+    std::function<void()> onDownloadSystemIcons_;
+    std::function<std::string()> systemIconDownloadStatus_;
     std::function<void()> onManageSystems_;
     std::function<void()> onManageControllers_;
     std::function<void()> onManageArcade_;

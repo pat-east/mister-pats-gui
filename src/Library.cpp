@@ -90,6 +90,20 @@ std::string resolveArtworkFile(const std::string &base, bool preferSmall) {
     return base + ".png";
 }
 
+std::string resolveBoxartFile(const std::string &base, ArtworkVariant variant) {
+    if (variant != ArtworkVariant::Full) {
+        const ArtworkBounds bounds = artworkBounds(variant);
+        const std::string sized = base + bounds.suffix + ".bmp";
+        if (fileExists(sized)) return sized;
+    }
+
+    if ((variant == ArtworkVariant::Home || variant == ArtworkVariant::Grid ||
+         variant == ArtworkVariant::Small) && fileExists(base + "-sm.jpg"))
+        return base + "-sm.jpg";
+    if (fileExists(base + ".jpg")) return base + ".jpg";
+    return base + ".png";
+}
+
 std::string trim(const std::string &s) {
     size_t a = s.find_first_not_of(" \t\r\n");
     if (a == std::string::npos) return std::string();
@@ -429,13 +443,14 @@ Game Library::makeStub(const GameSystem &system, const std::string &path) {
     return game;
 }
 
-Game Library::makeGame(const GameSystem &system, const std::string &path) {
+Game Library::makeGame(const GameSystem &system, const std::string &path,
+                       ArtworkVariant variant) {
     Game game = makeStub(system, path);
-    resolveArtwork(system, game, false);
+    resolveArtwork(system, game, variant);
     return game;
 }
 
-void Library::resolveArtwork(const GameSystem &system, Game &game, bool preferSmall) {
+void Library::resolveArtwork(const GameSystem &system, Game &game, ArtworkVariant variant) {
     const std::string &path = game.path;
 
     // Artwork sits next to the game itself. Deriving it from the game's own directory keeps
@@ -444,8 +459,9 @@ void Library::resolveArtwork(const GameSystem &system, Game &game, bool preferSm
     const size_t slash = path.find_last_of('/');
     if (slash != std::string::npos) {
         const std::string media = path.substr(0, slash) + "/media/" + game.name;
-        game.boxart = resolveArtworkFile(media, preferSmall);
-        game.background = resolveArtworkFile(media + "-BG", preferSmall);
+        game.boxart = resolveBoxartFile(media, variant);
+        game.background = resolveArtworkFile(media + "-BG", variant != ArtworkVariant::Full &&
+                                                                   variant != ArtworkVariant::Detail);
     }
 
     // Games organised into subfolders keep their artwork one level up, in the system's own
@@ -454,8 +470,9 @@ void Library::resolveArtwork(const GameSystem &system, Game &game, bool preferSm
         if (path.compare(0, dir.size(), dir) != 0) continue;
         const std::string media = dir + "/media/" + game.name;
         if (dir + "/media/" == path.substr(0, slash) + "/media/") break;   // already looking there
-        game.boxartFallback = resolveArtworkFile(media, preferSmall);
-        game.backgroundFallback = resolveArtworkFile(media + "-BG", preferSmall);
+        game.boxartFallback = resolveBoxartFile(media, variant);
+        game.backgroundFallback = resolveArtworkFile(media + "-BG", variant != ArtworkVariant::Full &&
+                                                                            variant != ArtworkVariant::Detail);
         break;
     }
 }

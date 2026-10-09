@@ -1,23 +1,26 @@
 #pragma once
 
+#include <cstdint>
+#include <cstddef>
 #include <string>
 #include <vector>
 
 #include "GridView.h"
+#include "Artwork.h"
 #include "Screen.h"
 
-enum class GameView { List, BoxartLarge, Grid, BoxartSmall, Compact, kCount };
+enum class GameView { List, Grid, BoxartSmall, kCount };
 
-// The stable, lowercase names used on the command line (--view) and in preferences.txt — as
-// opposed to GamesScreen's own display names ("Boxart large" and so on), which are for a
-// tile's label and free to change without breaking a saved setting.
+// The stable, lowercase names used on the command line (--view) and in preferences.txt, as
+// opposed to GamesScreen's display names, which are for the settings row and can change
+// without breaking a saved setting.
 GameView gameViewFromName(const std::string &name);
 const char *nameForGameView(GameView view);
 
 // The label shown on a tile's presentation, and in Settings' "Default view" row.
 const char *displayNameForGameView(GameView view);
 
-// Shows a list of games in one of four presentations. Also used for the favourites tab,
+// Shows a list of games in one of three presentations. Also used for the favourites tab,
 // which is the same view over a different source.
 class GamesScreen : public Screen {
 public:
@@ -43,6 +46,12 @@ public:
     GameView view() const { return view_; }
     void setView(GameView view);
 
+    // Grid tiles are repainted only when their content or focus changes. The list detail
+    // panel still uses a full redraw because its background fade changes continuously.
+    bool incremental() const override {
+        return view_ != GameView::List && !entries_.empty() && context_.background;
+    }
+
     void update(float deltaSeconds) override;
     void render(Canvas &canvas, const Rect &area, bool fullRedraw) override;
     void handle(Action action) override;
@@ -58,12 +67,12 @@ private:
         const GameSystem *system = nullptr;
         Game game;
         bool artworkResolved = false;
-        bool artworkSmall = false;   // which variant was resolved, so a view change re-resolves
+        ArtworkVariant artworkVariant = ArtworkVariant::Full;
     };
 
     const Entry *current() const;
     void renderList(Canvas &canvas, const Rect &area);
-    void renderGrid(Canvas &canvas, const Rect &area);
+    void renderGrid(Canvas &canvas, const Rect &area, bool fullRedraw);
     void renderHeader(Canvas &canvas, const Rect &area);
     void renderDetail(Canvas &canvas, const Rect &area, const Entry &entry);
     void toggleFavorite();
@@ -73,7 +82,7 @@ private:
 
     // Resolves artwork for one entry if it has not been, or was resolved for the other size
     // variant. Idempotent and cheap to call every frame for the same entry once it is done.
-    void ensureArtwork(Entry &entry, bool preferSmall);
+    void ensureArtwork(Entry &entry, ArtworkVariant variant);
 
     Context &context_;
     std::vector<Entry> entries_;
@@ -89,4 +98,13 @@ private:
     int scrollRow_ = 0;
     float detailFade_ = 0.0f;
     std::string detailPath_;
+
+    std::vector<float> paintedFocus_;
+    std::vector<const Image *> paintedArtwork_;
+    int paintedScrollRow_ = -1;
+    size_t paintedCount_ = size_t(-1);
+    int paintedColumns_ = -1;
+    int paintedTileWidth_ = -1;
+    int paintedTileHeight_ = -1;
+    bool needsPaint_ = true;
 };

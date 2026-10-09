@@ -18,16 +18,20 @@ public:
 
     static std::shared_ptr<Image> loadPng(const std::string &path);
     static std::shared_ptr<Image> loadJpeg(const std::string &path);
+    static std::shared_ptr<Image> loadBmp(const std::string &path);
 
     // Writes the picture as JPEG. Used by the scraper, which shrinks and re-encodes artwork
     // before it ever reaches the drive — a 512-pixel cover is a tenth the size this way, and
     // that is the difference between writing a gigabyte to a marginal drive and writing two
     // hundred megabytes.
     bool saveJpeg(const std::string &path, int quality = 85) const;
+    // Writes an uncompressed, opaque 24-bit BMP for a pre-sized artwork variant.
+    bool saveBmp(const std::string &path) const;
 
     bool valid() const { return width_ > 0 && height_ > 0; }
     int width() const { return width_; }
     int height() const { return height_; }
+    bool opaque() const { return opaque_; }
 
     const uint32_t *row(int y) const { return &pixels_[size_t(y) * width_]; }
     uint32_t *row(int y) { return &pixels_[size_t(y) * width_]; }
@@ -40,6 +44,7 @@ public:
 private:
     int width_ = 0;
     int height_ = 0;
+    bool opaque_ = false;
     std::vector<uint32_t> pixels_;
 };
 

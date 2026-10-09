@@ -464,7 +464,7 @@ open question settled the pragmatic way:
 
 Built as [Scraper and box art](#scraper-and-box-art) specified it. Checked on the host against
 the server's real listing and the real library's names; the scrape itself runs on the device
-(Settings -> Fetch box art):
+(Settings → Prepare box art):
 
 - `LibretroIndex` maps `Arcade` to the `MAME` platform and gained `matchExact()`, tried before the
   old bracket-stripping `match()`. The exact key is the whole title, lower-cased, spaces collapsed,
@@ -483,7 +483,8 @@ the server's real listing and the real library's names; the scrape itself runs o
   between the .mra and MAME's name, not missing art. Left as is on purpose — the existing
   `scrape-misses.txt` will list them, and guessing tolerances ahead of real data is what this
   project's own precedent says not to do.
-- Run it like any other system: Settings → Fetch box art.
+- Run it like any other system: Settings → Prepare box art. Existing covers can also be
+  converted to view-sized BMPs; the current format is described in [BOXART.md](BOXART.md).
 
 **Measured:** a full rebuild of the game database on the reference device — 58 systems, 11,352
 games of which 849 Arcade at the time (before the ROM search order fix below), and a ROM check
@@ -703,7 +704,7 @@ single flat folder regardless of where a `.mra` sits.
 - **Is the `FBNeo - Arcade Games` fallback worth building at all?** Its naming diverges enough
   (see above) that even the fallback fuzzy match will not land reliably — it may cover few
   enough additional titles over `MAME` alone that shipping without it, and revisiting only if
-  real misses justify it (`Settings → Fetch box art` already writes exactly that list, see
+  real misses justify it (`Settings → Prepare box art` writes exactly that list, see
   `MediaScraper::kMissesFile`), is the simpler, honest v1 scope.
 - **Does the exact-ish match need to tolerate anything beyond case and whitespace** — a curly
   vs. straight apostrophe, an en dash vs. a hyphen? Not knowable without a real library's worth
@@ -770,9 +771,9 @@ it is there.
   a tile grid of *groups*, each showing a name and a count, confirming one enters `GamesScreen`
   pre-filtered to it (breadcrumb title, e.g. "Arcade › Manufacturers › Capcom"). Closer in shape
   to `SystemsScreen` (named tiles, no per-tile box art) than to `GamesScreen` — except
-  `SystemsScreen` today has one fixed grid presentation, and this needs the same switchable
-  presentations (Grid / List / Compact / …) `GamesScreen` already has, over data that is not
-  games. Reusing `GamesScreen` outright for this would mean stretching its `Entry`/`Game` model
+  `SystemsScreen` has one fixed grid presentation. This earlier proposal assumed switchable
+  presentations for groups; the implemented group entries are plain text in every game view.
+  Reusing `GamesScreen` outright for this would mean stretching its `Entry`/`Game` model
   over something that is not a game; a small, separate grouped-tile screen sharing `GridView`
   and `Tile` (the same low-level pieces both existing screens already build on) rather than
   sharing `GamesScreen` itself is the shape this points to, but is not fully worked out — see
@@ -877,7 +878,7 @@ switchable presentations `GamesScreen` already has elsewhere in this GUI:
 │   │    52    │  │    47    │  │    41    │  │    38    │  │    30    │       │
 │   └──────────┘  └──────────┘  └──────────┘  └──────────┘  └──────────┘       │
 ├──────────────────────────────────────────────────────────────────────────────┤
-│  A Open   B Back   Y Cycle view (Grid/List/Compact)   L2/R2 Letter          │
+│  A Open   B Back   L2/R2 Letter                                               │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1457,6 +1458,7 @@ always.
    are skipped for Arcade until they have been.
 8. **The original 201 misses were audited.** The audit found additional title matches in the
    Libretro index; see [BOXART.md](BOXART.md). A subsequent scrape was completed on the MiSTer,
-   though its summary totals are not recorded in this repository.
+   though its summary totals are not recorded in this repository. A later 0.4.0 preparation
+   run over 11,502 entries also completed; its per-system Arcade totals were not recorded.
 9. **Open: how the Arcade step's cost scales** on a slower card or a bigger library than the
    reference one — unmeasured beyond the single full-rebuild figure above.

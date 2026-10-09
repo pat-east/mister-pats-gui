@@ -23,7 +23,7 @@ public:
     bool showBoxArt() const { return showBoxArt_; }
     void setShowBoxArt(bool show);
 
-    // One of GamesScreen's --view names ("grid", "list", "large", "small", "compact") — kept
+    // One of GamesScreen's --view names ("grid", "list", "small") — kept
     // as a plain string here rather than the GameView enum so this class does not need to
     // know about GamesScreen at all, consistent with everything else in it.
     const std::string &defaultView() const { return defaultView_; }

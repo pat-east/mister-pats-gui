@@ -19,6 +19,7 @@ public:
         bool favorite = false;
         bool showLabel = true;
         bool coverArt = false;     // fit artwork inside instead of filling the tile
+        bool keepImageOpaque = false; // avoid focus dimming for opaque system icons
         bool nameIsInside = false; // set by draw(); the placeholder reads it
     };
 

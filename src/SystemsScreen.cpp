@@ -70,7 +70,7 @@ void SystemsScreen::requestImages(int first, int last) {
     for (int i = first; i < last; ++i) {
         const GameSystem *system = systems_[size_t(i)];
         context_.images.get(context_.icons.pathFor(system->name), grid_.tileWidth(),
-                            grid_.tileHeight());
+                            grid_.tileHeight(), false);
     }
 }
 
@@ -209,7 +209,7 @@ void SystemsScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
     if (cursor_ >= first && cursor_ < last) {
         const GameSystem *focused = systems_[size_t(cursor_)];
         context_.images.get(context_.icons.pathFor(focused->name), grid_.tileWidth(),
-                            grid_.tileHeight());
+                            grid_.tileHeight(), false);
     }
 
     for (int pass = 0; pass < 2; ++pass) {
@@ -223,10 +223,11 @@ void SystemsScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
             content.label = system->name;
             content.sublabel = system->launchable() ? std::string() : std::string("no core");
             content.coverArt = true;
+            content.keepImageOpaque = true;
 
             const Rect frame = grid_.cellFrame(i, scrollRow_);
             const std::string icon = context_.icons.pathFor(system->name);
-            content.image = context_.images.get(icon, grid_.tileWidth(), grid_.tileHeight());
+            content.image = context_.images.get(icon, grid_.tileWidth(), grid_.tileHeight(), false);
 
             Tile::draw(canvas, theme, frame, content, focus_[size_t(i)]);
         }

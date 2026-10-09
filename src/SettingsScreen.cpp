@@ -1,5 +1,6 @@
 #include "SettingsScreen.h"
 
+#include <algorithm>
 #include <cstdio>
 
 #include "Canvas.h"
@@ -9,6 +10,8 @@ SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
                                std::function<void()> onQuit,
                                std::function<void()> onBuildDatabase,
                                std::function<void()> onFetchArtwork,
+                               std::function<void()> onDownloadSystemIcons,
+                               std::function<std::string()> systemIconDownloadStatus,
                                std::function<void()> onManageSystems,
                                std::function<void()> onManageControllers,
                                std::function<void()> onManageArcade,
@@ -19,6 +22,8 @@ SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
     : context_(context), onReload_(std::move(onReload)), onQuit_(std::move(onQuit)),
       onBuildDatabase_(std::move(onBuildDatabase)),
       onFetchArtwork_(std::move(onFetchArtwork)),
+      onDownloadSystemIcons_(std::move(onDownloadSystemIcons)),
+      systemIconDownloadStatus_(std::move(systemIconDownloadStatus)),
       onManageSystems_(std::move(onManageSystems)),
       onManageControllers_(std::move(onManageControllers)),
       onManageArcade_(std::move(onManageArcade)),
@@ -34,13 +39,17 @@ void SettingsScreen::buildRows() {
 
     // Library and content — building/refreshing it, then managing what it shows. Grouped
     // together and in this order because that is the order they actually depend on each
-    // other: a database has to exist before there is art worth fetching for it or systems
-    // worth hiding, and "Reload" only ever re-reads what the other two just produced.
+    // other: a database has to exist before its art can be fetched/prepared or systems can be
+    // hidden, and "Reload" only ever re-reads what the other two just produced.
     rows_.push_back({"Build game database", [] { return std::string("A"); },
                      [this] { onBuildDatabase_(); }});
 
-    rows_.push_back({"Fetch box art", [] { return std::string("A"); },
+    rows_.push_back({"Prepare box art", [] { return std::string("A"); },
                      [this] { onFetchArtwork_(); }});
+
+    rows_.push_back({"Download System-Icons",
+                     [this] { return systemIconDownloadStatus_(); },
+                     [this] { onDownloadSystemIcons_(); }});
 
     rows_.push_back({"Reload library", [] { return std::string("A"); },
                      [this] {
@@ -200,7 +209,8 @@ void SettingsScreen::handle(Action action) {
 
 void SettingsScreen::renderActions(Canvas &canvas, const Rect &area) {
     Theme &theme = context_.theme;
-    const int rowHeight = theme.px(64);
+    const int rowHeight = std::min(theme.px(64),
+                                   std::max(1, area.h / std::max(1, int(rows_.size()))));
 
     for (size_t i = 0; i < rows_.size(); ++i) {
         const Row &row = rows_[i];
@@ -216,13 +226,18 @@ void SettingsScreen::renderActions(Canvas &canvas, const Rect &area) {
         }
 
         const int textY = frame.y + (frame.h - theme.regular().lineHeight(theme.sizeBody())) / 2;
-        theme.regular().draw(canvas, frame.x + theme.px(22), textY, row.label, theme.sizeBody(),
+        const std::string value = row.value ? row.value() : std::string();
+        const int left = frame.x + theme.px(22);
+        const int right = frame.right() - theme.px(22);
+        const int valueWidth = value.empty() ? 0 : theme.regular().measure(value, theme.sizeBody());
+        const int labelWidth = std::max(0, right - left -
+                                             (value.empty() ? 0 : valueWidth + theme.px(12)));
+        const std::string label = theme.regular().elide(row.label, theme.sizeBody(), labelWidth);
+        theme.regular().draw(canvas, left, textY, label, theme.sizeBody(),
                              active ? theme.textPrimary : theme.textMuted);
 
-        const std::string value = row.value ? row.value() : std::string();
         if (!value.empty()) {
-            const int width = theme.regular().measure(value, theme.sizeBody());
-            theme.regular().draw(canvas, frame.right() - theme.px(22) - width, textY, value,
+            theme.regular().draw(canvas, right - valueWidth, textY, value,
                                  theme.sizeBody(), theme.accent);
         }
     }

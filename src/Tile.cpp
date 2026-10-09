@@ -109,7 +109,9 @@ void Tile::draw(Canvas &canvas, Theme &theme, const Rect &frame, const Content &
                          .fitAspect(content.image->width(), content.image->height());
         }
 
-        const uint8_t alpha = uint8_t(215 + 40 * focus > 255 ? 255 : 215 + 40 * focus);
+        const uint8_t alpha = content.keepImageOpaque
+                                  ? 255
+                                  : uint8_t(215 + 40 * focus > 255 ? 255 : 215 + 40 * focus);
         canvas.drawImage(*content.image, target, alpha, content.coverArt ? theme.px(4) : radius);
     } else {
         canvas.fillRoundedRect(body, radius, theme.surface);

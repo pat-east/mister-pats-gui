@@ -7,17 +7,72 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-09
+
 ### Added
 
 - **Show box art setting** — hides game covers and background artwork across Home, Games,
   Favorites and Arcade, making it possible to compare menu responsiveness without artwork
   loading and drawing.
+- **View-sized BMP box art** — *Prepare box art* creates uncompressed variants for Home
+  (178 px), Arcade (148 px), Grid (245 px), Boxart small (128 px), and List detail (up to
+  689×624 px). The GUI loads the matching variant without resizing it during loading; JPEGs
+  remain as fallbacks. The variants preserve each cover's aspect ratio. At the largest bounds
+  they can add up to about 1.7 MB per cover.
+- **Artwork loading worker** — a single bounded worker decodes requested covers while the
+  interface continues to handle input. Its queue holds at most 32 requests; the cache is
+  limited to 120 entries and 32 MiB. When a BMP variant is absent, existing JPEG/PNG
+  artwork remains available as a fallback.
+- **System icon download** — Settings can fetch missing BMP icons from the public repository;
+  existing PNG icons remain usable until their BMP counterparts are present.
+- **Install/update script** — downloads the latest release and missing system icons, creates
+  application directories, and prints needed `MiSTer.ini` changes without editing the file.
+- **Crash screen and log** — fatal GUI errors pause automatic relaunch and display a restart
+  instruction; details are appended to `logs/crash.log` when available.
+
+### Changed
+
+- **Game presentations** — removed Boxart large and Compact. List, Grid, and Boxart small
+  remain; saved defaults for removed presentations fall back to Grid.
+- **Splash duration and icon loading** — reduced the initial wait from two seconds to one.
+  The progress bar advances toward 25% during that second, then advances as system icons are
+  loaded sequentially; the splash remains until loading is complete.
+- **System icons** — loaded from opaque BMP files, avoiding PNG decompression and per-pixel
+  source-alpha blending. The repository assets are 163×163 for the normal 1080p tile;
+  PNGs remain the fallback when a BMP is absent.
+- **Box-art ETA** — uses elapsed time since the scrape began and the displayed
+  processed/total game counts to project a completion clock time in the MiSTer's time zone.
+  Different amounts of work per game can still move the estimate during a run.
+- **Development deploy** — stops the GUI launcher before replacing binaries, then reboots,
+  intended to resolve the earlier two-attempt handoff. Its complete run is not yet verified;
+  the latest attempt was interrupted when the device was powered off.
 
 ### Fixed
 
 - **Home screen could start without its games drawn** — the initial contents are now painted
   explicitly after startup or refresh, without requiring a controller action to trigger a
   screen update.
+- **Static-thread startup crash** — the build now explicitly links the pthread condition
+  functions needed by libstdc++'s static-initialization guard.
+
+### Performance findings
+
+- **Box art disabled:** the user reports that browsing feels very snappy, with good to very
+  good response.
+- **Menu responsiveness:** Home and warm Systems were already fluid earlier in development;
+  the user now reports that the current menus look and feel very good overall and considers
+  smoother, faster menu control complete for 0.4.0.
+- **Earlier PNG/BMP icon benchmark:** with 300×300 PNGs and 160×160 BMPs, warm decode plus
+  scaling was 12.4–12.8% faster for BMP. Canvas drawing differed by only 0.6–0.7%, within
+  measurement noise; the first uncached pass showed no consistent gain. The newer 163×163
+  native-size path has not yet been benchmarked.
+
+### Device observations
+
+- **Box-art preparation on MiSTer:** the 11,502-entry run completed. The user reports that
+  browsing feels better and has approved the current version for commit.
+- **ETA update:** built locally and manually deployed after that run. Its accuracy during a
+  subsequent full scrape has not yet been observed.
 
 ## [0.3.0] - 2026-10-07
 

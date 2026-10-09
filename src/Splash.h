@@ -2,15 +2,16 @@
 
 class Framebuffer;
 class Theme;
+class Icons;
+class ImageCache;
 
-// A one-time, fixed-length screen shown before the real interface starts, so the app spends
-// a few idle seconds on screen instead of straight into stat()-ing the game drives. This is a
-// diagnostic: if it turns out to fix boxart that goes missing on a fresh boot, the real fix is
-// a proper settle wait around library/artwork loading, not this fake bar staying forever.
+// Startup screen: first lets storage settle, then prepares the Systems icons before the main UI
+// appears. Its progress reflects both phases and it stays visible until icon loading completes.
 namespace Splash {
 
-// Blocks for `durationMs`, painting the embedded logo and a progress bar that always finishes
-// in that time regardless of what else is or isn't ready yet.
-void show(Framebuffer &framebuffer, Theme &theme, int durationMs);
+// Waits for `initialWaitMs` (the first 25% of progress), then loads every system icon into the
+// shared cache. The splash remains visible until that work is complete.
+void show(Framebuffer &framebuffer, Theme &theme, int initialWaitMs, const Icons &icons,
+          ImageCache &images);
 
 } // namespace Splash

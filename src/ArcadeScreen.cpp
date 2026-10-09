@@ -271,13 +271,13 @@ void ArcadeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool is
         for (int i = row.scroll; i < last; ++i) {
             Item &item = row.items[size_t(i)];
             if (item.artworkResolved) continue;
-            Library::resolveArtwork(*system_, item.game, true);
+            Library::resolveArtwork(*system_, item.game, ArtworkVariant::Arcade);
             item.artworkResolved = true;
         }
         if (isActive && row.cursor >= row.scroll && row.cursor < last) {
             const Game &focused = row.items[size_t(row.cursor)].game;
-            context_.images.get(focused.boxart, focused.boxartFallback, m.tileWidth,
-                                m.tileHeight);
+            context_.images.requestAsync(focused.boxart, focused.boxartFallback, m.tileWidth,
+                                m.tileHeight, true);
         }
     }
 
@@ -296,7 +296,7 @@ void ArcadeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool is
                 content.coverArt = true;
                 content.favorite = context_.favorites.contains(item.game.path);
                 if (context_.preferences.showBoxArt())
-                    content.image = context_.images.get(item.game.boxart, item.game.boxartFallback,
+                    content.image = context_.images.requestAsync(item.game.boxart, item.game.boxartFallback,
                                                         m.tileWidth, m.tileHeight);
                 Tile::draw(canvas, theme, frame, content, row.focus[size_t(i)]);
             } else {

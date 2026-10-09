@@ -18,6 +18,7 @@ namespace LoadingIndicator {
 // filled yet rather than a negative number, since a bar that starts filled and jumps back to
 // empty reads as something going wrong.
 void draw(Canvas &canvas, Theme &theme, const Rect &area, const std::string &title,
-          float fraction, const std::string &status, const std::string &counts);
+          float fraction, const std::string &status, const std::string &counts,
+          const std::string &extra = {});
 
 } // namespace LoadingIndicator

@@ -33,7 +33,8 @@ void HomeScreen::refresh() {
                                        ? context_.library.systemForPath(entry.path)
                                        : context_.library.findSystem(entry.system);
         if (!system || Library::isSystemFile(*system, entry.path)) continue;
-        recent.items.push_back({system, Library::makeGame(*system, entry.path)});
+        recent.items.push_back({system, Library::makeGame(*system, entry.path,
+                                                         ArtworkVariant::Home)});
     }
 
     Row favorites;
@@ -42,7 +43,8 @@ void HomeScreen::refresh() {
     for (const FavoriteEntry &entry : context_.favorites.entries()) {
         const GameSystem *system = context_.library.findSystem(entry.system);
         if (!system || Library::isSystemFile(*system, entry.path)) continue;
-        favorites.items.push_back({system, Library::makeGame(*system, entry.path)});
+        favorites.items.push_back({system, Library::makeGame(*system, entry.path,
+                                                            ArtworkVariant::Home)});
     }
     // Unlike Recently played, where the order itself is the information, favourites carry
     // none — sorted alphabetically is what makes a specific one fast to find as the list
@@ -126,7 +128,8 @@ void HomeScreen::toggleFavorite() {
     for (const FavoriteEntry &entry : context_.favorites.entries()) {
         const GameSystem *system = context_.library.findSystem(entry.system);
         if (!system || Library::isSystemFile(*system, entry.path)) continue;
-        favorites.items.push_back({system, Library::makeGame(*system, entry.path)});
+        favorites.items.push_back({system, Library::makeGame(*system, entry.path,
+                                                            ArtworkVariant::Home)});
     }
     std::sort(favorites.items.begin(), favorites.items.end(), [](const Item &a, const Item &b) {
         return strcasecmp(a.game.name.c_str(), b.game.name.c_str()) < 0;
@@ -263,8 +266,8 @@ void HomeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool acti
     if (context_.preferences.showBoxArt() && active && row.cursor >= row.scroll &&
         row.cursor < last) {
         const Item &focused = row.items[size_t(row.cursor)];
-        context_.images.get(focused.game.boxart, focused.game.boxartFallback, tileWidth,
-                            tileHeight);
+        context_.images.requestAsync(focused.game.boxart, focused.game.boxartFallback, tileWidth,
+                            tileHeight, true);
     }
 
     for (int pass = 0; pass < 2; ++pass) {
@@ -282,7 +285,7 @@ void HomeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool acti
             content.coverArt = true;
             content.favorite = context_.favorites.contains(item.game.path);
             if (context_.preferences.showBoxArt())
-                content.image = context_.images.get(item.game.boxart, item.game.boxartFallback,
+                content.image = context_.images.requestAsync(item.game.boxart, item.game.boxartFallback,
                                                     tileWidth, tileHeight);
 
             Tile::draw(canvas, theme, frame, content, row.focus[size_t(i)]);
@@ -308,7 +311,7 @@ void HomeScreen::requestImages(Row &row, int laneWidth) {
     const int last = std::min(int(row.items.size()), row.scroll + perPage + 1);
     for (int i = row.scroll; i < last; ++i) {
         const Item &item = row.items[size_t(i)];
-        context_.images.get(item.game.boxart, item.game.boxartFallback, m.tileWidth,
+        context_.images.requestAsync(item.game.boxart, item.game.boxartFallback, m.tileWidth,
                             m.tileHeight);
     }
 }
@@ -324,16 +327,16 @@ void HomeScreen::requestFavoriteImages(const Rect &body, int gridY, const Metric
                                      favoriteColumns_,
                                  (body.bottom() - gridY) / step + 2);
 
-    // Give the selected cover first access to the per-frame decode budget.
+    // Put the selected cover ahead of nearby prefetches in the worker queue.
     if (activeRow_ == 1) {
         const Item &item = favorites.items[size_t(favorites.cursor)];
-        context_.images.get(item.game.boxart, item.game.boxartFallback, m.tileWidth,
-                            m.tileHeight);
+        context_.images.requestAsync(item.game.boxart, item.game.boxartFallback, m.tileWidth,
+                            m.tileHeight, true);
     }
     for (int i = firstRow * favoriteColumns_;
          i < std::min(int(favorites.items.size()), lastRow * favoriteColumns_); ++i) {
         const Item &item = favorites.items[size_t(i)];
-        context_.images.get(item.game.boxart, item.game.boxartFallback, m.tileWidth,
+        context_.images.requestAsync(item.game.boxart, item.game.boxartFallback, m.tileWidth,
                             m.tileHeight);
     }
 }
@@ -385,7 +388,7 @@ void HomeScreen::renderFavorites(Canvas &canvas, const Rect &body, int sectionY,
             content.coverArt = true;
             content.favorite = true;
             if (context_.preferences.showBoxArt())
-                content.image = context_.images.get(item.game.boxart, item.game.boxartFallback,
+                content.image = context_.images.requestAsync(item.game.boxart, item.game.boxartFallback,
                                                     m.tileWidth, m.tileHeight);
             Tile::draw(canvas, theme, frame, content, favorites.focus[size_t(i)]);
         }

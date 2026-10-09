@@ -1,9 +1,11 @@
 #include "MediaScraper.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <ctime>
 #include <fstream>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "DebugLog.h"
@@ -15,6 +17,12 @@ namespace {
 
 // /tmp is a RAM disk on a MiSTer, so nothing here ever touches a drive.
 const char *kTempImage = "/tmp/mister-pat-scrape.img";
+
+int64_t monotonicMs() {
+    timespec ts{};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return int64_t(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000;
+}
 
 bool fileExists(const std::string &path) {
     struct stat st {};
@@ -51,6 +59,37 @@ bool writeShrunk(ImagePtr image, const std::string &path, int maxEdge, int quali
     return rename(temporary.c_str(), path.c_str()) == 0;
 }
 
+bool writeBmpVariant(const ImagePtr &source, const std::string &base,
+                     ArtworkVariant variant, bool overwrite) {
+    const ArtworkBounds bounds = artworkBounds(variant);
+    const std::string path = base + bounds.suffix + ".bmp";
+    if (!overwrite && fileExists(path)) return false;
+
+    int width = source->width();
+    int height = source->height();
+    if (long(width) * bounds.height > long(height) * bounds.width) {
+        height = std::max(1, int(long(height) * bounds.width / width));
+        width = bounds.width;
+    } else {
+        width = std::max(1, int(long(width) * bounds.height / height));
+        height = bounds.height;
+    }
+
+    ImagePtr sized = source->scaledTo(width, height);
+    if (!sized) return false;
+
+    const std::string temporary = path + ".part";
+    if (!sized->saveBmp(temporary)) {
+        unlink(temporary.c_str());
+        return false;
+    }
+    if (rename(temporary.c_str(), path.c_str()) != 0) {
+        unlink(temporary.c_str());
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
 void MediaScraper::start(const GameDatabase &database, const Options &options,
@@ -59,7 +98,8 @@ void MediaScraper::start(const GameDatabase &database, const Options &options,
     systems_.clear();
     jobs_.clear();
     systemPosition_ = jobPosition_ = 0;
-    totalGames_ = doneGames_ = fetched_ = skipped_ = missing_ = 0;
+    totalGames_ = doneGames_ = fetched_ = prepared_ = skipped_ = missing_ = 0;
+    startedAtMs_ = monotonicMs();
     missesOpened_ = false;
     currentSystem_.clear();
     currentTitle_.clear();
@@ -111,6 +151,19 @@ float MediaScraper::progress() const {
     return float(doneGames_) / float(totalGames_);
 }
 
+int64_t MediaScraper::estimatedRemainingSeconds() const {
+    if (state_ == State::Done || (totalGames_ && doneGames_ >= totalGames_)) return 0;
+    if (!running() || !doneGames_) return -1;
+
+    // Use the same completed/total counts as the progress display. Elapsed wall time
+    // includes downloads, image conversion, index preparation and frame pacing.
+    const int64_t elapsedMs = monotonicMs() - startedAtMs_;
+    if (elapsedMs <= 0) return -1;
+    const double remainingMs = double(elapsedMs) * double(totalGames_ - doneGames_) /
+                               double(doneGames_);
+    return int64_t((remainingMs + 999.0) / 1000.0);
+}
+
 std::string MediaScraper::statusLine() const {
     char buffer[200];
 
@@ -124,8 +177,9 @@ std::string MediaScraper::statusLine() const {
                       totalGames_, currentSystem_.c_str(), currentTitle_.c_str());
         return buffer;
     case State::Done:
-        std::snprintf(buffer, sizeof(buffer), "%zu fetched, %zu already there, %zu not found",
-                      fetched_, skipped_, missing_);
+        std::snprintf(buffer, sizeof(buffer),
+                      "%zu fetched, %zu optimized for views, %zu already there, %zu not found",
+                      fetched_, prepared_, skipped_, missing_);
         return buffer;
     case State::Failed:
     default:
@@ -150,26 +204,55 @@ void MediaScraper::noteMiss(const std::string &system, const std::string &title)
     out << system << "\t" << title << "\n";
 }
 
-bool MediaScraper::fetchOne(const std::string &url, const std::string &base) {
+bool MediaScraper::fetchOne(const std::string &url, const std::string &base,
+                            bool makeViewVariants) {
     if (!downloader_.fetch(url, kTempImage, 25)) return false;
 
     ImagePtr image = Image::load(kTempImage);
     unlink(kTempImage);
     if (!image) return false;
 
-    // Two sizes from the one download: full-size for the rare view that wants it (Boxart
-    // large, or the detail panel in List view), and a grid-size copy for everywhere else —
-    // which is most of the time a picture is actually drawn. The small file's write is not
-    // load-bearing for this job's own success; a full-size cover with no small copy still
-    // renders fine, just not at its best decode speed until it is regenerated.
+    // Keep JPEG fallbacks for compatibility, then write all view-sized BMPs from the decoded
+    // download so we do not decode the JPEG again for each presentation.
     const bool full = writeShrunk(image, base + ".jpg", options_.maxEdge, options_.quality);
     writeShrunk(image, base + "-sm.jpg", options_.smallMaxEdge, options_.quality);
+    if (makeViewVariants && prepareViewVariants(base, image, true)) ++prepared_;
     return full;
 }
 
+bool MediaScraper::prepareViewVariants(const std::string &base, ImagePtr source, bool overwrite) {
+    const ArtworkVariant variants[] = {ArtworkVariant::Home, ArtworkVariant::Grid,
+                                       ArtworkVariant::Small, ArtworkVariant::Detail,
+                                       ArtworkVariant::Arcade};
+    bool needsWrite = overwrite;
+    if (!overwrite) {
+        for (ArtworkVariant variant : variants) {
+            const ArtworkBounds bounds = artworkBounds(variant);
+            if (!fileExists(base + bounds.suffix + ".bmp")) {
+                needsWrite = true;
+                break;
+            }
+        }
+    }
+    if (!needsWrite) return false;
+
+    if (!source) source = Image::load(base + ".jpg");
+    if (!source) source = Image::load(base + "-sm.jpg");
+    if (!source) source = Image::load(base + ".png");
+    if (!source || !source->valid()) return false;
+
+    bool written = false;
+    for (ArtworkVariant variant : variants)
+        written = writeBmpVariant(source, base, variant, overwrite) || written;
+    return written;
+}
+
 bool MediaScraper::refreshSmall(const std::string &base) {
-    return writeShrunk(Image::load(base + ".jpg"), base + "-sm.jpg", options_.smallMaxEdge,
-                       options_.quality);
+    ImagePtr source = Image::load(base + ".jpg");
+    const bool refreshed = writeShrunk(source, base + "-sm.jpg", options_.smallMaxEdge,
+                                       options_.quality);
+    if (prepareViewVariants(base, source, false)) ++prepared_;
+    return refreshed;
 }
 
 bool MediaScraper::prepareNextSystem() {
@@ -180,20 +263,21 @@ bool MediaScraper::prepareNextSystem() {
         const DatabaseSystem &system = systems_[systemPosition_];
         currentSystem_ = system.name;
 
-        if (!index_.open(LibretroIndex::platformFor(system.key), downloader_,
-                         options_.indexCacheDir)) {
-            // One unreachable index is not a reason to abandon the rest.
-            std::printf("scraper: %s skipped, %s\n", system.name.c_str(),
-                        index_.lastError().c_str());
+        indexAvailable_ = index_.open(LibretroIndex::platformFor(system.key), downloader_,
+                                      options_.indexCacheDir);
+        if (!indexAvailable_) {
+            // Existing local artwork can still be prepared as view-sized BMPs without the
+            // network. Only missing artwork needs the thumbnail index.
+            std::printf("scraper: %s index unavailable, local artwork only: %s\n",
+                         system.name.c_str(),
+                         index_.lastError().c_str());
 
             char line[256];
-            std::snprintf(line, sizeof(line), "scraper: %s skipped, %s", system.name.c_str(),
-                         index_.lastError().c_str());
+            std::snprintf(line, sizeof(line),
+                          "scraper: %s index unavailable, local artwork only: %s",
+                          system.name.c_str(), index_.lastError().c_str());
             DebugLog::warn(line);
 
-            doneGames_ += system.count;
-            ++systemPosition_;
-            continue;
         }
 
         // Its root did not resolve — the drive it lives on is not attached right now, so
@@ -241,18 +325,20 @@ bool MediaScraper::prepareNextSystem() {
 void MediaScraper::step() {
     switch (state_) {
     case State::Preparing:
+        {
         if (!prepareNextSystem()) {
             state_ = State::Done;
 
             char line[200];
             std::snprintf(line, sizeof(line),
-                         "scraper: done, %zu fetched, %zu already there, %zu not found",
-                         fetched_, skipped_, missing_);
+                         "scraper: done, %zu fetched, %zu optimized, %zu already there, %zu not found",
+                         fetched_, prepared_, skipped_, missing_);
             DebugLog::info(line);
             return;
         }
         state_ = State::Working;
         return;
+        }
 
     case State::Working: {
         if (jobPosition_ >= jobs_.size()) {
@@ -290,6 +376,11 @@ void MediaScraper::step() {
             const std::string base = job.mediaDir + "/" + job.name + kind.suffix;
             const bool hasFull = fileExists(base + ".jpg");
 
+            if (kind.suffix[0] == '\0' && !options_.overwrite &&
+                (hasFull || fileExists(base + "-sm.jpg") || fileExists(base + ".png")) &&
+                prepareViewVariants(base))
+                ++prepared_;
+
             // Scraped before -sm.jpg existed: make the small copy from the full-size file
             // already on disk instead of treating this as new work. No network involved, so
             // it runs regardless of whether the index below can even be reached.
@@ -301,7 +392,14 @@ void MediaScraper::step() {
 
             // Artwork that is already there — ours or anyone else's — is left alone. That is
             // also what makes an interrupted run resume instead of starting over.
-            if (!options_.overwrite && (hasFull || fileExists(base + ".png"))) {
+            if (!options_.overwrite &&
+                (hasFull || fileExists(base + "-sm.jpg") || fileExists(base + ".png"))) {
+                ++skipped_;
+                matched = true;
+                continue;
+            }
+
+            if (!indexAvailable_) {
                 ++skipped_;
                 matched = true;
                 continue;
@@ -324,7 +422,7 @@ void MediaScraper::step() {
                                     kind.folder + "/" +
                                     Downloader::encodeComponent(remote) + ".png";
 
-            if (fetchOne(url, base)) ++fetched_;
+            if (fetchOne(url, base, kind.suffix[0] == '\0')) ++fetched_;
         }
 
         if (anyWanted && !matched) noteMiss(currentSystem_, job.name);

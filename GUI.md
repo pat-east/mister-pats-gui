@@ -1,12 +1,13 @@
 # GUI Design
 
-Design document: layout, behavior and rendering rules. The technical groundwork is described
-in [README.md](README.md), the measurements in [PERFORMANCE.md](PERFORMANCE.md).
+Design document: layout, behavior and rendering rules. Some sketches and proposals below
+record earlier design choices; the current 0.4.0 implementation is summarized in
+[VNEXT.md](VNEXT.md), with measurements in [PERFORMANCE.md](PERFORMANCE.md).
 
 **Implementation status.** The basic framework is built and running; screenshots taken on the
 device are in `build/shots/`. Deviations from this design that came out of the implementation:
 
-- **Tabs:** Favorites · Systems · Arcade · Games · Settings (Favorites was added; Arcade appears only when the library has Arcade games — see [ARCADE.md](ARCADE.md#implemented-the-arcade-tab)).
+- **Tabs:** Home · Favorites · Systems · Arcade · Games · Settings (Arcade appears only when the library has Arcade games — see [ARCADE.md](ARCADE.md#implemented-the-arcade-tab)).
 - **Games** does not show the games of one system, but everything across all systems, in three
   sections: Recently played, Favorites, All games. The game list of a *single* system is a
   separate detail view, opened from the Systems tab.
@@ -20,6 +21,10 @@ device are in `build/shots/`. Deviations from this design that came out of the i
   a darkened background, though.
 - **Shadows** now exist only on the focused tile — for performance reasons, see
   PERFORMANCE.md. Against a dark background the difference is not noticeable.
+- **Games views:** List, Grid and Boxart small remain. Boxart large and Compact were removed.
+  Current covers use view-sized BMPs when available, and a bounded worker decodes them.
+- **Splash and failure handling:** the first second animates to 25%, then icons are loaded
+  sequentially; a fatal GUI exit shows a crash screen instead of an automatic boot loop.
 
 ## 1. Target Look
 
@@ -43,7 +48,7 @@ The design has to respect these limits, or it will end up unusably slow.
 | Factor | Value | Consequence for the design |
 | --- | --- | --- |
 | GPU | **none** | Everything is rendered in software on the CPU |
-| CPU | 2× Cortex-A9 @ 800 MHz | One core renders, the other loads/decodes in the background |
+| CPU | 2× Cortex-A9 @ 800 MHz | Rendering stays on the app thread; a bounded worker decodes covers |
 | Framebuffer | 1920×1080 × 32 bpp = 8.3 MB/frame | Redrawing the full screen at 60 fps is unrealistic |
 | DDR3 bandwidth | ~1000 MB/s (per the MiSTer docs, for the scaler) | 30 fps full screen ≈ 250 MB/s just for blitting |
 | Amount of boxart | NES alone has ~2750 games (5507 files) | Never load eagerly, only what is visible plus a look-ahead |
@@ -72,7 +77,10 @@ factor, centered). That would be the first lever to pull if the frame rate does 
 
 All of this has been verified to exist on the device — we are not inventing formats of our own.
 
-### System catalog: Console Mode's section files
+### Historical source: Console Mode's section files
+
+The current GUI builds its own game database; it can use older Console Mode data as a
+fallback. This section records the source format that informed the initial design.
 
 `/media/fat/ConsoleMode/themeconfig/section_groups/` contains `Console.ini`, `Computer.ini`,
 `Handheld.ini`, `Arcade.ini`, `Ports.ini`. The structure, using `Console.ini` as an example:
@@ -103,9 +111,10 @@ One `media/` subfolder per game directory:
 /media/usb0/games/NES/media/10-Yard Fight (UE) [!]-BG.png    ← background image
 ```
 
-Naming scheme: the basename of the ROM file plus `.png`, or `-BG.png` for the background
-variant. On top of that there is a global `/media/fat/media/` (~4900 files, mostly arcade)
-with an `optimized/` subfolder.
+The GUI also recognizes legacy JPEG covers and the five prepared BMP variants described in
+[BOXART.md](BOXART.md). Backgrounds remain JPEG/PNG. The global
+`/media/fat/media/` collection (~4900 files, mostly arcade) was part of the earlier
+device inventory and is not a requirement for this GUI.
 
 **The `-BG.png` variant is a gift for the parallax background** — we do not have to invent
 artificial backdrops, every game brings its own.
@@ -240,16 +249,14 @@ Two columns: the list on the left, a large presentation of the focused game on t
 
 - The focused list entry gets a bar in the accent color and white text; the remaining entries
   sit at 60 %.
-- On the right, the `-BG.png` of the focused game as a darkened full-area background, with the
-  boxart and its shadow in front of it. Moving between entries cross-fades (200 ms) — this is
-  the most conspicuous animation in the interface, and it justifies its budget.
-- **Loading:** only the visible entries plus five above and five below the focus are prepared.
-  Decoding runs on a background thread; until the image is there, a placeholder with the game
-  title stands in its place. An LRU cache caps memory use.
+- On the right, the focused game's available `-BG` image is darkened behind its cover and
+  shadow. The earlier cross-fade idea remains a proposal; current 0.4.0 testing focuses on
+  prompt image arrival and smooth input.
+- **Loading:** visible covers and nearby entries are requested from one bounded worker.
+  Until a cover arrives, its placeholder remains. The decoded cache is bounded by entry
+  count and RAM use; stale queued requests are discarded after navigation changes.
 - The screen can alternatively be shown as a grid of tiles (the same tile as for systems, with
-  the boxart as its content). Y cycles through five steps: List, Boxart large, Grid (with
-  titles), Boxart small, Compact. At 1080p, Compact fits thirteen tiles into a row — meant for
-  libraries where you already know what you are looking for and only need to get there.
+  the boxart as its content). Y cycles through List, Grid (with titles) and Boxart small.
 - **The following row is deliberately cut off.** A list that ends flush with the bottom edge
   looks complete; a tile cut in half says "there is more below". Simply showing as many whole
   rows as happen to fit is not enough for that — the last one then ends flush by accident.
@@ -259,10 +266,10 @@ Two columns: the list on the left, a large presentation of the focused game on t
 
 ### 5.3 Settings
 
-A plain list: categories on the left, the options of the selected category on the right. The
-contents are not settled yet; candidates are Display (resolution, frame rate, reduce
-animations), Sources (which section groups and directories), Boxart (clear cache) and System
-(network, version, restart).
+The current screen is a single settings list with system facts beside it. It includes Build
+game database, Prepare box art, Download System-Icons, Show box art, view and menu toggles,
+controller management, and other actions. See [README.md](README.md) for the user-facing
+feature list.
 
 ## 6. The Tile — the Central GUI Element
 

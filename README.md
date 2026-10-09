@@ -77,9 +77,8 @@ In practice that means:
   visual explanation. Less on screen, fewer rules to learn.
 
 
-- **Tile grid** with box art, five presentations per system: list with a large preview,
-  large box art, grid with titles, small box art, and a compact view that fits 65 games on
-  one screen.
+- **Tile grid** with box art in three presentations per system: list with a large preview,
+  grid with titles, and small box art.
 - **Games tab** across every system at once, in three rows: recently played, favourites, all
   games.
 - **Letter jump** on the shoulder triggers. A single console can hold a few thousand titles;
@@ -93,17 +92,19 @@ In practice that means:
 - **Its own game database.** A scan works out which systems are installed and what is in
   them, and writes one index file per system. Opening a console reads that one file and
   nothing else.
-- **Its own box art scraper**, from Settings — fetches box art and background images from the
-  libretro thumbnail server, no separate tool required.
+- **Its own box art preparation**, from Settings — converts existing covers into view-sized
+  BMPs and fetches missing art from the libretro thumbnail server. A bounded image worker
+  loads covers while the menus remain responsive.
 - **Opens instantly, even at 10,000+ games.** A system's list — or the whole library, merged
   and sorted, in the Games tab — fills in progressively rather than blocking on every game's
   artwork before showing anything.
-- **Console icons** for systems without art.
+- **Console icons** for systems without art, with a Settings action to download missing BMPs
+  and PNG fallback for older installations.
 - **Manage systems**, in Settings — hide the systems you do not use from the Systems tab, and
   toggle the Games tab off entirely for a library large enough that browsing it flat stops
   being useful.
-- **A default presentation**, in Settings — pick Grid, List, Boxart large, Boxart small or
-  Compact once and it applies everywhere from then on.
+- **A default presentation**, in Settings — pick Grid, List or Boxart small once and it
+  applies everywhere from then on.
 - **A box art switch**, in Settings — hide cover and background artwork while browsing, useful
   for comparing menu responsiveness with image loading out of the way.
 - **Multiple game drives**, resolved live rather than assumed — a drive can come back at a
@@ -121,7 +122,7 @@ In practice that means:
 
 - A MiSTer (Terasic DE10-Nano) with a working SD card setup
 - SSH access to the device
-- Your game library on a single USB volume, wherever the MiSTer already finds it
+- Your game library on the SD card or one or more USB volumes, wherever the MiSTer finds it
 - Console Mode is not required for anything — see the next section
 - To build it yourself: macOS or Linux with an `arm-unknown-linux-gnueabihf` cross-toolchain
 
@@ -136,7 +137,7 @@ a dependency for any of that:
 | --- | --- |
 | The catalogue of systems | **built by this GUI** |
 | The index of games | **built by this GUI** |
-| Box art and background images | **fetched by this GUI** — Settings → *Fetch box art* |
+| Box art and background images | **prepared and fetched by this GUI** — Settings → *Prepare box art* |
 | Fonts | downloaded once by hand — see [INSTALL.md](INSTALL.md#step-0--the-typeface-if-you-want-it) — or the built-in fallback if you skip that |
 
 The typeface, Akrobat, can't be bundled here — Fontfabric's free-font licence allows using it
@@ -176,12 +177,19 @@ make
 ```
 
 The binary is statically linked, so it does not depend on the libraries in the MiSTer root
-filesystem.
-
-Deploy and check without looking at a television:
+filesystem. Builds keep DWARF debug information and frame pointers even at `-O2`; the debug
+symbols are written to `build/mister-gui.debug` while the deployable binary stays stripped and
+small. Linux does not load DWARF sections into memory. Keep the matching `.debug` file from the
+build that produced a crash log, since its addresses are needed to resolve the recorded PCs:
 
 ```sh
-tools/deploy.sh                          # replace the binary on the device
+tools/symbolize-crash.sh crash.log
+```
+
+Deploy both the GUI and the patched MiSTer launcher, then check without looking at a television:
+
+```sh
+tools/deploy.sh                          # stop the GUI, replace both binaries, reboot
 tools/screenshot.sh                      # fetch what is on screen as a PNG
 make -C tests                            # host-side checks, no device needed
 ```
@@ -227,13 +235,14 @@ the controller-management feature this is building towards.
 | `/media/fat/mister-pat/systems.conf` | Per-system loader slot overrides, see [the example](assets/systems.conf.example) |
 | `/media/fat/mister-pat/icons/` | Console icons |
 | `/media/fat/mister-pat/gamesdb/` | The game database: `catalog.tsv`, `roots.tsv` and one `<System>.tsv` per system |
+| `/media/fat/mister-pat/logs/crash.log` | Fatal error details, when a crash log could be written |
 
 The GUI also takes command-line options, which is how every screen can be reached and
 captured without a controller:
 
 ```
 --tab home|favorites|systems|arcade|games|settings  screen to open
---view list|large|grid|small|compact     game presentation
+--view list|grid|small                  game presentation
 --system NAME                            preselect a system
 --frames N                               render N frames, then exit
 --dump PATH                              write the finished canvas to PATH
@@ -246,6 +255,8 @@ captured without a controller:
 --exclusive                              grab inputs (blocks the MiSTer OSD)
 --stats                                  report where frame time is spent
 --full-redraw                            repaint everything every frame
+--no-splash                              skip the startup splash
+--splash-ms N                            set its initial wait in ms (default 1000)
 ```
 
 ## Repository layout
@@ -267,6 +278,9 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 | [INSTALL.md](INSTALL.md) | Installing, verifying and uninstalling |
 | [GUI.md](GUI.md) | The interface design: layout, tiles, navigation, typography |
 | [PERFORMANCE.md](PERFORMANCE.md) | What was measured, what it cost, and what made it fast |
+| [VNEXT.md](VNEXT.md) | Current 0.4.0 implementation, observations and remaining checks |
+| [BOXART.md](BOXART.md) | Artwork preparation, formats and scraper matching audit |
+| [WIFI.md](WIFI.md) | MiSTer Wi-Fi configuration notes for a later Settings feature |
 | [POC.md](POC.md) | How the MiSTer boots, where a frontend hooks in, and what was proven on hardware |
 | [CONTROLLER.md](CONTROLLER.md) | Controller-first setup — listing pads, an input test, deadzone, button mapping and Bluetooth pairing: the design, and what real hardware testing found along the way |
 | [ARCADE.md](ARCADE.md) | Arcade support — the analysis, the design and what was built from it. The MRA format, a ROM-storage-priority bug found on real hardware, how the library, the tab and the box art work, and what is still open |
@@ -275,10 +289,11 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 
 Working: booting into the GUI, browsing every system, box art, favourites, history, letter
 navigation, launching games, returning from a game with a long press on the menu button, and
-hiding systems or the Games tab from Settings for a large library. Arcade has been exercised
-on real hardware, including its updated box art scraper. The built-in font fallback has also
-been checked on the MiSTer with both Akrobat files absent; details are in [CHANGELOG.md](CHANGELOG.md)
-and [BOXART.md](BOXART.md).
+hiding systems or the Games tab from Settings for a large library. Arcade and the built-in
+font fallback have been exercised on the MiSTer. The 0.4.0 box-art preparation run over
+11,502 entries completed; the user reports that the current interface looks and feels very
+good. See [CHANGELOG.md](CHANGELOG.md), [BOXART.md](BOXART.md)
+and [VNEXT.md](VNEXT.md).
 
 ## Roadmap
 
@@ -303,23 +318,23 @@ for.
 - [x] **Navigation and input fixes** — alphabetize Arcade group previews and require a
       two-second hold to change a favorite.
 
-See [CHANGELOG.md](CHANGELOG.md) for the complete 0.3.0 change list. The next release's scope
-will be defined separately.
+See [CHANGELOG.md](CHANGELOG.md) for the complete 0.3.0 change list.
 
 #### 0.4.0 — Optimisation
 
-- [ ] **Smoother, faster menu control**, everywhere.
-- [ ] **Three-tier artwork loading** (thumbnail → medium → full) with a cross-fade. The design
-      is in [PERFORMANCE.md](PERFORMANCE.md#planned-three-tier-image-quality).
-- [x] **A much shorter first visit to Systems.** The first time the tab is opened there is
-      currently a progress bar while it works out which systems have games. Extending the game
-      database so that answer is already in it should remove most of that.
-
-Also to be made concrete by testing, in particular by measuring where time actually goes.
+- [x] **Smoother, faster menu control**, everywhere. Confirmed by user testing on the MiSTer.
+- [x] **View-sized artwork files and bounded background decoding.** Prepare box art creates
+      five BMP sizes with JPEG/PNG fallback; cover decoding runs in a bounded worker queue.
+      See [VNEXT.md](VNEXT.md) for implementation details and observations.
+- [x] **Optional box art and faster icon startup.** Settings can hide artwork; the one-second
+      splash then loads system icons sequentially, preferring native-size BMPs.
+- [x] **A much shorter first visit to Systems.** The game database already records which
+      systems have games, so the tab can show its grid without building that answer on entry.
 
 #### 0.5.0 — Easy to install ... and to update
 
-- [ ] **A pleasant install flow**, rather than today's manual steps.
+- [ ] **A pleasant install flow.** An initial install/update shell script exists in source;
+      release publication and end-to-end validation are still needed.
 - [ ] **A system, or a process, for updating the GUI.** Today an update means replacing files by
       hand over SSH. There has to be a proper way to get a newer version onto the device.
 - [ ] **An extension of `update_all.sh`** (the Update_All_MiSTer script), so installing and
@@ -331,8 +346,9 @@ Also to be made concrete by testing, in particular by measuring where time actua
 #### 0.6.0 — Settings, sound and search
 
 - [ ] **More settings**, such as Wi-Fi, and whatever else turns out to be useful to reach from
-      the couch.
+      the couch. MiSTer-specific Wi-Fi notes are in [WIFI.md](WIFI.md).
 - [ ] **A switch for the time format:** 12-hour or 24-hour.
+- [ ] **Set the time zone** used for the clock shown in the interface.
 - [ ] **Menu sounds.**
 - [ ] **Search.** This needs an on-screen keyboard that can be driven entirely from a
       controller, which is the real piece of work in it.

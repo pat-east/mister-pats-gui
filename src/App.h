@@ -25,6 +25,7 @@
 #include "Screen.h"
 #include "SettingsScreen.h"
 #include "SystemVisibilityScreen.h"
+#include "SystemIconDownload.h"
 #include "SystemsScreen.h"
 #include "TopBar.h"
 #include "UpdateCheck.h"
@@ -86,6 +87,7 @@ private:
     void reloadLibrary();
     void openScan(bool firstRun);
     void openArtwork();
+    void startSystemIconDownload();
     void closeScan();
     void openVisibility();
     void closeVisibility();
@@ -120,6 +122,7 @@ private:
     Launcher launcher_;
     ImageCache images_;
     Icons icons_;
+    std::unique_ptr<SystemIconDownload> systemIconDownload_;
     History history_;
     HiddenSystems hiddenSystems_;
     Preferences preferences_;

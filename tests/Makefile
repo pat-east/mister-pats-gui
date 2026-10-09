@@ -15,6 +15,9 @@ MRAFILE  := $(BUILDDIR)/mra_file_test
 ARCADESCAN := $(BUILDDIR)/arcade_scan_test
 LIBRETRO := $(BUILDDIR)/libretro_index_test
 UPDATECHECK := $(BUILDDIR)/update_check_test
+IMAGECACHE := $(BUILDDIR)/image_cache_worker_test
+IMAGE_LIBS := $(shell pkg-config --libs libpng libjpeg)
+IMAGE_CFLAGS := $(shell pkg-config --cflags libpng libjpeg)
 
 .PHONY: all run clean
 
@@ -73,7 +76,13 @@ $(UPDATECHECK): update_check_test.cpp ../src/UpdateCheck.cpp ../src/Downloader.c
 	$(CXX) $(CXXFLAGS) update_check_test.cpp ../src/UpdateCheck.cpp ../src/Downloader.cpp \
 	    ../src/DebugLog.cpp -o $@
 
-run: $(DAMAGE) $(ALPHABET) $(GAMESDB) $(MISTERINI) $(CONTROLLERMAP) $(ARCHIVE) $(MRAFILE) $(ARCADESCAN) $(LIBRETRO) $(UPDATECHECK)
+$(IMAGECACHE): image_cache_worker_test.cpp ../src/ImageCache.cpp ../src/Image.cpp \
+               ../src/ImageCache.h ../src/Image.h
+	@mkdir -p $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) $(IMAGE_CFLAGS) -I../src image_cache_worker_test.cpp \
+	    ../src/ImageCache.cpp ../src/Image.cpp $(IMAGE_LIBS) -o $@
+
+run: $(DAMAGE) $(ALPHABET) $(GAMESDB) $(MISTERINI) $(CONTROLLERMAP) $(ARCHIVE) $(MRAFILE) $(ARCADESCAN) $(LIBRETRO) $(UPDATECHECK) $(IMAGECACHE)
 	@$(DAMAGE)
 	@echo
 	@$(ALPHABET)
@@ -93,6 +102,8 @@ run: $(DAMAGE) $(ALPHABET) $(GAMESDB) $(MISTERINI) $(CONTROLLERMAP) $(ARCHIVE) $
 	@$(LIBRETRO)
 	@echo
 	@$(UPDATECHECK)
+	@echo
+	@$(IMAGECACHE)
 
 clean:
 	rm -rf $(BUILDDIR)

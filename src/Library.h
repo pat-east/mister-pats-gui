@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Paths.h"
+#include "Artwork.h"
 
 #include <string>
 #include <vector>
@@ -92,7 +93,8 @@ public:
     // full artwork resolution — for a handful of entries built eagerly this is fine, but
     // building thousands of these up front is exactly what makeStub()/resolveArtwork() below
     // exist to avoid.
-    static Game makeGame(const GameSystem &system, const std::string &path);
+    static Game makeGame(const GameSystem &system, const std::string &path,
+                         ArtworkVariant variant = ArtworkVariant::Full);
 
     // Just the path and display name — no I/O, safe to call for every candidate in a library
     // at once. What a screen showing thousands of entries should build immediately; artwork
@@ -107,12 +109,9 @@ public:
     // Filters known boot media and utilities from both newly built and older databases.
     static bool isSystemFile(const GameSystem &system, const std::string &path);
 
-    // Fills in a stub's artwork fields. `preferSmall` picks the `-sm` variant the scraper
-    // writes alongside full-size artwork when one exists — for a grid tile there is no reason
-    // to decode four times the pixels that will ever be drawn. Falls back to full-size when
-    // no small variant is there, so this is always safe to call regardless of whether the
-    // library has ever been scraped since -sm files existed.
-    static void resolveArtwork(const GameSystem &system, Game &game, bool preferSmall);
+    // Fills in a stub's artwork fields for a specific view. Uses its pre-sized BMP when
+    // present, then falls back to the existing small or full JPEG/PNG artwork.
+    static void resolveArtwork(const GameSystem &system, Game &game, ArtworkVariant variant);
 
     static constexpr const char *kDefaultSectionDir =
         "/media/fat/ConsoleMode/themeconfig/section_groups";

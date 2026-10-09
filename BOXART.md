@@ -34,19 +34,42 @@ handling for omitted `Disney's` in GBA titles, long subtitles that can be matche
 unambiguously, and series names between a main title and subtitle. Ambiguous matches
 such as `Pirates of the Caribbean` are deliberately left unresolved.
 
-When scraping, the application downloads matched PNGs and saves them as JPEGs in the
-`media` directory for each system: a full-size file `<Title>.jpg` and a smaller
-`<Title>-sm.jpg` for the Grid view. Existing images are skipped by default. System
-files and BIOS entries are not treated as games. Unmatched titles are written to
-`/media/fat/mister-pat/scrape-misses.txt`.
+In 0.4.0, **Settings → Prepare box art** also prepares existing local covers. A matched
+download is decoded once and stored beside the game as `<Title>.jpg`, `<Title>-sm.jpg`,
+and five view-sized BMPs. Existing JPEG or PNG covers can be converted to the same BMPs
+without downloading them again. Each BMP keeps the cover's aspect ratio within these
+1080p bounds:
+
+| View | Filename suffix | Maximum size |
+| --- | --- | ---: |
+| Home | `-home.bmp` | 178×178 px |
+| Games Grid | `-grid.bmp` | 245×245 px |
+| Games Boxart small | `-small.bmp` | 128×128 px |
+| Games List detail | `-detail.bmp` | 689×624 px |
+| Arcade | `-arcade.bmp` | 148×148 px |
+
+The GUI prefers the matching BMP and falls back to an existing JPEG or PNG if that BMP is
+absent. The uncompressed variants can use up to about 1.7 MB per cover; keeping the JPEGs
+supports older installations and covers without prepared variants. Background images remain
+JPEG/PNG. Arcade still fetches covers only, without background screenshots.
+
+The scraper processes one game per frame. Stopping it leaves completed artwork in place;
+another run fills gaps. System files and BIOS entries are excluded. Unmatched titles are
+written to `/media/fat/mister-pat/scrape-misses.txt`.
+
+Its ETA is an approximate completion **clock time**: elapsed time since the run began,
+multiplied by `(total games - processed games) / processed games`. It includes download,
+conversion, index preparation and frame pacing. It can move when later systems require
+different amounts of work. The displayed time uses the MiSTer's system time zone.
 
 ## Results and device verification
 
 An **index match** means only that the server lists a matching image name. The analysis
-did not download or decode the image files. A scrape with the updated application has
-since been completed on the MiSTer. The audit input was dated September 30, 2026, so the
-table above describes that snapshot and does not report the later device run's
-fetched/skipped/missing totals. For titles with
+did not download or decode the image files. A 0.4.0 preparation run over 11,502 entries
+has since completed on the MiSTer. Its fetched/prepared/skipped/missing totals were not
+recorded here, so the table above still describes only the older audit snapshot. The
+revised ETA was deployed after that run and has not been checked against a later full run.
+For titles with
 multiple regional versions, the current index often prefers a US cover even when the
 ROM is from another region.
 

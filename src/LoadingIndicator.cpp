@@ -8,10 +8,24 @@
 #include "Theme.h"
 
 namespace LoadingIndicator {
+namespace {
+
+void drawFittedLine(Canvas &canvas, Font &font, const Rect &area, const std::string &text,
+                    int preferredSize, int minimumSize, Color color) {
+    int size = preferredSize;
+    while (size > minimumSize && font.measure(text, size) > area.w) size -= 2;
+
+    const std::string visible = font.elide(text, size, area.w);
+    font.draw(canvas, area.x, area.y, visible, size, color);
+}
+
+} // namespace
 
 void draw(Canvas &canvas, Theme &theme, const Rect &area, const std::string &title,
-          float fraction, const std::string &status, const std::string &counts) {
-    theme.bold().draw(canvas, area.x, area.y, title, theme.sizeTitle(), theme.textPrimary);
+          float fraction, const std::string &status, const std::string &counts,
+          const std::string &extra) {
+    drawFittedLine(canvas, theme.bold(), area, title, theme.sizeTitle(), theme.sizeBody(),
+                   theme.textPrimary);
 
     const int barY = area.y + theme.px(110);
     const Rect track{area.x, barY, area.w, theme.px(14)};
@@ -25,14 +39,20 @@ void draw(Canvas &canvas, Theme &theme, const Rect &area, const std::string &tit
 
     int y = barY + theme.px(40);
     if (!status.empty()) {
-        theme.regular().draw(canvas, area.x, y,
-                             theme.regular().elide(status, theme.sizeBody(), area.w),
-                             theme.sizeBody(), theme.textPrimary);
+        drawFittedLine(canvas, theme.regular(), {area.x, y, area.w, 0}, status,
+                       theme.sizeBody(), theme.sizeSmall(), theme.textPrimary);
         y += theme.regular().lineHeight(theme.sizeBody()) + theme.px(18);
     }
 
-    theme.regular().draw(canvas, area.x, y, counts, theme.sizeBody(), theme.textMuted);
+    drawFittedLine(canvas, theme.regular(), {area.x, y, area.w, 0}, counts,
+                   theme.sizeBody(), theme.sizeSmall(), theme.textMuted);
     y += theme.regular().lineHeight(theme.sizeBody()) + theme.px(20);
+
+    if (!extra.empty()) {
+        drawFittedLine(canvas, theme.regular(), {area.x, y, area.w, 0}, extra,
+                       theme.sizeBody(), theme.sizeSmall(), theme.textMuted.withAlpha(190));
+        y += theme.regular().lineHeight(theme.sizeBody()) + theme.px(20);
+    }
 
     // A moving dot, because a bar that sits still on a big directory looks stuck. Driven by
     // the clock rather than an accumulator each screen would otherwise have to keep of its

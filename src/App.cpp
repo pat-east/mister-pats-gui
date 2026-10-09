@@ -29,15 +29,18 @@ bool App::initialize(const Options &options) {
     background_ = std::make_unique<Canvas>(framebuffer_.width(), framebuffer_.height());
     theme_ = std::make_unique<Theme>(framebuffer_.width(), framebuffer_.height());
 
-    // Nothing here has touched a game drive yet — everything below this point does. See
-    // Splash.h for why this exists.
-    if (options_.splashMs > 0) Splash::show(framebuffer_, *theme_, options_.splashMs);
+    // Listing icon filenames is cheap; their PNG data is decoded only after the initial splash
+    // wait, and is cached at the Systems tile size before the screen can be opened.
+    icons_.load();
+    if (options_.splashMs > 0)
+        Splash::show(framebuffer_, *theme_, options_.splashMs, icons_, images_);
+
+    systemIconDownload_ = std::make_unique<SystemIconDownload>(icons_);
 
     renderBackground(*background_);
 
     library_.load();
     favorites_.load();
-    icons_.load();
     history_.load();
     hiddenSystems_.load();
     preferences_.load();
@@ -68,6 +71,10 @@ bool App::initialize(const Options &options) {
     settingsScreen_ = std::make_unique<SettingsScreen>(
         *context_, [this] { reloadLibrary(); }, [this] { stop(); },
         [this] { openScan(false); }, [this] { openArtwork(); },
+        [this] { startSystemIconDownload(); },
+        [this] {
+            return systemIconDownload_ ? systemIconDownload_->statusLine() : std::string();
+        },
         [this] { openVisibility(); }, [this] { openControllers(); },
         [this] { openArcadeSettings(); },
         [this] { toggleGamesTab(); }, [this] { toggleArcadeTab(); }, [this] { cycleDefaultView(); },
@@ -173,9 +180,28 @@ void App::openArtwork() {
     needsFullRedraw_ = true;
 }
 
+void App::startSystemIconDownload() {
+    if (!systemIconDownload_) return;
+    if (systemIconDownload_->running()) {
+        context_->notify("System icon download is already running");
+        return;
+    }
+
+    if (!systemIconDownload_->start()) {
+        context_->notify(systemIconDownload_->error(), 6.0f);
+        return;
+    }
+
+    if (systemIconDownload_->state() == SystemIconDownload::State::Done) {
+        context_->notify(systemIconDownload_->statusLine());
+        return;
+    }
+    context_->notify("Downloading system icons", 4.0f);
+}
+
 void App::closeScan() {
     // Artwork that arrived while the wizard ran is on disk but not in the image cache yet.
-    if (scraper_.fetched()) reloadLibrary();
+    if (scraper_.fetched() || scraper_.prepared()) reloadLibrary();
 
     scanActive_ = false;
     needsFullRedraw_ = true;
@@ -371,6 +397,7 @@ void App::runScript() {
 }
 
 void App::dispatch(Action action) {
+    if (action == Action::Quit) DebugLog::warn("input: quit action received");
     const std::vector<Tab> tabs = visibleTabs();
     const int tabCount = int(tabs.size());
     const int tabIndex = int(std::find(tabs.begin(), tabs.end(), tab_) - tabs.begin());
@@ -534,9 +561,11 @@ void App::writeCanvas(const std::string &path) {
 
 int App::run() {
     running_ = true;
+    DebugLog::info("run: entering frame loop");
     int64_t previous = nowMs();
     int64_t rescanAt = previous + 1000;
     int frame = 0;
+    bool firstFrameLogged = false;
 
     while (running_) {
         const int64_t frameStart = nowMs();
@@ -602,6 +631,7 @@ int App::run() {
         if (context_->standDown) {
             input_.releaseAll();
             console_.release();
+            DebugLog::info("run: handed control to a core");
             std::printf("app: standing down, a core was started\n");
             break;
         }
@@ -611,6 +641,16 @@ int App::run() {
         // being hammered flat out.
         if (scan_.running()) scan_.step();
         else if (scraper_.running()) scraper_.step();
+        else if (systemIconDownload_ && systemIconDownload_->running()) {
+            systemIconDownload_->step();
+            if (!systemIconDownload_->running()) {
+                needsFullRedraw_ = true;
+                if (systemIconDownload_->state() == SystemIconDownload::State::Done)
+                    context_->notify(systemIconDownload_->statusLine(), 6.0f);
+                else
+                    context_->notify(systemIconDownload_->error(), 8.0f);
+            }
+        }
 
         Theme &theme = *theme_;
         topBar_.update(dt);
@@ -673,6 +713,10 @@ int App::run() {
         if (full) framebuffer_.present(*canvas_);
         else framebuffer_.present(*canvas_, canvas_->damage());
         needsFullRedraw_ = false;
+        if (!firstFrameLogged) {
+            DebugLog::info("run: first frame presented");
+            firstFrameLogged = true;
+        }
         const int64_t t4 = nowMs();
 
         backgroundMs_ += t1 - t0;
@@ -698,5 +742,6 @@ int App::run() {
     if (!options_.dumpPath.empty()) writeCanvas(options_.dumpPath);
 
     console_.release();
+    DebugLog::warn("run: exited without a fatal signal");
     return 0;
 }

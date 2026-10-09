@@ -1,6 +1,7 @@
 #include "GamesScreen.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -18,12 +19,6 @@ namespace {
 // library that has never scrolled there before — so that does not become a stall either.
 constexpr int kResolveBudgetMs = 8;
 
-// Above this, a tile is drawn too large for the scraper's `-sm` variant (see
-// MediaScraper::Options::smallMaxEdge) to still look sharp, so it is worth decoding the
-// full-size picture instead. Grid and everything smaller stay under it comfortably; only
-// Boxart large sits above.
-constexpr int kSmallArtworkMaxTile = 300;
-
 struct ViewSpec {
     int targetTileWidth;   // design pixels
     int aspectW, aspectH;
@@ -38,39 +33,34 @@ struct ViewSpec {
 // suits both worst-cases equally — and it is shorter, so more rows fit on screen.
 ViewSpec specFor(GameView view) {
     switch (view) {
-    case GameView::BoxartLarge: return {380, 1, 1, true, false, "Boxart large"};
     case GameView::Grid:        return {250, 1, 1, true, true, "Grid"};
     case GameView::BoxartSmall: return {150, 1, 1, true, false, "Boxart small"};
-    case GameView::Compact:     return {104, 1, 1, true, false, "Compact"};
     case GameView::List:
     default:                    return {0, 0, 0, false, false, "List"};
     }
 }
 
-// Everything except Boxart large and the List view's own detail panel draws its artwork
-// small enough that the scraper's `-sm` variant is the right one to ask for — List has no
-// tile size of its own (0) and falls through to false the same way Boxart large does.
-bool prefersSmallArtwork(GameView view) {
-    const int width = specFor(view).targetTileWidth;
-    return width > 0 && width <= kSmallArtworkMaxTile;
+ArtworkVariant artworkVariantFor(GameView view) {
+    switch (view) {
+    case GameView::List: return ArtworkVariant::Detail;
+    case GameView::BoxartSmall: return ArtworkVariant::Small;
+    case GameView::Grid:
+    default: return ArtworkVariant::Grid;
+    }
 }
 
 } // namespace
 
 GameView gameViewFromName(const std::string &name) {
     if (name == "list") return GameView::List;
-    if (name == "large") return GameView::BoxartLarge;
     if (name == "small") return GameView::BoxartSmall;
-    if (name == "compact") return GameView::Compact;
     return GameView::Grid;
 }
 
 const char *nameForGameView(GameView view) {
     switch (view) {
     case GameView::List: return "list";
-    case GameView::BoxartLarge: return "large";
     case GameView::BoxartSmall: return "small";
-    case GameView::Compact: return "compact";
     case GameView::Grid:
     default: return "grid";
     }
@@ -83,6 +73,7 @@ GamesScreen::GamesScreen(Context &context) : context_(context) {}
 void GamesScreen::setView(GameView view) {
     view_ = view;
     scrollRow_ = 0;
+    needsPaint_ = true;
 }
 
 void GamesScreen::showSystem(const GameSystem &system, const std::string &title) {
@@ -126,15 +117,18 @@ void GamesScreen::reload() {
         for (const FavoriteEntry &favorite : context_.favorites.entries()) {
             const GameSystem *system = context_.library.findSystem(favorite.system);
             if (!system || Library::isSystemFile(*system, favorite.path)) continue;
-            entries_.push_back({system, Library::makeStub(*system, favorite.path), false, false});
+            entries_.push_back({system, Library::makeStub(*system, favorite.path), false,
+                                ArtworkVariant::Full});
         }
     } else if (allMode_) {
         for (const GameSystem &system : context_.library.systems())
             for (const std::string &path : context_.library.pathsOf(system))
-                entries_.push_back({&system, Library::makeStub(system, path), false, false});
+                entries_.push_back({&system, Library::makeStub(system, path), false,
+                                    ArtworkVariant::Full});
     } else if (system_) {
         for (const std::string &path : context_.library.pathsOf(*system_))
-            entries_.push_back({system_, Library::makeStub(*system_, path), false, false});
+            entries_.push_back({system_, Library::makeStub(*system_, path), false,
+                                ArtworkVariant::Full});
         preSorted = context_.library.pathsPreSorted(*system_);
     }
 
@@ -147,6 +141,11 @@ void GamesScreen::reload() {
     }
 
     focus_.assign(entries_.size(), 0.0f);
+    paintedFocus_.clear();
+    paintedArtwork_.clear();
+    paintedScrollRow_ = -1;
+    paintedCount_ = size_t(-1);
+    needsPaint_ = true;
 
     char line[160];
     std::snprintf(line, sizeof(line), "games: %zu entries for %s", entries_.size(),
@@ -154,11 +153,11 @@ void GamesScreen::reload() {
     DebugLog::info(line);
 }
 
-void GamesScreen::ensureArtwork(Entry &entry, bool preferSmall) {
-    if (entry.artworkResolved && entry.artworkSmall == preferSmall) return;
-    Library::resolveArtwork(*entry.system, entry.game, preferSmall);
+void GamesScreen::ensureArtwork(Entry &entry, ArtworkVariant variant) {
+    if (entry.artworkResolved && entry.artworkVariant == variant) return;
+    Library::resolveArtwork(*entry.system, entry.game, variant);
     entry.artworkResolved = true;
-    entry.artworkSmall = preferSmall;
+    entry.artworkVariant = variant;
 }
 
 const GamesScreen::Entry *GamesScreen::current() const {
@@ -210,6 +209,7 @@ void GamesScreen::toggleFavorite() {
 
     const bool wasFavorite = context_.favorites.contains(entry->game.path);
     context_.favorites.toggle(entry->system->name, entry->game.path, entry->game.name);
+    needsPaint_ = true;
     context_.notify(wasFavorite ? entry->game.name + " removed from favorites"
                                 : entry->game.name + " added to favorites");
 
@@ -260,7 +260,7 @@ void GamesScreen::update(float deltaSeconds) {
     // frame, not whenever renderGrid() next happens to ask for it.
     if (context_.preferences.showBoxArt() && !entries_.empty()) {
         const int index = std::min(std::max(cursor_, 0), int(entries_.size()) - 1);
-        ensureArtwork(entries_[size_t(index)], prefersSmallArtwork(view_));
+        ensureArtwork(entries_[size_t(index)], artworkVariantFor(view_));
     }
 
     const float speed = std::min(1.0f, deltaSeconds * 9.0f);
@@ -328,8 +328,8 @@ void GamesScreen::renderDetail(Canvas &canvas, const Rect &area, const Entry &en
 
     ImagePtr art;
     if (context_.preferences.showBoxArt())
-        art = context_.images.get(entry.game.boxart, entry.game.boxartFallback,
-                                  artArea.w, artArea.h);
+        art = context_.images.requestAsync(entry.game.boxart, entry.game.boxartFallback,
+                                  artArea.w, artArea.h, true);
     if (art) {
         const Rect target = artArea.fitAspect(art->width(), art->height());
         canvas.dropShadow(target, theme.px(6), theme.px(18), theme.shadow.withAlpha(170));
@@ -407,7 +407,7 @@ void GamesScreen::renderList(Canvas &canvas, const Rect &area) {
     if (const Entry *entry = current()) renderDetail(canvas, detailArea, *entry);
 }
 
-void GamesScreen::renderGrid(Canvas &canvas, const Rect &area) {
+void GamesScreen::renderGrid(Canvas &canvas, const Rect &area, bool fullRedraw) {
     Theme &theme = context_.theme;
     const ViewSpec spec = specFor(view_);
 
@@ -439,11 +439,11 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area) {
     // normal scroll only ever touches a handful of never-seen entries; the budget exists for
     // the rare jump that reveals a whole screenful never visited before — a letter jump deep
     // into a library that was never scrolled there.
-    const bool preferSmall = prefersSmallArtwork(view_);
+    const ArtworkVariant variant = artworkVariantFor(view_);
     const int64_t resolveDeadline = nowMs() + kResolveBudgetMs;
     if (context_.preferences.showBoxArt()) {
         for (int i = first; i < last && nowMs() < resolveDeadline; ++i)
-            ensureArtwork(entries_[size_t(i)], preferSmall);
+            ensureArtwork(entries_[size_t(i)], variant);
     }
 
     // Ask for the focused tile's picture before anything else. The two passes below draw it
@@ -454,9 +454,65 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area) {
     // wait on whichever neighbour happened to be drawn before it.
     if (context_.preferences.showBoxArt() && cursor_ >= first && cursor_ < last) {
         const Entry &focused = entries_[size_t(cursor_)];
-        context_.images.get(focused.game.boxart, focused.game.boxartFallback,
-                            grid_.tileWidth(), grid_.tileHeight());
+        context_.images.requestAsync(focused.game.boxart, focused.game.boxartFallback,
+                            grid_.tileWidth(), grid_.tileHeight(), true);
     }
+
+    // Keep the current image per visible tile. A cache-wide generation counter makes one
+    // arriving cover repaint every tile; comparing these pointers limits that repaint to the
+    // cover that actually changed.
+    std::vector<ImagePtr> visibleArtwork(size_t(last - first));
+    if (context_.preferences.showBoxArt()) {
+        for (int i = first; i < last; ++i) {
+            const Entry &entry = entries_[size_t(i)];
+            visibleArtwork[size_t(i - first)] = context_.images.requestAsync(
+                entry.game.boxart, entry.game.boxartFallback, grid_.tileWidth(),
+                grid_.tileHeight(), i == cursor_);
+        }
+    }
+
+    const bool layoutChanged = fullRedraw || needsPaint_ || scrollRow_ != paintedScrollRow_ ||
+                               entries_.size() != paintedCount_ ||
+                               paintedFocus_.size() != focus_.size() ||
+                               paintedArtwork_.size() != entries_.size() ||
+                               grid_.columns() != paintedColumns_ ||
+                               grid_.tileWidth() != paintedTileWidth_ ||
+                               grid_.tileHeight() != paintedTileHeight_;
+
+    Rect repaint{};
+    if (!layoutChanged) {
+        for (int i = first; i < last; ++i) {
+            const bool focusChanged =
+                std::fabs(focus_[size_t(i)] - paintedFocus_[size_t(i)]) >= 0.002f;
+            const bool artworkChanged =
+                paintedArtwork_[size_t(i)] != visibleArtwork[size_t(i - first)].get();
+            if (!focusChanged && !artworkChanged) continue;
+            const Rect footprint = Tile::footprint(theme, grid_.cellFrame(i, scrollRow_));
+            const int x = std::min(repaint.x, footprint.x);
+            const int y = std::min(repaint.y, footprint.y);
+            const int right = std::max(repaint.right(), footprint.right());
+            const int bottom = std::max(repaint.bottom(), footprint.bottom());
+            repaint = repaint.empty() ? footprint : Rect{x, y, right - x, bottom - y};
+        }
+        if (repaint.empty()) {
+            canvas.popClip();
+            return;
+        }
+        repaint = repaint.intersect(area);
+        if (repaint.empty()) {
+            canvas.popClip();
+            return;
+        }
+    } else {
+        repaint = area;
+    }
+
+    // GamesScreen used to clear and repaint every visible cover every frame. The image bytes
+    // were cached, but this rebuilt all of their pixels and copied the full grid to the
+    // framebuffer continuously. Restore only the area affected by focus animation; new
+    // artwork, scrolling and layout changes repaint the complete grid once. An arriving cover
+    // only dirties that tile and its overlapping shadow.
+    if (!fullRedraw && context_.background) canvas.restoreFrom(*context_.background, repaint);
 
     for (int pass = 0; pass < 2; ++pass) {
         for (int i = first; i < last; ++i) {
@@ -465,29 +521,43 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area) {
 
             const Entry &entry = entries_[size_t(i)];
             const Rect frame = grid_.cellFrame(i, scrollRow_);
+            if (!layoutChanged && Tile::footprint(theme, frame).intersect(repaint).empty())
+                continue;
 
             Tile::Content content;
             content.label = entry.game.name;
             content.showLabel = spec.showLabel;
             content.coverArt = spec.coverArt;
             content.favorite = context_.favorites.contains(entry.game.path);
-            if (context_.preferences.showBoxArt())
-                content.image = context_.images.get(entry.game.boxart, entry.game.boxartFallback,
-                                                    grid_.tileWidth(), grid_.tileHeight());
+            content.image = visibleArtwork[size_t(i - first)];
 
             Tile::draw(canvas, theme, frame, content, focus_[size_t(i)]);
         }
     }
     canvas.popClip();
+
+    paintedFocus_ = focus_;
+    if (layoutChanged) paintedArtwork_.assign(entries_.size(), nullptr);
+    for (int i = first; i < last; ++i)
+        paintedArtwork_[size_t(i)] = visibleArtwork[size_t(i - first)].get();
+    paintedScrollRow_ = scrollRow_;
+    paintedCount_ = entries_.size();
+    paintedColumns_ = grid_.columns();
+    paintedTileWidth_ = grid_.tileWidth();
+    paintedTileHeight_ = grid_.tileHeight();
+    needsPaint_ = false;
 }
 
-void GamesScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*/) {
+void GamesScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
     Theme &theme = context_.theme;
 
     const int headerHeight = theme.px(58);
     const Rect header{area.x, area.y, area.w, headerHeight};
     const Rect body{area.x, area.y + headerHeight, area.w, area.h - headerHeight};
 
+    // Incremental grid mode leaves the static screen area in place, so restore its header
+    // before drawing text with antialiased edges again.
+    if (incremental() && context_.background) canvas.restoreFrom(*context_.background, header);
     renderHeader(canvas, header);
 
     if (entries_.empty()) {
@@ -501,7 +571,7 @@ void GamesScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*/) 
     }
 
     if (view_ == GameView::List) renderList(canvas, body);
-    else renderGrid(canvas, body);
+    else renderGrid(canvas, body, fullRedraw);
 }
 
 std::string GamesScreen::hints() const {

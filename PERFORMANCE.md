@@ -4,6 +4,31 @@ All numbers measured on real hardware (DE10-Nano, dual-core Cortex-A9 @ 800 MHz,
 framebuffer 1920×1080 × 32 bpp). Target: **smooth 30 fps at native 1080p**, i.e. ≤ 33 ms
 per frame.
 
+## 0.4.0 implementation and measurement status
+
+The detailed frame and icon benchmarks below are historical measurements. The current
+development build now:
+
+- loads system icons during the splash: one second to 25%, then one icon per frame through
+  the remaining 75%; it prefers 163×163 opaque BMPs and falls back to PNGs;
+- stores five view-sized BMP box-art variants (Home 178×178, Arcade 148×148, Grid 245×245,
+  Boxart small 128×128, List detail up to 689×624), preserving aspect ratio and keeping
+  legacy JPEG/PNG files as fallbacks when a BMP is missing;
+- sends cover decoding to one lazy worker with at most 32 queued requests; the decoded
+  cache is capped at 120 entries and 32 MiB, and completed images enter it on the app
+  thread. The focused image is prioritized, queued requests are discarded after each
+  frame, and in-flight decoding is allowed to finish safely;
+- computes the scraper ETA from whole-run elapsed time and the displayed progress counts:
+  `remaining = elapsed × (total - done) / done`.
+
+A 11,502-entry Prepare box art run completed on the MiSTer. The user reports improved
+browsing so far. The new ETA was deployed after that run, so it has no full-run accuracy
+measurement yet. There is also no new cold/warm frame-time comparison for the current BMP
+and worker path. The earlier icon benchmark compared 300×300 PNG with 160×160 BMP; it
+does not measure the current 163×163 no-resize path or isolate file format from resolution.
+The user has approved the 0.4.0 menu feel on the MiSTer. The measurements and repeated
+stress checks above remain useful follow-up data; they are not a measured 30 fps claim.
+
 ## Measurement Method
 
 The application ships with its own instrumentation, so that nothing has to be guessed:
@@ -226,21 +251,20 @@ From `2S + D = 106` and `30S + D = 936` it follows that the recurring cost is
 The same holds for text: `chrome` costs 10 ms in the first frame and 1.7 ms afterwards. So
 the glyph cache has to be filled once per font size, at a cost of roughly **18 ms**.
 
-### A Bug in the Current Version
+### Historical: a decode-budget bug before the artwork worker
 
-`ImageCache::beginFrame(3)` permits three decodes per frame. At 47 ms each that works out to
-**as much as 140 ms in a single frame** — a clearly visible stutter, exactly when scrolling
-into tiles that have not been loaded yet. The budget has to be time-based (something like
-"keep decoding as long as less than 8 ms of this frame has been used up"), or the decoding
-belongs on the second core.
+The earlier `ImageCache::beginFrame(3)` permitted three decodes per frame. At 47 ms each,
+that worked out to **as much as 140 ms in one frame** when scrolling into uncached tiles.
+The 0.4.0 cover worker moves ordinary cover decoding off the render path; the synchronous
+fallback still uses a time allowance checked between decodes.
 
 ### The Key Insight
 
 The decode time depends on the **resolution of the source file**, not on the target size.
 Shrinking a piece of box art to tile size after decoding saves nothing — the expensive part
-has already happened. Smaller images can only be had through **smaller files on disk**. That
-is exactly why the three-tier store described below is the right approach and not a
-micro-optimization.
+has already happened. Smaller images can only be had through **smaller files on disk**.
+This motivated the current five view-sized BMP variants. The older three-tier proposal
+remains below as design history.
 
 ## Constraint: Do Not Overrun the Storage Device
 
@@ -315,14 +339,14 @@ no more than a failed open.
    device, `ls /media/usb0` could not be terminated for minutes. File access belongs in a
    background thread.
 
-Point 6 is additionally a robustness bug in the current version, independent of the power
-issue.
+Point 6 described the older synchronous cover-loading path. Ordinary cover requests now use
+a background worker, although other filesystem operations still need responsiveness checks.
 
-## Planned: Large Libraries
+## Historical plan: Large Libraries
 
 Two things determine responsiveness, and both scale with library size.
 
-### What the Current Version Gets Wrong
+### What the version measured above got wrong
 
 - `Library::gamesOf()` rescans the directory and sorts the result on **every** opening of a
   system. Nothing is retained between calls or across program starts.
@@ -352,7 +376,10 @@ Open question: whether the database can be shared with Console Mode's `caches/` 
 `usb_*.txt` is 834 KB and looks like exactly this kind of index — that needs checking before
 we invent a format of our own.
 
-## Planned: Three-Tier Image Quality
+## Historical proposal: Three-Tier Image Quality
+
+This was a proposal before the 0.4.0 implementation chose view-sized BMPs and one bounded
+cover-loading worker. The dwell-time upgrades and cross-fade below are not implemented.
 
 Goal: show something immediately, then sharpen it up unobtrusively — and never wait for an
 image.
@@ -411,3 +438,39 @@ To be tried out:
 | 2026-09-21 | Shadow capped at 4 layers, focused tile only | 60 ms (17 fps) |
 | 2026-09-21 | Shadow and border ring instead of full area, opaque image pixels written directly | 52 ms (19 fps) |
 | 2026-09-22 | Dirty Rectangles, background cached | 7.8 ms while idle |
+
+## PNG vs. 160 px BMP System Icons
+
+Measured on the MiSTer with all **113 matching icon pairs**. The PNGs are 300×300; the
+opaque BMPs are 160×160, 24-bit. The benchmark loads each source and scales it to the
+201×201 Systems cache size. It then measures Canvas drawing separately, with 18 icons per
+frame at the Systems tile's 163×163 draw size. Thus the load result includes both decoding
+and scaling, while the render result excludes loading and framebuffer presentation.
+
+Run it on the device with `make bench-icons`, copy `build/icon-bench` to the MiSTer, then run
+`sync; echo 3 > /proc/sys/vm/drop_caches; /tmp/icon-bench`. The first pass alternates formats
+after clearing the Linux page cache; the warm result uses five repeated page-cached passes.
+The Canvas comparison runs three alternating batches per format (12 warm-up and 120 measured
+frames per batch). The GUI remained running during these measurements, so scheduling
+contention may affect the absolute timings slightly.
+
+| Measurement | PNG 300×300 | BMP 160×160 | Difference |
+| --- | ---: | ---: | ---: |
+| Total asset size (113 files) | 2.76 MB | 8.68 MB | BMP is 3.14× larger |
+| First alternating decode + scale | 2,894 ms | 2,929 ms | BMP 1.2% slower |
+| Warm decode per icon | 9.266 ms | 1.854 ms | BMP 80.0% faster |
+| Warm scale per icon to 201×201 | 14.416 ms | 18.882 ms | BMP 31.0% slower |
+| Warm decode + scale per icon | 23.682 ms | 20.736 ms | BMP 12.4% faster |
+| Canvas render, 18 icons per frame | 67.933 ms | 67.545 ms | BMP 0.6% faster |
+
+A second run gave 2.7% less time for the first pass, 12.8% less time for warm decode+scale,
+and 0.7% less time for Canvas drawing. The first-pass result changes sign between runs, so
+there is **no demonstrated cold-load speedup**. The repeatable warm result is modest overall:
+BMP decoding itself is much faster, but scaling the smaller 160 px source up to 201 px costs
+more than scaling the 300 px PNG down. Asset storage also grows by about 5.9 MB.
+
+The Canvas difference is within measurement noise and is not a meaningful rendering gain.
+Removing source alpha blending alone does not make these draws faster; the current draw loop
+still performs per-pixel coordinate mapping and clipping. That is a more promising place to
+investigate for tab-switch/render performance. These numbers compare the two icon formats at
+their actual source resolutions; they do not isolate format from resolution or image content.

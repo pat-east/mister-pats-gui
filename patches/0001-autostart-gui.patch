@@ -71,7 +71,7 @@ diff --git a/menu.cpp b/menu.cpp
 index 9577174..960cd06 100644
 --- a/menu.cpp
 +++ b/menu.cpp
-@@ -1167,6 +1167,89 @@ void HandleUI(void)
+@@ -1167,6 +1167,96 @@ void HandleUI(void)
  	static pid_t ttypid = 0;
  	static int ttystatus = 0;
  	static int has_fb_terminal = 0;
@@ -109,9 +109,9 @@ index 9577174..960cd06 100644
 +		}
 +	}
 +
-+	// Start the configured replacement GUI, and bring it back if it ever goes away while the
-+	// menu core is up. This mirrors MENU_SCRIPTS_FB: only that path enables the framebuffer
-+	// overlay the GUI draws into. The cooldown keeps a GUI that fails to run from spinning.
++	// Start the configured replacement GUI, and bring it back if it exits normally while the
++	// menu core is up. An abnormal exit is handled by the wrapper below: it pauses relaunches
++	// and leaves a dedicated crash screen visible until the user restarts the MiSTer.
 +	//
 +	// The GUI's own "Start MiSTer Core" setting exits it and drops this marker so the stock
 +	// menu stays on screen instead of being covered again a few seconds later. It lives in
@@ -137,8 +137,15 @@ index 9577174..960cd06 100644
 +				gui_next_try = GetTimer(5000);
 +				printf("Starting GUI: %s\n", gui_path);
 +
-+				static char gui_cmd[1024 * 2];
-+				sprintf(gui_cmd, "#!/bin/bash\nexport LC_ALL=en_US.UTF-8\nexport HOME=/root\n%s\n", gui_path);
++				static char gui_cmd[3072];
++				snprintf(gui_cmd, sizeof(gui_cmd),
++				         "#!/bin/bash\nexport LC_ALL=en_US.UTF-8\nexport HOME=/root\n"
++				         "\"%s\"\nGUI_STATUS=$?\n"
++				         "if [ \"$GUI_STATUS\" -ne 0 ]; then\n"
++				         "  : > /tmp/mister-pat-suspend-gui\n"
++				         "  \"%s\" --crash-screen \"$GUI_STATUS\"\n"
++				         "fi\n",
++				         gui_path, gui_path);
 +
 +				video_chvt(2);
 +				video_fb_enable(1);
