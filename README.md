@@ -8,6 +8,8 @@ as you start a game.
 It is not a core. Nothing about the FPGA changes. This is a frontend that picks a game and
 asks the MiSTer to load it, the same way the stock menu does.
 
+<!-- screenshots:start -->
+
 | Home | Favorites |
 | --- | --- |
 | ![Home](screenshots/home.png) | ![Favorites](screenshots/favorites.png) |
@@ -16,8 +18,7 @@ asks the MiSTer to load it, the same way the stock menu does.
 | --- | --- |
 | ![Systems](screenshots/systems.png) | ![Arcade](screenshots/arcade.png) |
 
-Every system's games in the presentation you prefer — Y cycles through them. Here, SNES in
-Grid, Boxart small and List:
+Every system's games in the presentation you prefer — Y cycles through them. Here, SNES in Grid, Boxart small and List:
 
 | Grid | Boxart small |
 | --- | --- |
@@ -27,9 +28,17 @@ Grid, Boxart small and List:
 | --- | --- |
 | ![SNES, list view](screenshots/snes-list.png) | ![Games](screenshots/games.png) |
 
-| Settings | Controller input test |
+Settings, with the update page and the controller input test:
+
+| Settings | Interface settings |
 | --- | --- |
-| ![Settings](screenshots/settings.png) | ![Controller input test](screenshots/controller-test.png) |
+| ![Settings](screenshots/settings.png) | ![Interface settings](screenshots/settings-interface.png) |
+
+| Updates | Controller input test |
+| --- | --- |
+| ![Updates](screenshots/settings-updates.png) | ![Controller input test](screenshots/controller-test.png) |
+
+<!-- screenshots:end -->
 
 ## A note on how this was built
 

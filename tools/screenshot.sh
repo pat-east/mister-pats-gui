@@ -1,7 +1,8 @@
 #!/bin/sh
 # Screenshots of the GUI on the MiSTer, brought back as PNG.
 #
-#   tools/screenshot.sh set [name ...]   render the standard set into screenshots/
+#   tools/screenshot.sh set [name ...]   render the standard set into screenshots/ and rewrite
+#                                        the gallery in README.md (tools/update-readme-screenshots.py)
 #   tools/screenshot.sh one NAME FRAMES [gui arguments ...]
 #                                        render any one screen into build/shots/NAME.png
 #   tools/screenshot.sh live [NAME]      photograph what the running GUI shows right now
@@ -24,24 +25,27 @@
 # frames), and Settings -> Manage Arcade -> Arcade Games reads every .mra and checks its ROMs
 # (about 4000, several minutes on the device).
 #
+# Settings has a category list on the left (Library, Controllers, Interface, Updates, System);
+# "down" moves between categories until "right" or "confirm" moves into the rows.
+#
 # The controller input test needs the pad's row in the Controllers list. Count down from the
-# first row (0) and set CONTROLLER_ROW, e.g. CONTROLLER_ROW=2. Every row is listed, including
+# first row (0) and set CONTROLLER_ROW, e.g. CONTROLLER_ROW=1. Every row is listed, including
 # sub-devices such as "Motion Sensors", so look at Settings -> Controllers first.
 #
 # Environment:
-#   DEVICE          ssh target                         (default root@192.168.64.128)
+#   DEVICE          ssh target                         (default root@192.168.64.163)
 #   REMOTE          the GUI's directory on the device  (default /media/fat/mister-pat)
 #   GUI             the binary inside REMOTE           (default mister-gui)
-#   CONTROLLER_ROW  see above                          (default 2)
+#   CONTROLLER_ROW  see above                          (default 0)
 #
 # Only the GUI that is on the device is used, so deploy a build first (tools/deploy.sh). It
 # must be one that knows --press; older ones ignore it and show the screen they started on.
 set -e
 
-DEVICE=${DEVICE:-root@192.168.64.128}
+DEVICE=${DEVICE:-root@192.168.64.163}
 REMOTE=${REMOTE:-/media/fat/mister-pat}
 GUI=${GUI:-mister-gui}
-CONTROLLER_ROW=${CONTROLLER_ROW:-2}
+CONTROLLER_ROW=${CONTROLLER_ROW:-0}
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 SHOTS="$HERE/build/shots"
 SET_DIR="$HERE/screenshots"
@@ -74,8 +78,10 @@ downs() {
 # ---------------------------------------------------------------------------------------
 # set: the pictures the README uses
 # ---------------------------------------------------------------------------------------
+# arcade-games is not in the standard set: it takes several minutes on the device and the
+# README does not show it. Ask for it by name.
 STANDARD="home favorites systems snes snes-grid snes-small snes-list arcade games settings
-controller-test arcade-games"
+settings-interface settings-updates controller-test"
 
 shot_set() {
     wanted=${*:-$STANDARD}
@@ -91,24 +97,34 @@ shot_set() {
         snes-list)   render $name 150 "$SET_DIR" --no-grab --tab games --system SNES --view list ;;
         arcade)      render $name 150 "$SET_DIR" --no-grab --tab arcade ;;
         games)       render $name 150 "$SET_DIR" --no-grab --tab games ;;
-        settings)    render $name 60 "$SET_DIR" --no-grab --tab settings ;;
+        settings)    render $name 60 "$SET_DIR" --no-grab --tab settings --press "right,wait:5" ;;
+        settings-interface)
+            render $name 60 "$SET_DIR" --no-grab --tab settings --press "down,down,right,wait:5" ;;
+        settings-updates)
+            # Offline or not, the page shows the running and selected versions and the check
+            # state; "wait" gives the update service time to settle.
+            render $name 90 "$SET_DIR" --no-grab --tab settings --press "down,down,down,right,wait:30" ;;
         controller-test)
-            # Needs the input devices, so no --no-grab. The test hands the screen back after
-            # ten idle seconds, hence the short run. Settings row 5 is Controllers.
+            # Needs the input devices, so no --no-grab. Controllers is the second category and
+            # holds one row of the same name. The test hands the screen back after ten idle
+            # seconds, hence the short run.
             render $name 50 "$SET_DIR" --tab settings \
-                --press "down,down,down,down,down,confirm,wait:5$(downs "$CONTROLLER_ROW"),confirm,wait:20"
+                --press "down,confirm,confirm,wait:5$(downs "$CONTROLLER_ROW"),confirm,wait:20"
             ;;
         arcade-games)
-            # Settings row 4 is Manage Arcade. "view" at the end switches the table's filter
-            # from All to Working, which leaves out the games whose ROMs are not there.
+            # Library row 5 is Manage Arcade, its first row Arcade Games. "view" at the end
+            # switches the table's filter from All to Working, which leaves out the games
+            # whose ROMs are not there.
             echo "  arcade-games: reads every .mra, this takes several minutes"
             render $name 4100 "$SET_DIR" --no-grab --tab settings \
-                --press "down,down,down,down,confirm,confirm,wait:3950,view,wait:10"
+                --press "confirm,down,down,down,down,down,confirm,confirm,wait:3950,view,wait:10"
             ;;
         *)
-            echo "  unknown picture: $name (known: $STANDARD)" ; return 1 ;;
+            echo "  unknown picture: $name (known: $STANDARD arcade-games)" ; return 1 ;;
         esac
     done
+
+    python3 "$HERE/tools/update-readme-screenshots.py"
 }
 
 # ---------------------------------------------------------------------------------------
