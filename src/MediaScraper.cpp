@@ -104,6 +104,7 @@ void MediaScraper::start(const GameDatabase &database, const Options &options,
     currentSystem_.clear();
     currentTitle_.clear();
     error_.clear();
+    targetPath_.clear();
 
     for (const DatabaseSystem &system : database.systems()) {
         if (!systemKeys.empty()) {
@@ -136,6 +137,14 @@ void MediaScraper::start(const GameDatabase &database, const Options &options,
     std::snprintf(line, sizeof(line), "scraper: starting, %zu systems, %zu games", systems_.size(),
                  totalGames_);
     DebugLog::info(line);
+}
+
+void MediaScraper::startGame(const GameDatabase &database, const Options &options,
+                             const std::string &systemKey, const std::string &gamePath) {
+    targetPath_ = gamePath;
+    start(database, options, {systemKey});
+    targetPath_ = gamePath;
+    if (running()) totalGames_ = 1;
 }
 
 void MediaScraper::cancel() {
@@ -296,6 +305,7 @@ bool MediaScraper::prepareNextSystem() {
 
         const std::string mediaDir = system.dir + "/media";
         for (const std::string &path : database_->pathsFor(system.key)) {
+            if (!targetPath_.empty() && path != targetPath_) continue;
             // An older database may still contain boot media until it is rebuilt. Do not
             // waste thumbnail lookups on those entries or list them as missing artwork.
             if (SystemCatalog::isSystemFile(system.key, path)) {

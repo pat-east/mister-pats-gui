@@ -18,6 +18,7 @@ public:
     void handle(Action action) override;
     std::string hints() const override;
     std::string favoritePath() const override;
+    bool selectedGame(const GameSystem *&system, Game &game) const override;
     bool incremental() const override { return true; }
 
 private:

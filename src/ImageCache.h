@@ -52,6 +52,10 @@ public:
     ImagePtr requestAsyncCandidates(const std::vector<std::string> &candidates, int width,
                                     int height, bool priority = false);
 
+    // Drops cached results for one candidate set so newly written artwork can be requested
+    // immediately instead of waiting for a cached miss to expire.
+    void invalidateCandidates(const std::vector<std::string> &candidates);
+
     size_t size() const { return entries_.size(); }
     size_t memoryBytes() const { return cachedBytes_; }
 

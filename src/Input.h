@@ -13,7 +13,9 @@ enum class Action {
     Left,
     Right,
     Confirm,
+    Start,
     Back,
+    Select,
     FaceXPress, // short X press for controller-management actions
     ToggleFavorite,
     CycleView,

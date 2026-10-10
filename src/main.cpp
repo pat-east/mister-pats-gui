@@ -201,12 +201,12 @@ void onScreenshot(int) {
 void usage() {
     std::printf(
         "mister-gui [options]\n"
-        "  --tab home|favorites|systems|arcade|games|settings  screen to open\n"
+        "  --tab home|favorites|systems|arcade|games|search|settings  screen to open\n"
         "  --view list|grid|small                  game presentation\n"
         "  --system NAME                            preselect a system\n"
         "  --frames N                               render N frames, then exit\n"
         "  --dump PATH                              write the finished canvas to PATH\n"
-        "  --press LIST                             feed button presses first, e.g. down,confirm,wait:30\n"
+        "  --press LIST                             feed button presses first, e.g. down,select,confirm\n"
         "  --launch-now                             start the preselected game at once\n"
         "  --dry-run                                print the MGL instead of loading it\n"
         "  --no-wizard                              never open the database wizard\n"
@@ -232,6 +232,7 @@ bool parse(int argc, char **argv, App::Options &options) {
             else if (value == "systems") options.tab = Tab::Systems;
             else if (value == "arcade") options.tab = Tab::Arcade;
             else if (value == "games") options.tab = Tab::Games;
+            else if (value == "search") options.tab = Tab::Search;
             else if (value == "settings") options.tab = Tab::Settings;
         } else if (arg == "--view" && hasValue) {
             options.view = gameViewFromName(argv[++i]);

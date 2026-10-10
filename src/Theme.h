@@ -16,6 +16,10 @@ public:
 
     Font &regular() { return regular_; }
     Font &bold() { return bold_; }
+    void setSpaceGroteskEnabled(bool enabled);
+    bool spaceGroteskEnabled() const { return spaceGroteskEnabled_; }
+    bool spaceGroteskActive() const;
+    static bool spaceGroteskAvailable();
 
     // Colours
     Color background   = Color::rgb(0x0B0D14);
@@ -50,6 +54,8 @@ public:
 private:
     int width_;
     int height_;
+    bool spaceGroteskEnabled_ = true;
     Font regular_;
     Font bold_;
+    void loadFonts();
 };

@@ -43,6 +43,9 @@ public:
     // `systemKeys` empty means every system in the database.
     void start(const GameDatabase &database, const Options &options,
                const std::vector<std::string> &systemKeys = {});
+    // Runs the same lookup/download/optimization path for just one selected game.
+    void startGame(const GameDatabase &database, const Options &options,
+                   const std::string &systemKey, const std::string &gamePath);
 
     void step();
     void cancel();
@@ -117,4 +120,5 @@ private:
     bool missesOpened_ = false;
     bool arcade_ = false;   // the system being worked on is Arcade — see prepareNextSystem()
     std::string error_;
+    std::string targetPath_;
 };

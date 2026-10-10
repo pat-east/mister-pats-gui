@@ -7,7 +7,7 @@ record earlier design choices; the current 0.4.0 changes are summarized in
 **Implementation status.** The basic framework is built and running; screenshots taken on the
 device are in `build/shots/`. Deviations from this design that came out of the implementation:
 
-- **Tabs:** Home · Favorites · Systems · Arcade · Games · Settings (Arcade appears only when the library has Arcade games — see [ARCADE.md](ARCADE.md#implemented-the-arcade-tab)).
+- **Tabs:** Home · Favorites · Systems · Arcade · Games · Search · Settings (Arcade appears only when the library has Arcade games — see [ARCADE.md](ARCADE.md#implemented-the-arcade-tab)).
 - **Games** does not show the games of one system, but everything across all systems, in three
   sections: Recently played, Favorites, All games. The game list of a *single* system is a
   separate detail view, opened from the Systems tab.
@@ -127,8 +127,9 @@ artificial backdrops, every game brings its own.
   the setup/update script
 - `back22.png` — background texture from Console Mode, when present
 
-At startup the GUI tries Space Grotesk first, then a secondary TrueType font if one is present,
-and finally its built-in bitmap face. Missing or unreadable font files do not prevent startup.
+Space Grotesk replaces Akrobat as the interface typeface. At startup the GUI uses Space Grotesk
+when enabled and installed; otherwise it uses its built-in bitmap face. Missing or unreadable
+font files do not prevent startup. Akrobat is no longer loaded by the GUI.
 
 ### Network and time
 
@@ -268,12 +269,37 @@ Two columns: the list on the left, a large presentation of the focused game on t
   third of a row is left over. In doing so the tile is only compressed, never stretched, and
   the boxart inside it keeps its own proportions anyway.
 
-### 5.3 Settings
+### 5.3 Search
+
+Search sits immediately to the right of Games. The clearly outlined search field at the top
+receives focus when the tab opens. Press **A** to open the reusable on-screen keyboard; its
+compact keys include a dedicated numeric keypad on the right. **B** closes the keyboard,
+**Y** inserts a space, and **X** deletes the last character. Select the on-screen **Symbols**
+key with **A** to switch layouts; **Shift** toggles letter case. Press **Start** to submit the
+current text. The field then keeps showing the submitted query while matching games appear below
+in the regular grid view. Before the first search, the results area stays empty; searches with
+no matches rotate through short nerdy messages. Long messages wrap to fit the results area.
+Search splits the query into words and matches each word against the beginning of a word in the
+game title or system name, regardless of order; for example, `cap com` finds “Captain Commando”.
+Browse the results as usual: **A** starts a game and hold **X** to mark it as a favorite. The
+D-pad navigates the grid; **Up** moves focus to the search field from its top row, then **A** opens
+the keyboard to edit the query. The game index is prepared in small batches while the view is open.
+
+### 5.4 Settings
 
 Settings uses three columns: categories on the left, the selected category's actions and
 options in the middle, and live system facts on the right. Use up/down to move within the
 focused column and left/right to switch between categories and options. The categories are
-Library, Controllers, Interface, Updates, and System. See [README.md](../README.md) for the
+Library, Controllers, Interface, Updates, and System. Interface settings include the default
+game view, a 12-hour or 24-hour clock, and a Linux time zone. System settings show whether
+Space Grotesk is active; if its files are missing, selecting the row downloads the font and
+license, otherwise it toggles the font on or off. The time-zone picker lists the
+continent/region folders and city files in `/usr/share/zoneinfo/posix`; choosing one copies its
+zoneinfo file to `/media/fat/linux/timezone`, following MiSTer's `Scripts/timezone.sh` method.
+System also includes **Start MiSTer Core**, **Reboot MiSTer**, and **Shutdown MiSTer**. Reboot
+and shutdown each require a separate confirmation; both sync pending writes before requesting
+the Linux system action.
+See [README.md](../README.md) for the
 user-facing feature list.
 
 Updates keeps the automatic-check switch and a manual **Check now** action. A verified newer
@@ -343,11 +369,11 @@ interpolated together.
 | D-pad / stick | Move the focus within the grid or the list, freely in four directions |
 | A | Select (open a system, start a game) |
 | B | Back; no effect at the topmost level |
+| Select | Open the selected game's actions: Start Game or Load box art |
 | Hold X for 2 seconds | Add or remove the selected game from favorites; a progress bar fills while held |
-| Y | Change view (search is still to come) |
+| Y | Change view |
 | L1 / R1 | Switch tabs when the underline is blue |
 | L2 / R2 | Jump to the previous/next initial letter |
-| Start | Context menu |
 
 Behavior:
 

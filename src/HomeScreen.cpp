@@ -99,6 +99,14 @@ std::string HomeScreen::favoritePath() const {
     return item ? item->game.path : std::string();
 }
 
+bool HomeScreen::selectedGame(const GameSystem *&system, Game &game) const {
+    const Item *item = current();
+    if (!item) return false;
+    system = item->system;
+    game = item->game;
+    return true;
+}
+
 void HomeScreen::launch() {
     const Item *item = current();
     if (!item) return;

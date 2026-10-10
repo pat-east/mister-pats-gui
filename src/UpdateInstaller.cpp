@@ -137,11 +137,7 @@ InstallResult UpdateInstaller::install(const ReleaseCandidate &candidate,
     std::string error;
     UpdateLock lock;
     if (!lock.acquire(error)) return result(InstallResult::Code::RetryableError, error);
-    const std::string marker = kRoot + "/.development-build";
     struct stat st {};
-    if (lstat(marker.c_str(), &st) == 0)
-        return result(InstallResult::Code::RepairRequired,
-                      "development build: restore the release before updating", {marker});
     if (!UpdateFiles::regularFile(kRoot + "/MiSTer_gui") ||
         !UpdateFiles::regularFile(kRoot + "/mister-gui"))
         return result(InstallResult::Code::RepairRequired,

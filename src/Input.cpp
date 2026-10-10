@@ -175,11 +175,17 @@ void Input::handleKey(const Device &device, uint16_t code, int32_t value, std::v
     if (!pressed) return;
 
     switch (code) {
-    case BTN_SOUTH: case BTN_START: case KEY_ENTER: case KEY_KPENTER: case KEY_SPACE:
+    case BTN_START:
+        out.push_back(Action::Start);
+        break;
+    case BTN_SOUTH: case KEY_ENTER: case KEY_KPENTER: case KEY_SPACE:
         out.push_back(Action::Confirm);
         break;
     case BTN_EAST: case KEY_ESC: case KEY_BACKSPACE:
         out.push_back(Action::Back);
+        break;
+    case BTN_SELECT: case KEY_SELECT:
+        out.push_back(Action::Select);
         break;
     case BTN_WEST: case KEY_V:
         out.push_back(Action::CycleView);

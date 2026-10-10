@@ -26,7 +26,11 @@ SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
                                std::function<void()> onDismissInstallSuccess,
                                std::function<void()> onShowInstallSuccess,
                                std::function<void()> onRemovePinnedVersion,
-                               std::function<void(bool)> onRestartAfterUpdate)
+                               std::function<void(bool)> onRestartAfterUpdate,
+                               std::function<std::string()> spaceGroteskStatus,
+                               std::function<void()> onSpaceGrotesk,
+                               std::function<void()> onReboot,
+                               std::function<void()> onShutdown)
     : context_(context), onReload_(std::move(onReload)),
       onBuildDatabase_(std::move(onBuildDatabase)),
       onFetchArtwork_(std::move(onFetchArtwork)),
@@ -47,7 +51,10 @@ SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
       onDismissInstallSuccess_(std::move(onDismissInstallSuccess)),
       onShowInstallSuccess_(std::move(onShowInstallSuccess)),
       onRemovePinnedVersion_(std::move(onRemovePinnedVersion)),
-      onRestartAfterUpdate_(std::move(onRestartAfterUpdate)) {
+      onRestartAfterUpdate_(std::move(onRestartAfterUpdate)),
+      spaceGroteskStatus_(std::move(spaceGroteskStatus)),
+      onSpaceGrotesk_(std::move(onSpaceGrotesk)), onReboot_(std::move(onReboot)),
+      onShutdown_(std::move(onShutdown)) {
     buildRows();
 }
 
@@ -118,6 +125,38 @@ void SettingsScreen::buildRows() {
                      },
                      [this] { onCycleDefaultView_(); }});
 
+    interface.push_back({"Time format",
+                     [this] { return std::string(context_.preferences.use24HourClock()
+                                                   ? "24-hour" : "12-hour AM/PM"); },
+                     [this] {
+                         context_.preferences.setUse24HourClock(
+                             !context_.preferences.use24HourClock());
+                     }});
+
+    interface.push_back({"Time zone",
+                     [this] {
+                         return context_.preferences.timeZone().empty()
+                             ? std::string("System default")
+                             : context_.preferences.timeZone();
+                     },
+                     [this] {
+                         timeZoneRegions_ = Preferences::timeZoneRegions();
+                         if (timeZoneRegions_.empty()) {
+                             context_.notify("Cannot read /usr/share/zoneinfo/posix");
+                             return;
+                         }
+                         timeZoneChooserActive_ = true;
+                         choosingTimeZoneCity_ = false;
+                         timeZoneCursor_ = 0;
+                         timeZoneScroll_ = 0;
+                         const size_t slash = context_.preferences.timeZone().find('/');
+                         if (slash != std::string::npos) {
+                             const std::string current = context_.preferences.timeZone().substr(0, slash);
+                             for (size_t i = 0; i < timeZoneRegions_.size(); ++i)
+                                 if (timeZoneRegions_[i] == current) timeZoneCursor_ = int(i);
+                         }
+                     }});
+
     // This project itself.
     categories_[3].rows.push_back({"Check for updates on GitHub",
                      [this] { return std::string(context_.preferences.checkForUpdates() ? "On" : "Off"); },
@@ -126,6 +165,13 @@ void SettingsScreen::buildRows() {
 
     categories_[4].rows.push_back({"Start MiSTer Core", [] { return std::string("A"); },
                      [this] { onStartMisterCore_(); }});
+    categories_[4].rows.push_back({"Reboot MiSTer", [] { return std::string("A"); },
+                     [this] { rebootConfirmationActive_ = true; }});
+    categories_[4].rows.push_back({"Shutdown MiSTer", [] { return std::string("A"); },
+                     [this] { shutdownConfirmationActive_ = true; }});
+    categories_[4].rows.push_back({"Space Grotesk font",
+                     [this] { return spaceGroteskStatus_(); },
+                     [this] { onSpaceGrotesk_(); }});
 }
 
 void SettingsScreen::buildUpdateRows() {
@@ -295,6 +341,23 @@ void SettingsScreen::update(float deltaSeconds) {
 }
 
 void SettingsScreen::handle(Action action) {
+    if (rebootConfirmationActive_ || shutdownConfirmationActive_) {
+        if (action == Action::Confirm) {
+            const bool shutdown = shutdownConfirmationActive_;
+            rebootConfirmationActive_ = false;
+            shutdownConfirmationActive_ = false;
+            if (shutdown) onShutdown_();
+            else onReboot_();
+        } else if (action == Action::Back) {
+            rebootConfirmationActive_ = false;
+            shutdownConfirmationActive_ = false;
+        }
+        return;
+    }
+    if (timeZoneChooserActive_) {
+        handleTimeZoneChooser(action);
+        return;
+    }
     if (updateSnapshot_.phase == UpdatePhase::RestartRequired &&
         updateSnapshot_.successPromptVisible) {
         switch (action) {
@@ -359,6 +422,109 @@ void SettingsScreen::handle(Action action) {
     default:
         break;
     }
+}
+
+void SettingsScreen::handleTimeZoneChooser(Action action) {
+    const int count = choosingTimeZoneCity_ ? int(timeZoneCities_.size())
+                                            : int(timeZoneRegions_.size());
+    switch (action) {
+    case Action::Up:
+        if (timeZoneCursor_ > 0) --timeZoneCursor_;
+        break;
+    case Action::Down:
+        if (timeZoneCursor_ + 1 < count) ++timeZoneCursor_;
+        break;
+    case Action::Back:
+        if (choosingTimeZoneCity_) {
+            choosingTimeZoneCity_ = false;
+            timeZoneCursor_ = 0;
+            timeZoneScroll_ = 0;
+        } else {
+            timeZoneChooserActive_ = false;
+        }
+        break;
+    case Action::Confirm:
+        if (count <= 0 || timeZoneCursor_ < 0 || timeZoneCursor_ >= count) break;
+        if (!choosingTimeZoneCity_) {
+            timeZoneRegionCursor_ = timeZoneCursor_;
+            timeZoneCities_ = Preferences::timeZonesIn(
+                timeZoneRegions_[size_t(timeZoneCursor_)]);
+            if (timeZoneCities_.empty()) {
+                context_.notify("No time zones found in this region");
+                break;
+            }
+            choosingTimeZoneCity_ = true;
+            timeZoneCursor_ = 0;
+            timeZoneScroll_ = 0;
+            const std::string &currentZone = context_.preferences.timeZone();
+            const size_t slash = currentZone.find('/');
+            if (slash != std::string::npos &&
+                currentZone.substr(0, slash) == timeZoneRegions_[size_t(timeZoneRegionCursor_)]) {
+                const std::string currentCity = currentZone.substr(slash + 1);
+                for (size_t i = 0; i < timeZoneCities_.size(); ++i)
+                    if (timeZoneCities_[i] == currentCity) timeZoneCursor_ = int(i);
+            }
+            break;
+        } else {
+            const std::string zone = timeZoneRegions_[size_t(timeZoneRegionCursor_)] + "/" +
+                                     timeZoneCities_[size_t(timeZoneCursor_)];
+            if (context_.preferences.setTimeZone(zone)) {
+                context_.notify("Linux time zone set to " + zone);
+                timeZoneChooserActive_ = false;
+            } else {
+                context_.notify("Could not set Linux time zone. Check write access to /media/fat/linux");
+            }
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+void SettingsScreen::renderTimeZoneChooser(Canvas &canvas, const Rect &area) {
+    Theme &theme = context_.theme;
+    canvas.fillRect(area, theme.shadow.withAlpha(205));
+    const int panelWidth = std::min(area.w - theme.px(48), theme.px(900));
+    const Rect panel{area.x + (area.w - panelWidth) / 2, area.y + theme.px(28),
+                     panelWidth, area.h - theme.px(56)};
+    canvas.fillRoundedRect(panel, theme.radius(), theme.surfaceHi);
+
+    const std::string title = choosingTimeZoneCity_
+        ? "Choose city — " + timeZoneRegions_[size_t(timeZoneRegionCursor_)]
+        : "Choose continent / region";
+    const int left = panel.x + theme.px(28);
+    const int top = panel.y + theme.px(24);
+    theme.bold().draw(canvas, left, top, title, theme.sizeHeading(), theme.textPrimary);
+
+    const std::vector<std::string> &items = choosingTimeZoneCity_
+        ? timeZoneCities_ : timeZoneRegions_;
+    const int rowHeight = theme.px(44);
+    const int listY = top + theme.px(54);
+    const int visible = std::max(1, (panel.bottom() - listY - theme.px(54)) / rowHeight);
+    if (timeZoneCursor_ < timeZoneScroll_) timeZoneScroll_ = timeZoneCursor_;
+    if (timeZoneCursor_ >= timeZoneScroll_ + visible)
+        timeZoneScroll_ = timeZoneCursor_ - visible + 1;
+    const int maxScroll = std::max(0, int(items.size()) - visible);
+    timeZoneScroll_ = std::min(std::max(0, timeZoneScroll_), maxScroll);
+
+    const Rect clip{panel.x + theme.px(16), listY, panel.w - theme.px(32),
+                    panel.bottom() - listY - theme.px(46)};
+    canvas.pushClip(clip);
+    for (int i = timeZoneScroll_; i < std::min(int(items.size()), timeZoneScroll_ + visible); ++i) {
+        const Rect row{panel.x + theme.px(16), listY + (i - timeZoneScroll_) * rowHeight,
+                       panel.w - theme.px(32), rowHeight - theme.px(4)};
+        if (i == timeZoneCursor_)
+            canvas.fillRoundedRect(row, theme.px(7), theme.accent.withAlpha(48));
+        theme.regular().draw(canvas, row.x + theme.px(14),
+                             row.y + (row.h - theme.regular().lineHeight(theme.sizeBody())) / 2,
+                             items[size_t(i)], theme.sizeBody(),
+                             i == timeZoneCursor_ ? theme.textPrimary : theme.textMuted);
+    }
+    canvas.popClip();
+    theme.regular().draw(canvas, left, panel.bottom() - theme.px(34),
+                         choosingTimeZoneCity_ ? "A Set Linux time zone   B Back"
+                                               : "A Choose   B Cancel",
+                         theme.sizeSmall(), theme.textMuted);
 }
 
 void SettingsScreen::renderCategories(Canvas &canvas, const Rect &area) {
@@ -629,9 +795,35 @@ void SettingsScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*
     if (updateSnapshot_.phase == UpdatePhase::RestartRequired &&
         updateSnapshot_.successPromptVisible)
         renderUpdateSuccess(canvas, area);
+    if (timeZoneChooserActive_) renderTimeZoneChooser(canvas, area);
+    if (rebootConfirmationActive_ || shutdownConfirmationActive_) {
+        const bool shutdown = shutdownConfirmationActive_;
+        canvas.fillRect(area, theme.shadow.withAlpha(205));
+        const int width = std::min(area.w - theme.px(40), theme.px(560));
+        const int height = theme.px(190);
+        const Rect panel{area.x + (area.w - width) / 2, area.y + (area.h - height) / 2,
+                         width, height};
+        canvas.fillRoundedRect(panel, theme.radius(), theme.surfaceHi);
+        const int left = panel.x + theme.px(28);
+        int y = panel.y + theme.px(28);
+        theme.bold().draw(canvas, left, y, shutdown ? "Shut down MiSTer?" : "Reboot MiSTer?",
+                          theme.sizeHeading(), theme.textPrimary);
+        y += theme.bold().lineHeight(theme.sizeHeading()) + theme.px(12);
+        theme.regular().draw(canvas, left, y,
+                             shutdown ? "The system will power off now."
+                                      : "The system will restart now.",
+                             theme.sizeBody(), theme.textPrimary);
+        theme.regular().draw(canvas, left, panel.bottom() - theme.px(42),
+                             shutdown ? "A Shut down   B Cancel" : "A Reboot   B Cancel",
+                             theme.sizeBody(), theme.accent);
+    }
 }
 
 std::string SettingsScreen::hints() const {
+    if (rebootConfirmationActive_) return "A Reboot   B Cancel";
+    if (shutdownConfirmationActive_) return "A Shut down   B Cancel";
+    if (timeZoneChooserActive_)
+        return choosingTimeZoneCity_ ? "A Set timezone   B Regions" : "A Choose   B Cancel";
     if (updateSnapshot_.phase == UpdatePhase::Confirming)
         return "A Install   B Cancel   ↑/↓ Scroll";
     if (updateSnapshot_.phase == UpdatePhase::RestartRequired &&

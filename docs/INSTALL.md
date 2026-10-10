@@ -4,9 +4,9 @@ This sets up MiSTer Pat's GUI so that the device boots straight into it. It take
 minutes and everything is done from a terminal on your computer — the MiSTer needs to be on
 your network, and you need to be able to SSH into it.
 
-The commands below install the latest *published* release. Source version 0.5.0 may be
-newer than the latest release assets until a complete 0.5.0 GitHub release is published.
-To use the source version in that interval, follow [Building from source](#building-from-source).
+The commands below install the latest *published* release. The source checkout may include
+unreleased changes that are not present in the latest release assets. To install the source
+version, follow [Building from source](#building-from-source).
 
 > **What it changes.** The setup script creates `/media/fat/mister-pat` and installs the GUI
 > files there. It only checks `MiSTer.ini` and prints any boot-path lines that need adding;
@@ -19,7 +19,7 @@ To use the source version in that interval, follow [Building from source](#build
 | Install directory | `/media/fat/mister-pat` |
 | INI section | `[MiSTer]` in `/media/fat/MiSTer.ini` |
 | Stock binary | left in place |
-| Typeface | Space Grotesk, downloaded by the setup script |
+| Typeface | Space Grotesk, downloaded by setup or Settings → System; built-in fallback available |
 | Choose an older GUI | Pin its versioned `.so` with `mister-pats-gui.so`, then restart |
 
 ## Requirements
@@ -64,8 +64,7 @@ validation, setup continues;
 the GUI retains its built-in font fallback. The script does not change `MiSTer.ini` or reboot
 the device. If it prints suggested INI entries, add them manually as described in step 4.
 For a legacy installation with no active library link, run
-`sh /tmp/install-update.sh --migrate-legacy` instead. This explicitly saves the previous
-executables in `.rollback/X.Y.Z/`.
+`sh /tmp/install-update.sh --migrate-legacy` instead.
 
 ### 4. Point the boot path at it
 
@@ -194,10 +193,7 @@ sh /tmp/install-update.sh
 ```
 
 The script leaves `MiSTer.ini` untouched and does not reboot. It rejects an unknown installation,
-a different same-version library, and a downgrade. `--rollback` restores the boot files saved
-during a legacy migration; routine GUI version changes use the optional pin above. A
-development build must first be restored with `tools/deploy.sh --restore-release` from a local
-checkout. Legacy `.rollback/` bundles and old versioned libraries are retained.
+a different same-version library, and a downgrade.
 
 If the confirmation warns of a database format change, choose **Settings → Build game database**
 after restarting. Updating never silently deletes or rebuilds the database.
@@ -206,8 +202,8 @@ after restarting. Updating never silently deletes or rebuilds the database.
 
 The 0.5.0 loader and versioned GUI library have been exercised on a MiSTer: installation from a
 local package, repeat installation as a no-op, startup, Settings and a manual update check,
-rollback to an older release, legacy migration, and repeated development deploy/restore cycles
-were checked. A broken active library link fell back to the valid installed library. The
+legacy migration, and a broken active library link falling back to the valid installed library
+were checked. The
 published-release download path and the GUI install/cancel path still need end-to-end testing
 against a suitable newer GitHub release. Hash failures, interrupted commits, first install
 without a prior version, and the loader's text fallback also remain explicit validation cases.
@@ -231,20 +227,14 @@ cd ../..
 the patched main binary after ELF, ABI and symbol checks. Publish those assets together under
 the matching `vX.Y.Z` tag only after the hardware release checks documented in `VNEXT.md`.
 
-For local development, build the separate dev artifacts and deploy them with:
+For local development, build and deploy the current version with:
 
 ```sh
 DEVICE=root@<mister-ip> make deploy
-DEVICE=root@<mister-ip> tools/deploy.sh --restore-release
 ```
 
-The first command backs up the installed release in `.dev-backup/`, selects an unused
-numeric library slot, sets `.development-build` and restarts MiSTer. The second verifies the
-backup, restores the release, removes registered dev slots and restarts. The backup is retained
-and a later dev deploy reuses it only if the active release files still match its hashes. If only
-the pin mode changed, it refreshes the backup before stopping the GUI. Updates are blocked
-while `.development-build` exists. Both commands need a complete release installation as a
-starting point. The full build instructions are in [README.md](../README.md#building-from-source).
+This builds the current release version and deploys it to MiSTer. The full build instructions are
+in [README.md](../README.md#building-from-source).
 
 ## Uninstalling
 
@@ -265,7 +255,7 @@ The device then boots exactly as it did before. Nothing else was modified.
 | Stock menu instead of the GUI | `main=` or `gui=` points at a file that is not there. Check the paths and that both files are executable. |
 | Stock menu instead of the GUI, even though both files are right where they should be | Stock MiSTer resolves relative paths like `main=`/`gui=` against whichever storage device was last selected — persisted in `/media/fat/config/device.bin`, not necessarily the SD card. If that got switched to a USB drive (e.g. while testing a second game drive), the lookup silently fails because neither file exists there, and MiSTer falls back to itself rather than showing an error. `ssh root@<mister-ip> rm -f /media/fat/config/device.bin` and reboot to put it back on the SD card. |
 | Crash screen: “GUI stopped after an error” | Read `logs/crash.log` and `logs/module-map.log` from the same run. Use `tools/symbolize-crash.sh` with the matching build artifacts, then restart MiSTer manually. |
-| Loader error 70–79 on the terminal | The wrapper writes `logs/loader.log` and stops relaunches. Check the installed versioned libraries and any optional `mister-pats-gui.so` pin. Choose a working version or restore a legacy migration from its complete rollback bundle, then restart manually. |
+| Loader error 70–79 on the terminal | The wrapper writes `logs/loader.log` and stops relaunches. Check the installed versioned library and `mister-pats-gui.so` link, then restart manually. |
 | Black screen, device responds to SSH | Check `/media/fat/mister-pat/logs/crash.log` and the GUI/launcher processes over SSH; reboot to restore the boot path. |
 | Blinking cursor in the top left | The console is in text mode. `ssh root@<mister-ip> 'chvt 1'`, or reboot. |
 | Nothing on a DVI monitor | Should be detected automatically. If not, set `dvi_mode=1` in `MiSTer.ini`. Note that DVI mode carries no audio. |
@@ -275,7 +265,7 @@ The device then boots exactly as it did before. Nothing else was modified.
 | No box art | The scraper has not run yet, or has not reached that system. Settings → Prepare box art. Existing JPEG/PNG covers remain usable without BMP variants. |
 | No Arcade tab, or an Arcade tab with few games | The tab only appears when at least one Arcade game passes the check, and only games that pass are listed: core installed, ROM zip found, every CRC right. Settings → Manage Arcade → Arcade Games shows why each one fails. Then rebuild the database. |
 | Systems show plain tiles instead of console pictures | Choose Settings → Download System-Icons or rerun the setup script in step 2. Existing PNGs work as a fallback. |
-| Text looks like a blocky, all-caps placeholder font | Space Grotesk could not be loaded, so the built-in fallback typeface is drawing. Rerun the setup script with network access to fetch the font files. |
+| Text looks like a blocky, all-caps placeholder font | Space Grotesk could not be loaded, so the built-in fallback typeface is drawing. Choose Settings → System → Space Grotesk to download the font files, or rerun the setup script with network access. |
 | Games on a CD-based core do not start | The core expects a different loader slot. See the table in [POC.md](POC.md) and `assets/systems.conf.example`. |
 
 A reboot is always the safe way back, and removing the two INI lines always returns the
@@ -290,7 +280,7 @@ All four things the GUI needs are covered without it:
 | System catalogue | **built here**, `/media/fat/mister-pat/gamesdb/catalog.tsv` |
 | Game index | **built here**, one `<System>.tsv` per system |
 | Box art and backgrounds | **prepared/fetched here** — Settings → Prepare box art |
-| Fonts | Space Grotesk and its license are downloaded by the setup/update script; the built-in fallback remains available |
+| Fonts | Space Grotesk and its license are downloaded by the setup/update script or from Settings → System; the built-in fallback remains available |
 
 Console Mode itself never runs once this GUI is installed: `main=` sends the boot path to the
 patched binary instead. The GUI uses its own Space Grotesk files, installed alongside it.

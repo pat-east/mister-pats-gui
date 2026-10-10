@@ -9,16 +9,9 @@ STRIP   := $(CROSS)-strip
 OBJCOPY := $(CROSS)-objcopy
 
 SYSROOT := third_party/sysroot
-DEV_BUILD ?= 0
-ifeq ($(DEV_BUILD),1)
-FLAVOR := dev
-OUT := build/dev
-DISPLAY_VERSION := $(VERSION)-dev
-else
 FLAVOR := release
 OUT := build
 DISPLAY_VERSION := $(VERSION)
-endif
 
 CONFIG_DIR := build/$(FLAVOR)
 CONFIG_HEADER := $(CONFIG_DIR)/ReleaseConfig.h
@@ -92,8 +85,7 @@ $(LIBRARY): $(APP_OBJECTS) $(CONFIG_HEADER) Makefile
 deps:
 	third_party/build.sh
 
-deploy:
-	$(MAKE) DEV_BUILD=1 all
+deploy: all
 	DEVICE=$(DEVICE) REMOTE=$(REMOTE) tools/deploy.sh
 
 run: deploy

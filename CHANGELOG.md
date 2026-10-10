@@ -5,6 +5,28 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] - Unreleased
+
+### Added
+
+- **Clock settings** — choose a 12-hour AM/PM or 24-hour display and set Linux's time zone
+  from the MiSTer zoneinfo database.
+- **Space Grotesk control** — enable or disable the interface font in System settings, or
+  download both font weights and the SIL Open Font License when they are missing.
+- **Game search** — a Search tab beside Games with a reusable controller-operated keyboard,
+  dedicated numeric keypad, and matching games in the regular grid after pressing Start.
+- **Per-game actions** — Select opens a modal with *Start Game* and *Load box art*. The latter
+  runs the existing scraper for only the selected game and shows progress and completion.
+- **Immediate artwork refresh** — after a per-game scrape writes artwork, the GUI invalidates
+  that game's cached images and redraws the current screen so the new cover appears at once.
+- **System power controls** — Settings → System offers confirmed Reboot and Shutdown actions.
+
+### Fixed
+
+- **Search empty states** — opening Search before submitting a query no longer shows a
+  directory error; searches with no matches rotate through a collection of nerdy messages.
+- **Fallback font punctuation** — added missing symbols used by the on-screen keyboard.
+
 ## [0.5.1] - 2026-10-10
 
 Maintenance fix on the way to the next release; no separate GitHub release.

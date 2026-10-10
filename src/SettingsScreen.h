@@ -30,7 +30,11 @@ public:
                    std::function<void()> onDismissInstallSuccess,
                    std::function<void()> onShowInstallSuccess,
                    std::function<void()> onRemovePinnedVersion,
-                   std::function<void(bool)> onRestartAfterUpdate);
+                   std::function<void(bool)> onRestartAfterUpdate,
+                   std::function<std::string()> spaceGroteskStatus,
+                   std::function<void()> onSpaceGrotesk,
+                   std::function<void()> onReboot,
+                   std::function<void()> onShutdown);
 
     void setFramebufferInfo(const std::string &info) { framebufferInfo_ = info; }
     void setUpdateSnapshot(const UpdateSnapshot &snapshot);
@@ -63,6 +67,8 @@ private:
     void buildUpdateRows();
     void renderUpdateConfirmation(Canvas &canvas, const Rect &area);
     void renderUpdateSuccess(Canvas &canvas, const Rect &area);
+    void renderTimeZoneChooser(Canvas &canvas, const Rect &area);
+    void handleTimeZoneChooser(Action action);
     std::vector<Fact> facts() const;
     void renderCategories(Canvas &canvas, const Rect &area);
     void renderOptions(Canvas &canvas, const Rect &area);
@@ -90,6 +96,10 @@ private:
     std::function<void()> onShowInstallSuccess_;
     std::function<void()> onRemovePinnedVersion_;
     std::function<void(bool)> onRestartAfterUpdate_;
+    std::function<std::string()> spaceGroteskStatus_;
+    std::function<void()> onSpaceGrotesk_;
+    std::function<void()> onReboot_;
+    std::function<void()> onShutdown_;
     UpdateSnapshot updateSnapshot_;
     int notesScroll_ = 0;
     std::vector<Category> categories_;
@@ -98,4 +108,13 @@ private:
     int categoryCursor_ = 0;
     int optionCursor_ = 0;
     bool optionsFocused_ = false;
+    bool timeZoneChooserActive_ = false;
+    bool rebootConfirmationActive_ = false;
+    bool shutdownConfirmationActive_ = false;
+    bool choosingTimeZoneCity_ = false;
+    std::vector<std::string> timeZoneRegions_;
+    std::vector<std::string> timeZoneCities_;
+    int timeZoneCursor_ = 0;
+    int timeZoneRegionCursor_ = 0;
+    int timeZoneScroll_ = 0;
 };

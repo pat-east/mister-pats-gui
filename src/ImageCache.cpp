@@ -26,6 +26,17 @@ bool isBmp(const std::string &path) {
     return path.size() >= 4 && path.compare(path.size() - 4, 4, ".bmp") == 0;
 }
 
+std::string candidateKeyPrefix(const std::vector<std::string> &candidates) {
+    std::string key;
+    for (const std::string &candidate : candidates) {
+        key += std::to_string(candidate.size());
+        key += ':';
+        key += candidate;
+        key += '\x1e';
+    }
+    return key;
+}
+
 } // namespace
 
 ImageCache::ImageCache(size_t maxEntries, size_t maxBytes)
@@ -202,13 +213,7 @@ ImagePtr ImageCache::requestAsyncCandidates(const std::vector<std::string> &cand
                                            int width, int height, bool priority) {
     try {
     if (candidates.empty() || width <= 0 || height <= 0) return nullptr;
-    std::string key;
-    for (const std::string &candidate : candidates) {
-        key += std::to_string(candidate.size());
-        key += ':';
-        key += candidate;
-        key += '\x1e';
-    }
+    std::string key = candidateKeyPrefix(candidates);
     if (isBmp(candidates.front())) key += "@native";
     else key += "@" + std::to_string(width) + "x" + std::to_string(height);
     auto it = entries_.find(key);
@@ -289,6 +294,43 @@ ImagePtr ImageCache::requestAsyncCandidates(const std::vector<std::string> &cand
         // placeholder and let a later frame retry instead of unwinding through the GUI loop.
         return nullptr;
     }
+}
+
+void ImageCache::invalidateCandidates(const std::vector<std::string> &candidates) {
+    if (candidates.empty()) return;
+    const std::string prefix = candidateKeyPrefix(candidates);
+    auto matches = [&](const std::string &key) {
+        if (key.compare(0, prefix.size(), prefix) == 0) return true;
+        for (const std::string &candidate : candidates) {
+            if (!candidate.empty() && key.compare(0, candidate.size() + 1, candidate + "@") == 0)
+                return true;
+        }
+        return false;
+    };
+
+    for (auto it = entries_.begin(); it != entries_.end();) {
+        if (!matches(it->first)) { ++it; continue; }
+        cachedBytes_ -= it->second.bytes;
+        it = entries_.erase(it);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(workMutex_);
+        for (auto it = pending_.begin(); it != pending_.end();) {
+            if (matches(*it)) it = pending_.erase(it);
+            else ++it;
+        }
+        for (auto it = workQueue_.begin(); it != workQueue_.end();) {
+            if (!matches(it->key)) { ++it; continue; }
+            it = workQueue_.erase(it);
+        }
+        completed_.erase(std::remove_if(completed_.begin(), completed_.end(),
+                                        [&](const Completed &item) {
+                                            return matches(item.key);
+                                        }),
+                         completed_.end());
+    }
+    ++generation_;
 }
 
 void ImageCache::workerLoop() {

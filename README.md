@@ -90,6 +90,9 @@ In practice that means:
   grid with titles, and small box art.
 - **Games tab** across every system at once, in three rows: recently played, favourites, all
   games.
+- **Search tab** immediately beside Games, with a reusable controller-operated on-screen
+  keyboard, a separate numeric keypad, and submitted results across the library. Empty results
+  are distinguished from the initial, not-yet-searched state.
 - **Letter jump** on the shoulder triggers. A single console can hold a few thousand titles;
   L2/R2 skip whole initial letters.
 - **Favourites and history**, stored as plain text files you can read and edit.
@@ -114,6 +117,10 @@ In practice that means:
   being useful.
 - **A default presentation**, in Settings — pick Grid, List or Boxart small once and it
   applies everywhere from then on.
+- **Clock settings**, in Settings → Interface — choose a 12-hour AM/PM or 24-hour clock and
+  set Linux's time zone using the MiSTer zoneinfo file.
+- **System power controls**, in Settings → System — confirm before rebooting or shutting down
+  the MiSTer.
 - **A box art switch**, in Settings — hide cover and background artwork while browsing, useful
   for comparing menu responsiveness with image loading out of the way.
 - **Multiple game drives**, resolved live rather than assumed — a drive can come back at a
@@ -151,11 +158,12 @@ a dependency for any of that:
 | The catalogue of systems | **built by this GUI** |
 | The index of games | **built by this GUI** |
 | Box art and background images | **prepared and fetched by this GUI** — Settings → *Prepare box art* |
-| Fonts | Space Grotesk and its license are downloaded by the install/update script; the built-in fallback remains available |
+| Fonts | Space Grotesk and its license are downloaded by the install/update script or from Settings → System; the built-in fallback remains available |
 
 The setup script downloads Space Grotesk from its upstream project under the SIL Open Font
-License, along with the license text. Routine GUI updates only add a new `.so`. If the font
-loading fails, the GUI keeps working with its built-in fallback.
+License, along with the license text. If those files are missing, Settings → System can fetch
+them directly. Space Grotesk is enabled by default when available; the same setting can disable
+it to check the fallback typeface. Routine GUI updates only add a new `.so`.
 
 Once installed, this GUI takes over the boot path and Console Mode no longer starts. Only its
 font files are still read, if present.
@@ -196,11 +204,10 @@ even at `-O2`. Keep both matching `.debug` files and `logs/module-map.log` from 
 tools/symbolize-crash.sh crash.log build
 ```
 
-Deploy the separate dev build and patched MiSTer launcher:
+Deploy the current build and patched MiSTer launcher:
 
 ```sh
-make deploy                              # stage three artifacts, back up release, reboot
-tools/deploy.sh --restore-release        # restore backed-up release and reboot
+make deploy                              # build, deploy the current version, reboot
 tools/screenshot.sh                      # fetch what is on screen as a PNG
 make -C tests                            # host-side checks, no device needed
 ```
@@ -212,12 +219,19 @@ make -C tests                            # host-side checks, no device needed
 | D-pad / stick / arrow keys | Move |
 | A / Enter | Open, or start the game |
 | B / Escape | Back |
+| Select | Open game actions: Start Game or Load box art for the selected game |
 | X / F | Toggle favourite |
 | Y / V | Cycle view |
 | LB / RB, Page up/down, Tab | Switch tab |
 | LT / RT (L2/R2), `,` / `.` | Jump to the previous/next initial letter |
 | Menu button, long press | Leave a running game and return to the GUI |
 | Q | Quit |
+
+In the Search tab, the search field is focused on entry; press **A** to open the on-screen keyboard.
+While it is open, **B** closes the keyboard, **Y** inserts a space, **X** deletes the last
+character, and **Start** submits the search. Select the on-screen Symbols key with **A** to
+switch layouts; the Shift key toggles letter case. In the results grid, **Up** moves to the
+search field from the top row; press **A** to edit.
 
 The MiSTer's own OSD stays reachable at all times — the GUI deliberately does not grab input
 devices exclusively.
@@ -257,7 +271,7 @@ captured without a controller:
 --system NAME                            preselect a system
 --frames N                               render N frames, then exit
 --dump PATH                              write the finished canvas to PATH
---press LIST                             feed button presses first, e.g. down,confirm,wait:30
+--press LIST                             feed button presses first, e.g. down,select,confirm
 --launch-now                             start the preselected game at once
 --dry-run                                print the MGL instead of loading it
 --no-wizard                              never open the database wizard
@@ -300,10 +314,9 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 
 Working: booting into the GUI, browsing every system, box art, favourites, history, letter
 navigation, launching games, returning from a game with a long press on the menu button, and
-hiding systems or the Games tab from Settings for a large library. Arcade and the built-in
-font fallback have been exercised on the MiSTer. Version 0.5.0 adds the install and update
-flow: a stable loader, versioned GUI libraries, and verified in-GUI updates with a pinning
-option. See [CHANGELOG.md](CHANGELOG.md) and [BOXART.md](docs/BOXART.md).
+hiding systems or the Games tab from Settings for a large library. Version 0.5.2 adds controller-
+operated search, clock and time-zone settings, Space Grotesk control, per-game artwork actions,
+and confirmed reboot/shutdown controls. See [CHANGELOG.md](CHANGELOG.md) and [BOXART.md](docs/BOXART.md).
 
 ## Roadmap
 
@@ -353,15 +366,20 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.3.0 change list.
 
 See [CHANGELOG.md](CHANGELOG.md) for the complete 0.5.0 change list.
 
-#### 0.6.0 — Settings, sound and search
+#### 0.5.2 — Search and settings
+
+- [x] **Search** — search games with the shared on-screen keyboard, then browse, start, and
+      favorite matches in the regular grid.
+- [x] **Clock settings** — choose 12-hour or 24-hour display and set Linux's time zone.
+- [x] **Space Grotesk control** — enable or disable the font, or download it with its license.
+- [x] **Per-game artwork actions** — load box art for one selected game and refresh it immediately.
+- [x] **System power controls** — confirm and reboot or shut down MiSTer from Settings.
+
+#### 0.6.0 — Wi-Fi and sound
 
 - [ ] **More settings**, such as Wi-Fi, and whatever else turns out to be useful to reach from
       the couch. MiSTer-specific Wi-Fi notes are in [WIFI.md](docs/WIFI.md).
-- [ ] **A switch for the time format:** 12-hour or 24-hour.
-- [ ] **Set the time zone** used for the clock shown in the interface.
 - [ ] **Menu sounds.**
-- [ ] **Search.** This needs an on-screen keyboard that can be driven entirely from a
-      controller, which is the real piece of work in it.
 
 #### 0.7.0 — Usability
 
@@ -399,7 +417,8 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.5.0 change list.
 
 ### Ideas, not committed
 
-- [ ] **Font selection.** Let the user choose between the available interface fonts in Settings.
+- [x] **Space Grotesk control.** Enable or disable it in Settings → System, or download it
+      there with its license if it is missing.
 - [ ] **A web interface for managing the library** from a computer or phone, rather than with
       a game pad: everything under *Library management* above, plus a better search, uploading
       new games to the MiSTer, deleting and renaming them, managing box art, and editing

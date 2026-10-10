@@ -25,7 +25,8 @@ struct TabEntry {
 
 const TabEntry kAllTabs[] = {
     {Tab::Home, "Home"},       {Tab::Favorites, "Favorites"}, {Tab::Systems, "Systems"},
-    {Tab::Arcade, "Arcade"},   {Tab::Games, "Games"},         {Tab::Settings, "Settings"},
+    {Tab::Arcade, "Arcade"},   {Tab::Games, "Games"},         {Tab::Search, "Search"},
+    {Tab::Settings, "Settings"},
 };
 
 } // namespace
@@ -52,8 +53,14 @@ void TopBar::refreshClock() {
     localtime_r(&now, &local);
 
     char buffer[64];
-    std::snprintf(buffer, sizeof(buffer), "%02d:%02d", local.tm_hour, local.tm_min);
-    time_ = buffer;
+    if (use24HourClock_) {
+        std::snprintf(buffer, sizeof(buffer), "%02d:%02d", local.tm_hour, local.tm_min);
+        time_ = buffer;
+    } else {
+        ::strftime(buffer, sizeof(buffer), "%I:%M %p", &local);
+        time_ = buffer;
+        if (!time_.empty() && time_[0] == '0') time_.erase(0, 1);
+    }
 
     std::snprintf(buffer, sizeof(buffer), "%s, %d. %s",
                   kWeekdays[local.tm_wday % 7], local.tm_mday, kMonths[local.tm_mon % 12]);
@@ -84,7 +91,11 @@ void TopBar::refreshNetwork() {
     freeifaddrs(list);
 }
 
-void TopBar::update(float deltaSeconds) {
+void TopBar::update(float deltaSeconds, bool use24HourClock) {
+    if (use24HourClock_ != use24HourClock) {
+        use24HourClock_ = use24HourClock;
+        clockTimer_ = 0.0f;
+    }
     clockTimer_ -= deltaSeconds;
     if (clockTimer_ <= 0.0f) {
         refreshClock();
@@ -128,6 +139,15 @@ void TopBar::render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, 
         const std::string &text = label(tabs[i]);
         const int width = bold.measure(text, tabSize);
         const bool isActive = tabs[i] == active;
+
+        // Decorative separator between the browsing tabs and Settings.
+        if (i > 0 && tabs[i - 1] == Tab::Search && tabs[i] == Tab::Settings) {
+            const int dotSize = theme.px(6);
+            const Rect dot{x - spacing / 2 - dotSize / 2,
+                           tabY + (bold.lineHeight(tabSize) - dotSize) / 2,
+                           dotSize, dotSize};
+            canvas.fillRoundedRect(dot, dotSize / 2, theme.textMuted.withAlpha(120));
+        }
 
         bold.draw(canvas, x, tabY, text, tabSize,
                   isActive ? theme.textPrimary : theme.textMuted.withAlpha(120));

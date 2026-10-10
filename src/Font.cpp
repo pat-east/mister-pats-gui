@@ -61,8 +61,19 @@ std::vector<unsigned int> decodeUtf8(const std::string &text) {
 }
 
 Font::~Font() {
+    reset();
+}
+
+void Font::reset() {
     if (face_) FT_Done_Face(asFace(face_));
     if (library_) FT_Done_FreeType(asLibrary(library_));
+    face_ = nullptr;
+    library_ = nullptr;
+    path_.clear();
+    activeSize_ = 0;
+    cache_.clear();
+    ascenders_.clear();
+    lineHeights_.clear();
 }
 
 int Font::renderSize(int size) const {
@@ -70,6 +81,7 @@ int Font::renderSize(int size) const {
 }
 
 bool Font::load(const std::vector<std::string> &candidates) {
+    reset();
     FT_Library lib = nullptr;
     if (FT_Init_FreeType(&lib) != 0) return false;
     library_ = lib;

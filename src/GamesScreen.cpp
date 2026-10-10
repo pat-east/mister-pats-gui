@@ -4,6 +4,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <sstream>
 
 #include "Alphabet.h"
 #include "Canvas.h"
@@ -73,6 +74,7 @@ void GamesScreen::showSystem(const GameSystem &system, const std::string &title)
     system_ = &system;
     favoritesMode_ = false;
     allMode_ = false;
+    searchResultsMode_ = false;
     title_ = title.empty() ? system.name : title;
     reload();
 }
@@ -81,6 +83,7 @@ void GamesScreen::showFavorites() {
     system_ = nullptr;
     favoritesMode_ = true;
     allMode_ = false;
+    searchResultsMode_ = false;
     title_ = "Favorites";
     reload();
 }
@@ -89,8 +92,57 @@ void GamesScreen::showAllGames() {
     system_ = nullptr;
     favoritesMode_ = false;
     allMode_ = true;
+    searchResultsMode_ = false;
     title_ = "All games";
     reload();
+}
+
+void GamesScreen::showSearchResults(
+    const std::vector<std::pair<const GameSystem *, Game>> &games) {
+    system_ = nullptr;
+    favoritesMode_ = false;
+    allMode_ = false;
+    searchResultsMode_ = true;
+    title_ = "Search results";
+    entries_.clear();
+    entries_.reserve(games.size());
+    for (const auto &item : games)
+        if (item.first) entries_.push_back({item.first, item.second, false, ArtworkVariant::Full});
+    if (entries_.empty()) {
+        static const char *messages[] = {
+            "I've looked everywhere, but I cannot change the laws of physics - there's nothing here.",
+            "Reality is often disappointing.",
+            "No games found. Did you try turning it off and on again?",
+            "There is no result. Only Zuul.",
+            "Ah, ah, ah! You didn't say the magic word...",
+            "There was a result here. It's gone now.",
+            "Our apologies, but the games you are looking for are in another castle.",
+            "404: You must gather your party before searching for this term.",
+            "Snake? Snake?! SNAAAAKE?! ...The search query returned no response.",
+            "The search results are a lie.",
+            "It's dangerous to search alone! Try a different keyword.",
+            "War. War never changes. But search terms do... and this one found nothing.",
+            "Stay awhile and listen... because I have absolutely no results to show you.",
+            "No games found. These aren't the droids you're looking for.",
+            "No games found. The cake is a lie.",
+            "Our apologies, but the princess is in another castle.",
+            "No games found. One does not simply find games here.",
+            "No games found. You shall not pass... this empty result.",
+        };
+        searchEmptyMessage_ = messages[searchEmptyMessageIndex_ % (sizeof(messages) / sizeof(messages[0]))];
+        ++searchEmptyMessageIndex_;
+    }
+    std::sort(entries_.begin(), entries_.end(), [](const Entry &a, const Entry &b) {
+        return strcasecmp(a.game.name.c_str(), b.game.name.c_str()) < 0;
+    });
+    focus_.assign(entries_.size(), 0.0f);
+    cursor_ = 0;
+    scrollRow_ = 0;
+    paintedFocus_.clear();
+    paintedArtwork_.clear();
+    paintedScrollRow_ = -1;
+    paintedCount_ = size_t(-1);
+    needsPaint_ = true;
 }
 
 void GamesScreen::reload() {
@@ -164,6 +216,20 @@ std::string GamesScreen::favoritePath() const {
     return entry ? entry->game.path : std::string();
 }
 
+bool GamesScreen::selectedGame(const GameSystem *&system, Game &game) const {
+    const Entry *entry = current();
+    if (!entry) return false;
+    system = entry->system;
+    game = entry->game;
+    return true;
+}
+
+bool GamesScreen::canMoveUp() const {
+    if (entries_.empty() || cursor_ <= 0) return false;
+    if (view_ == GameView::List) return true;
+    return grid_.move(cursor_, int(entries_.size()), 0, -1) != cursor_;
+}
+
 void GamesScreen::moveCursor(int dx, int dy) {
     if (entries_.empty()) return;
 
@@ -235,6 +301,7 @@ void GamesScreen::handle(Action action) {
     case Action::Left:  moveCursor(-1, 0); break;
     case Action::Right: moveCursor(1, 0); break;
     case Action::Confirm: launch(); break;
+    case Action::Start: launch(); break;
     case Action::ToggleFavorite: toggleFavorite(); break;
     case Action::JumpPrev: jumpLetter(-1); break;
     case Action::JumpNext: jumpLetter(1); break;
@@ -548,6 +615,32 @@ void GamesScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
     renderHeader(canvas, header);
 
     if (entries_.empty()) {
+        if (searchResultsMode_) {
+            const int maxWidth = std::max(theme.px(80), body.w - theme.px(100));
+            std::vector<std::string> lines;
+            std::string line;
+            std::istringstream words(searchEmptyMessage_);
+            for (std::string word; words >> word;) {
+                const std::string candidate = line.empty() ? word : line + " " + word;
+                if (!line.empty() && theme.regular().measure(candidate, theme.sizeHeading()) > maxWidth) {
+                    lines.push_back(line);
+                    line = word;
+                } else {
+                    line = candidate;
+                }
+            }
+            if (!line.empty()) lines.push_back(line);
+            const int lineHeight = theme.regular().lineHeight(theme.sizeHeading());
+            const int blockHeight = lineHeight * int(lines.size());
+            int y = body.y + (body.h - blockHeight) / 2;
+            for (const std::string &part : lines) {
+                const Rect lineArea{body.x, y, body.w, lineHeight};
+                theme.regular().drawCentered(canvas, lineArea, part, theme.sizeHeading(),
+                                             theme.textMuted);
+                y += lineHeight;
+            }
+            return;
+        }
         const char *text = favoritesMode_
                                ? "No favorites yet - hold X for 2s on a game to mark it"
                            : allMode_

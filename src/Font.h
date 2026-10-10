@@ -18,6 +18,7 @@ public:
 
     // Tries each candidate in order; the first one that opens wins.
     bool load(const std::vector<std::string> &candidates);
+    void reset();
     void setScalePercent(unsigned int percent) { scalePercent_ = percent; }
 
     bool usingTrueType() const { return face_ != nullptr; }

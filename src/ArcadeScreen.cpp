@@ -82,6 +82,16 @@ std::string ArcadeScreen::favoritePath() const {
     return row.items[size_t(row.cursor)].game.path;
 }
 
+bool ArcadeScreen::selectedGame(const GameSystem *&system, Game &game) const {
+    if (rows_.empty() || !system_) return false;
+    const Row &row = active();
+    if (row.dimension != Dimension::Games || row.cursor < 0 ||
+        row.cursor >= int(row.items.size())) return false;
+    system = system_;
+    game = row.items[size_t(row.cursor)].game;
+    return true;
+}
+
 ArcadeScreen::Metrics ArcadeScreen::metrics() const {
     Theme &theme = context_.theme;
 

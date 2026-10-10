@@ -22,10 +22,12 @@
 #include "MediaScraper.h"
 #include "Preferences.h"
 #include "ScanScreen.h"
+#include "SearchScreen.h"
 #include "Screen.h"
 #include "SettingsScreen.h"
 #include "SystemVisibilityScreen.h"
 #include "SystemIconDownload.h"
+#include "SpaceGroteskDownload.h"
 #include "SystemsScreen.h"
 #include "TopBar.h"
 #include "UpdateService.h"
@@ -53,8 +55,8 @@ public:
 
         // Button presses fed to the interface before anything else, so a screen that takes a
         // few presses to reach can be captured without a controller in hand. Comma separated:
-        // up down left right confirm back fav view prev next jumpprev jumpnext, and wait:N for
-        // N frames. See --press.
+        // up down left right confirm back select fav view prev next jumpprev jumpnext, wait:N for
+        // N frames. Includes select for the selected game's action menu. See --press.
         std::string script;
 
         // Diagnostic: an artificial pause on the splash screen before anything else runs, to
@@ -107,10 +109,17 @@ private:
     void openArcadeGroup(ArcadeScreen::Dimension dimension, const DatabaseGroup &group);
     void cycleDefaultView();
     void startMisterCore();
+    void rebootMister();
+    void shutdownMister();
     void removePinnedVersion();
     void restartMisterAfterUpdate(bool removePin);
     void writeCanvas(const std::string &path);
     void runScript();
+    void openGameActions();
+    void renderGameActions();
+    void refreshGameActionArtwork();
+    void activateSpaceGrotesk();
+    std::string spaceGroteskStatus() const;
 
     std::string version;     // Version string to display in bottom bar
 
@@ -126,6 +135,7 @@ private:
     ImageCache images_;
     Icons icons_;
     std::unique_ptr<SystemIconDownload> systemIconDownload_;
+    SpaceGroteskDownload spaceGroteskDownload_;
     History history_;
     HiddenSystems hiddenSystems_;
     Preferences preferences_;
@@ -142,6 +152,7 @@ private:
     std::unique_ptr<GamesScreen> gamesScreen_;   // per-system detail view
     std::unique_ptr<GamesScreen> allGamesScreen_;// the Games tab: the whole library at once
     std::unique_ptr<GamesScreen> favoritesScreen_;
+    std::unique_ptr<SearchScreen> searchScreen_;
     std::unique_ptr<SettingsScreen> settingsScreen_;
     std::unique_ptr<ScanScreen> scanScreen_;
     std::unique_ptr<SystemVisibilityScreen> visibilityScreen_;
@@ -151,6 +162,12 @@ private:
     std::unique_ptr<ArcadeScreen> arcadeScreen_;              // the Arcade tab
     std::unique_ptr<ArcadeGroupsScreen> arcadeGroupsScreen_;  // ...its Manufacturers/Categories list
     bool arcadeGroupsActive_ = false;   // that list is showing, between the tab and a group's games
+    bool gameActionsActive_ = false;
+    bool gameActionWorking_ = false;
+    bool gameActionScrapePendingRefresh_ = false;
+    int gameActionCursor_ = 0;
+    const GameSystem *gameActionSystem_ = nullptr;
+    Game gameActionGame_;
 
     // One group's games are an ordinary GamesScreen over a copy of the Arcade system whose
     // database key names the group's list. Kept here so the pointer GamesScreen holds stays

@@ -125,8 +125,6 @@ void UpdateService::initializeLocalState() {
 
 std::string UpdateService::localBlockReason() const {
     const std::string root = UpdateFiles::kRoot;
-    if (pathExists(root + "/.development-build"))
-        return "Development build — restore the release before updating";
     Version running;
     if (!parseVersion(kAppVersion, running))
         return "Unknown running version — repair via SSH";

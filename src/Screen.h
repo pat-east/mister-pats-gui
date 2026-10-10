@@ -82,6 +82,13 @@ public:
     // to keep a three-second hold tied to the same game from press to completion.
     virtual std::string favoritePath() const { return {}; }
 
+    // The selected game, when the screen's cursor is on a game rather than a group/title.
+    virtual bool selectedGame(const GameSystem *&system, Game &game) const {
+        (void)system;
+        (void)game;
+        return false;
+    }
+
     // True when the screen restores the background under whatever it redraws.
     // Screens that return false get their whole area reset before rendering.
     virtual bool incremental() const { return false; }

@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <string>
 #include <vector>
+#include <utility>
 
 #include "GridView.h"
 #include "Artwork.h"
@@ -35,9 +36,11 @@ public:
     // Every game of every system in one grid, sorted by title across system boundaries so
     // the letter jump works over the whole library rather than within one console.
     void showAllGames();
+    void showSearchResults(const std::vector<std::pair<const GameSystem *, Game>> &games);
     void reload();
 
     bool empty() const { return entries_.empty(); }
+    bool canMoveUp() const;
     const std::string &title() const { return title_; }
 
     // Public so a launch can be triggered without a controller (see App::Options).
@@ -57,6 +60,7 @@ public:
     void handle(Action action) override;
     std::string hints() const override;
     std::string favoritePath() const override;
+    bool selectedGame(const GameSystem *&system, Game &game) const override;
 
 private:
     // A stub (path + name, no I/O — see Library::makeStub) until it is actually about to be
@@ -89,6 +93,9 @@ private:
     std::string title_;
     bool favoritesMode_ = false;
     bool allMode_ = false;
+    bool searchResultsMode_ = false;
+    std::string searchEmptyMessage_;
+    unsigned searchEmptyMessageIndex_ = 0;
     const GameSystem *system_ = nullptr;
 
     GameView view_ = GameView::Grid;

@@ -330,7 +330,6 @@ bool GameDatabase::load() {
 
 std::vector<std::string> GameDatabase::pathsFor(const std::string &key) const {
     std::vector<std::string> paths;
-
     std::ifstream in(pathOf(key + ".tsv"));
     if (!in) return paths;
 

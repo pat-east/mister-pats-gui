@@ -48,6 +48,7 @@ bool App::initialize(const Options &options) {
     history_.load();
     hiddenSystems_.load();
     preferences_.load();
+    theme_->setSpaceGroteskEnabled(preferences_.useSpaceGrotesk());
     updateService_.initializeLocalState();
     updateSnapshot_ = updateService_.snapshot();
 
@@ -58,6 +59,7 @@ bool App::initialize(const Options &options) {
     gamesScreen_ = std::make_unique<GamesScreen>(*context_);
     allGamesScreen_ = std::make_unique<GamesScreen>(*context_);
     favoritesScreen_ = std::make_unique<GamesScreen>(*context_);
+    searchScreen_ = std::make_unique<SearchScreen>(*context_);
 
     const GameView initialView =
         options_.viewExplicit ? options_.view : gameViewFromName(preferences_.defaultView());
@@ -97,7 +99,9 @@ bool App::initialize(const Options &options) {
         [this] { updateService_.dismissInstallSuccess(); },
         [this] { updateService_.showInstallSuccess(); },
         [this] { removePinnedVersion(); },
-        [this](bool removePin) { restartMisterAfterUpdate(removePin); });
+        [this](bool removePin) { restartMisterAfterUpdate(removePin); },
+        [this] { return spaceGroteskStatus(); }, [this] { activateSpaceGrotesk(); },
+        [this] { rebootMister(); }, [this] { shutdownMister(); });
     settingsScreen_->setFramebufferInfo(framebuffer_.describe());
     settingsScreen_->setUpdateSnapshot(updateSnapshot_);
 
@@ -179,6 +183,7 @@ void App::reloadLibrary() {
     homeScreen_->refresh();
     favoritesScreen_->showFavorites();
     allGamesScreen_->showAllGames();
+    searchScreen_->reload();
     if (!gamesScreen_->empty()) gamesScreen_->reload();
     arcadeScreen_->refresh();
 
@@ -217,6 +222,40 @@ void App::startSystemIconDownload() {
         return;
     }
     context_->notify("Downloading system icons", 4.0f);
+}
+
+std::string App::spaceGroteskStatus() const {
+    if (spaceGroteskDownload_.running()) return spaceGroteskDownload_.status();
+    if (!Theme::spaceGroteskAvailable())
+        return spaceGroteskDownload_.state() == SpaceGroteskDownload::State::Failed
+                   ? std::string("Retry") : std::string("Download");
+    return preferences_.useSpaceGrotesk() ? "On" : "Off";
+}
+
+void App::activateSpaceGrotesk() {
+    if (spaceGroteskDownload_.running()) {
+        context_->notify(spaceGroteskDownload_.status());
+        return;
+    }
+    if (Theme::spaceGroteskAvailable()) {
+        const bool enabled = !preferences_.useSpaceGrotesk();
+        preferences_.setUseSpaceGrotesk(enabled);
+        theme_->setSpaceGroteskEnabled(enabled);
+        needsFullRedraw_ = true;
+        context_->notify(enabled ? "Space Grotesk enabled" : "Space Grotesk disabled");
+        return;
+    }
+    if (!spaceGroteskDownload_.start()) {
+        context_->notify(spaceGroteskDownload_.error(), 6.0f);
+        return;
+    }
+    if (spaceGroteskDownload_.state() == SpaceGroteskDownload::State::Done) {
+        preferences_.setUseSpaceGrotesk(true);
+        theme_->setSpaceGroteskEnabled(true);
+        needsFullRedraw_ = true;
+    } else {
+        context_->notify("Downloading Space Grotesk", 4.0f);
+    }
 }
 
 void App::closeScan() {
@@ -288,7 +327,7 @@ bool App::arcadeTabShown() const {
 
 bool App::tabNavigationAvailable() const {
     // These screens consume input before the global tab actions in dispatch().
-    return !context_->errorActive && !scanActive_ && !visibilityActive_ &&
+    return !context_->errorActive && !gameActionsActive_ && !scanActive_ && !visibilityActive_ &&
            !controllersActive_ && !arcadeGamesActive_ && !arcadeSettingsActive_;
 }
 
@@ -355,6 +394,20 @@ void App::startMisterCore() {
     stop();
 }
 
+void App::rebootMister() {
+    if (updateService_.commitRunning()) return;
+    ::sync();
+    if (::reboot(RB_AUTOBOOT) != 0)
+        context_->showError("Cannot restart MiSTer", std::strerror(errno));
+}
+
+void App::shutdownMister() {
+    if (updateService_.commitRunning()) return;
+    ::sync();
+    if (::reboot(RB_POWER_OFF) != 0)
+        context_->showError("Cannot shut down MiSTer", std::strerror(errno));
+}
+
 void App::restartMisterAfterUpdate(bool removePin) {
     std::string error;
     if (!updateService_.prepareRestart(removePin, error)) {
@@ -387,6 +440,7 @@ Screen *App::activeScreen() {
     case Tab::Systems:   return systemsScreen_.get();
     case Tab::Arcade:    return arcadeScreen_.get();
     case Tab::Games:     return allGamesScreen_.get();
+    case Tab::Search:    return searchScreen_.get();
     case Tab::Settings:  return settingsScreen_.get();
     }
     return systemsScreen_.get();
@@ -422,6 +476,7 @@ void App::runScript() {
             {"up", Action::Up},           {"down", Action::Down},
             {"left", Action::Left},       {"right", Action::Right},
             {"confirm", Action::Confirm}, {"back", Action::Back},
+            {"select", Action::Select},
             {"fav", Action::ToggleFavorite}, {"view", Action::CycleView},
             {"prev", Action::TabPrev},    {"next", Action::TabNext},
             {"jumpprev", Action::JumpPrev}, {"jumpnext", Action::JumpNext},
@@ -434,7 +489,102 @@ void App::runScript() {
     }
 }
 
+void App::openGameActions() {
+    const GameSystem *selectedSystem = nullptr;
+    Game selectedGame;
+    Screen *screen = activeScreen();
+    if (!screen || !screen->selectedGame(selectedSystem, selectedGame)) return;
+
+    // A group view may carry a filtered database key. Resolve by path so the scraper always
+    // receives the canonical system key used by the library database.
+    const GameSystem *canonical = library_.systemForPath(selectedGame.path);
+    if (!canonical) canonical = selectedSystem;
+    gameActionSystem_ = canonical;
+    gameActionGame_ = std::move(selectedGame);
+    gameActionCursor_ = 0;
+    gameActionWorking_ = false;
+    gameActionsActive_ = true;
+    input_.cancelFavoriteHold();
+    favoriteHoldScreen_ = nullptr;
+    favoriteHoldPath_.clear();
+    needsFullRedraw_ = true;
+}
+
+void App::renderGameActions() {
+    if (!gameActionsActive_) return;
+    Canvas &canvas = *canvas_;
+    Theme &theme = *theme_;
+    const Rect bounds = canvas.bounds();
+    canvas.fillRect(bounds, theme.shadow.withAlpha(175));
+
+    const int width = std::min(theme.px(650), bounds.w - theme.px(64));
+    const int height = theme.px(gameActionWorking_ ? 350 : 310);
+    const Rect panel{bounds.x + (bounds.w - width) / 2, bounds.y + (bounds.h - height) / 2,
+                     width, height};
+    canvas.dropShadow(panel, theme.radius(), theme.px(24), theme.shadow.withAlpha(160));
+    canvas.fillRoundedRect(panel, theme.radius(), theme.surfaceHi);
+
+    const int left = panel.x + theme.px(36);
+    const int textWidth = panel.w - 2 * theme.px(36);
+    int y = panel.y + theme.px(32);
+    theme.bold().draw(canvas, left, y, "Game actions", theme.sizeHeading(), theme.textPrimary);
+    y += theme.px(42);
+    theme.regular().draw(canvas, left, y,
+                         theme.regular().elide(gameActionGame_.name, theme.sizeBody(), textWidth),
+                         theme.sizeBody(), theme.textMuted);
+    y += theme.px(42);
+
+    if (gameActionWorking_) {
+        const bool done = scraper_.finished();
+        theme.bold().draw(canvas, left, y, done ? "Box art task finished" : "Loading box art",
+                          theme.sizeBody(), theme.textPrimary);
+        y += theme.px(34);
+        theme.regular().draw(canvas, left, y,
+                             theme.regular().elide(scraper_.statusLine(), theme.sizeSmall(),
+                                                   textWidth),
+                             theme.sizeSmall(), theme.textMuted);
+        y = panel.bottom() - theme.px(50);
+        theme.regular().draw(canvas, left, y, done ? "A / B  Close" : "B  Cancel",
+                             theme.sizeSmall(), theme.textMuted);
+        return;
+    }
+
+    const char *items[] = {"Start Game", "Load box art"};
+    for (int i = 0; i < 2; ++i) {
+        const Rect row{left - theme.px(12), y - theme.px(7), width - theme.px(48),
+                       theme.px(44)};
+        if (i == gameActionCursor_)
+            canvas.fillRoundedRect(row, theme.px(8), theme.accent.withAlpha(45));
+        theme.bold().draw(canvas, left, y, items[i], theme.sizeBody(),
+                          i == gameActionCursor_ ? theme.textPrimary : theme.textMuted);
+        y += theme.px(52);
+    }
+    theme.regular().draw(canvas, left, panel.bottom() - theme.px(34),
+                         "A  Choose     B  Close", theme.sizeSmall(), theme.textMuted);
+}
+
+void App::refreshGameActionArtwork() {
+    if (gameActionSystem_) {
+        const ArtworkVariant variants[] = {ArtworkVariant::Full, ArtworkVariant::Home,
+                                           ArtworkVariant::Grid, ArtworkVariant::Small,
+                                           ArtworkVariant::Detail, ArtworkVariant::Arcade};
+        for (ArtworkVariant variant : variants) {
+            const Game game = Library::makeGame(*gameActionSystem_, gameActionGame_.path, variant);
+            context_->images.invalidateCandidates(game.boxartCandidates);
+        }
+    }
+    // Repaint the current screen around the same selection. Its existing Game entries keep
+    // their paths and candidate lists; only the stale decoded/missing image is discarded.
+    needsFullRedraw_ = true;
+}
+
 void App::dispatch(Action action) {
+    // Start used to share Confirm's action for every screen. Search reserves it for
+    // submitting the query; elsewhere keep its established confirm behavior.
+    if (action == Action::Start &&
+        (tab_ != Tab::Search || gameActionsActive_ || detailActive_ || scanActive_ ||
+         visibilityActive_ || controllersActive_ || arcadeGamesActive_ || arcadeSettingsActive_))
+        action = Action::Confirm;
     if (action == Action::Quit) DebugLog::warn("input: quit action received");
     if (updateService_.commitRunning() &&
         (action == Action::Quit || action == Action::Confirm)) return;
@@ -479,6 +629,42 @@ void App::dispatch(Action action) {
         if (action == Action::Confirm || action == Action::Back) {
             context_->errorActive = false;
             needsFullRedraw_ = true;
+        }
+        return;
+    }
+
+    if (gameActionsActive_) {
+        if (action == Action::Quit || action == Action::Back) {
+            if (gameActionWorking_ && scraper_.running()) scraper_.cancel();
+            gameActionsActive_ = false;
+            gameActionWorking_ = false;
+            needsFullRedraw_ = true;
+        } else if (gameActionWorking_) {
+            if ((action == Action::Confirm || action == Action::Select) && scraper_.finished()) {
+                gameActionsActive_ = false;
+                gameActionWorking_ = false;
+                needsFullRedraw_ = true;
+            }
+        } else if (action == Action::Up || action == Action::Down) {
+            gameActionCursor_ = 1 - gameActionCursor_;
+        } else if (action == Action::Confirm) {
+            if (gameActionCursor_ == 0) {
+                gameActionsActive_ = false;
+                needsFullRedraw_ = true;
+                activeScreen()->handle(Action::Confirm);
+            } else if (gameActionSystem_ && library_.usingDatabase() && !scraper_.running()) {
+                MediaScraper::Options options;
+                options.boxart = true;
+                options.backgrounds = false;
+                scraper_.startGame(library_.database(), options, gameActionSystem_->dbKey,
+                                   gameActionGame_.path);
+                gameActionWorking_ = true;
+                gameActionScrapePendingRefresh_ = true;
+            } else {
+                context_->notify("Build the game database before loading box art");
+                gameActionsActive_ = false;
+                needsFullRedraw_ = true;
+            }
         }
         return;
     }
@@ -528,6 +714,10 @@ void App::dispatch(Action action) {
         selectTab(tabs[size_t((tabIndex + 1) % tabCount)]);
         return;
     case Action::Back:
+        if (tab_ == Tab::Search && searchScreen_->wantsBack()) {
+            searchScreen_->handle(Action::Back);
+            return;
+        }
         if (detailActive_) { detailActive_ = false; needsFullRedraw_ = true; return; }
         if (arcadeGroupsActive_) { arcadeGroupsActive_ = false; needsFullRedraw_ = true; return; }
         if (tab_ == Tab::Settings && settingsScreen_->wantsBack()) {
@@ -541,6 +731,9 @@ void App::dispatch(Action action) {
         }
         if (tab_ != Tab::Home) { selectTab(Tab::Home); return; }
         break;
+    case Action::Select:
+        openGameActions();
+        return;
     default:
         break;
     }
@@ -729,6 +922,24 @@ int App::run() {
                     context_->notify(systemIconDownload_->error(), 8.0f);
             }
         }
+        else if (spaceGroteskDownload_.running()) {
+            spaceGroteskDownload_.step();
+            if (!spaceGroteskDownload_.running()) {
+                needsFullRedraw_ = true;
+                if (spaceGroteskDownload_.state() == SpaceGroteskDownload::State::Done) {
+                    preferences_.setUseSpaceGrotesk(true);
+                    theme_->setSpaceGroteskEnabled(true);
+                    context_->notify("Space Grotesk installed and enabled", 6.0f);
+                } else {
+                    context_->notify(spaceGroteskDownload_.error(), 8.0f);
+                }
+            }
+        }
+
+        if (gameActionScrapePendingRefresh_ && scraper_.finished()) {
+            if (scraper_.fetched() || scraper_.prepared()) refreshGameActionArtwork();
+            gameActionScrapePendingRefresh_ = false;
+        }
 
         if (!autoCheckDecisionMade_) {
             updateCheckDelay_ -= dt;
@@ -746,7 +957,7 @@ int App::run() {
             selectTab(Tab::Settings);
 
         Theme &theme = *theme_;
-        topBar_.update(dt);
+        topBar_.update(dt, preferences_.use24HourClock());
         activeScreen()->update(dt);
         if (context_->messageTimer > 0.0f) context_->messageTimer -= dt;
 
@@ -768,7 +979,8 @@ int App::run() {
         // An error modal draws over whatever screen is underneath rather than replacing it,
         // so that screen must be fully repainted every frame it is up — there is no damage
         // tracking for "the same dialog is still sitting on top of you".
-        const bool full = needsFullRedraw_ || !options_.incremental || context_->errorActive;
+        const bool full = needsFullRedraw_ || !options_.incremental || context_->errorActive ||
+                          gameActionsActive_;
 
         canvas_->clearDamage();
 
@@ -793,6 +1005,8 @@ int App::run() {
         if (context_->errorActive)
             ErrorModal::draw(*canvas_, theme, canvas_->bounds(), context_->errorTitle,
                              context_->errorMessage);
+        else if (gameActionsActive_)
+            renderGameActions();
         const int64_t t3 = nowMs();
 
         if (full) framebuffer_.present(*canvas_);

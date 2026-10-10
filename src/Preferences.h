@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "Paths.h"
 
@@ -23,6 +24,9 @@ public:
     bool showBoxArt() const { return showBoxArt_; }
     void setShowBoxArt(bool show);
 
+    bool useSpaceGrotesk() const { return useSpaceGrotesk_; }
+    void setUseSpaceGrotesk(bool use);
+
     // One of GamesScreen's --view names ("grid", "list", "small") — kept
     // as a plain string here rather than the GameView enum so this class does not need to
     // know about GamesScreen at all, consistent with everything else in it.
@@ -35,6 +39,15 @@ public:
     bool checkForUpdates() const { return checkForUpdates_; }
     void setCheckForUpdates(bool check);
 
+    bool use24HourClock() const { return use24HourClock_; }
+    void setUse24HourClock(bool value);
+
+    const std::string &timeZone() const { return timeZone_; }
+    bool setTimeZone(const std::string &zone);
+    static std::vector<std::string> timeZoneRegions();
+    static std::vector<std::string> timeZonesIn(const std::string &region);
+    void applyTimeZone() const;
+
     static constexpr const char *kDefaultFile = MISTER_PAT_ROOT "/preferences.txt";
 
 private:
@@ -43,7 +56,10 @@ private:
     bool showGamesTab_ = true;
     bool showArcadeTab_ = true;
     bool showBoxArt_ = true;
+    bool useSpaceGrotesk_ = true;
     std::string defaultView_ = "grid";
     bool checkForUpdates_ = false;
+    bool use24HourClock_ = true;
+    std::string timeZone_; // empty follows MiSTer's system time zone
     std::string file_ = kDefaultFile;
 };

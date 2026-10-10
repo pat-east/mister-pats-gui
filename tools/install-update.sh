@@ -7,32 +7,19 @@ LINK=$ROOT/mister-pats-gui.so
 API=https://api.github.com/repos/pat-east/mister-pats-gui/releases/latest
 BASE=https://github.com/pat-east/mister-pats-gui/releases/download
 MODE=${1:-install}
-case "$MODE" in install|--migrate-legacy|--rollback) :;; *) echo "unknown option: $MODE" >&2; exit 2;; esac
+case "$MODE" in install|--migrate-legacy) :;; *) echo "unknown option: $MODE" >&2; exit 2;; esac
 [ "$#" -le 1 ] || { echo 'too many arguments' >&2; exit 2; }
 fail() { echo "mister-pat update: $*" >&2; exit 1; }
 for tool in sha256sum od mktemp readlink awk; do command -v "$tool" >/dev/null 2>&1 || fail "missing $tool"; done
 [ -w /media/fat ] || fail '/media/fat is not writable'
-[ ! -e "$ROOT/.development-build" ] && [ ! -L "$ROOT/.development-build" ] || fail 'development build active; use tools/deploy.sh --restore-release'
 mkdir -p "$ROOT" || fail "cannot create $ROOT"
 [ -d "$ROOT" ] && [ ! -L "$ROOT" ] || fail "unsafe installation root: $ROOT"
 LOCK=$ROOT/.update-lock
 OWN_LOCK=0
 STAGE=
-UNDO=
-ROLLBACK_DONE=0
 cleanup() {
     status=$?
-    keep_stage=0
-    if [ "$MODE" = --rollback ] && [ -n "$UNDO" ] && [ "$ROLLBACK_DONE" -eq 0 ]; then
-        for name in MiSTer_gui mister-gui; do
-            if cp "$UNDO/$name" "$ROOT/$name.undo-$$" &&
-               [ "$(sha "$ROOT/$name.undo-$$")" = "$(sha "$UNDO/$name")" ] &&
-               mv -f "$ROOT/$name.undo-$$" "$ROOT/$name"; then :
-            else echo "manual repair required: $ROOT/$name $UNDO/$name" >&2; keep_stage=1; fi
-        done
-        sync
-    fi
-    if [ -n "$STAGE" ] && [ "$keep_stage" -eq 0 ]; then rm -rf "$STAGE"; fi
+    if [ -n "$STAGE" ]; then rm -rf "$STAGE"; fi
     if [ "$OWN_LOCK" -eq 1 ]; then rm -f "$LOCK/owner"; rmdir "$LOCK" || :; fi
     exit "$status"
 }
@@ -95,30 +82,9 @@ copy_checked() {
     chmod 755 "$to" || fail "cannot chmod $to"
     [ "$(sha "$to")" = "$expected" ] || fail "hash differs after copy: $to"
 }
-check_bundle() {
-    dir=$1; wanted=$2
-    [ -d "$dir" ] && [ ! -L "$dir" ] || fail "missing rollback bundle: $dir"
-    [ "$(wc -l < "$dir/rollback.sha256")" -eq 3 ] || fail "invalid rollback manifest: $dir"
-    awk 'BEGIN {n[1]="target.txt";n[2]="MiSTer_gui";n[3]="mister-gui"} {if(NR>3 || length($0)!=66+length(n[NR]) || substr($0,65,2)!="  " || substr($0,67)!=n[NR] || substr($0,1,64) ~ /[^0-9a-f]/) exit 1} END {if(NR!=3) exit 1}' "$dir/rollback.sha256" || fail "invalid rollback manifest: $dir"
-    for name in target.txt MiSTer_gui mister-gui; do
-        [ -f "$dir/$name" ] && [ ! -L "$dir/$name" ] || fail "unsafe rollback copy: $dir/$name"
-        expected=$(awk -v n="$name" '$2==n && length($1)==64 && $1 !~ /[^0-9a-f]/ {print $1}' "$dir/rollback.sha256")
-        [ -n "$expected" ] && [ "$(sha "$dir/$name")" = "$expected" ] || fail "invalid rollback copy: $dir/$name"
-    done
-    [ "$(cat "$dir/target.txt")" = "$wanted" ] || fail "rollback target mismatch: $dir"
-}
-restore_binary_pair() {
-    dir=$1
-    for name in MiSTer_gui mister-gui; do
-        hash=$(sha "$dir/$name")
-        copy_checked "$dir/$name" "$ROOT/$name.new-$$" "$hash"
-        mv -f "$ROOT/$name.new-$$" "$ROOT/$name" || fail "cannot restore $name; inspect $dir"
-    done
-    sync
-}
 acquire_lock
-mkdir -p "$ROOT/icons" "$ROOT/fonts" "$ROOT/gamesdb" "$ROOT/logs" "$ROOT/.update-staging" "$ROOT/.rollback" || fail 'cannot create installation folders'
-for dir in "$ROOT/.update-staging" "$ROOT/.rollback"; do
+mkdir -p "$ROOT/icons" "$ROOT/fonts" "$ROOT/gamesdb" "$ROOT/logs" "$ROOT/.update-staging" || fail 'cannot create installation folders'
+for dir in "$ROOT/.update-staging"; do
     [ -d "$dir" ] && [ ! -L "$dir" ] || fail "unsafe directory: $dir"
 done
 ROUTINE=0
@@ -135,14 +101,6 @@ if [ "$MODE" = install ]; then
         fi
     done
     if [ -n "$newest" ] && [ -f "$ROOT/MiSTer_gui" ] && [ -f "$ROOT/mister-gui" ]; then
-        legacy_bundle="$ROOT/.rollback/$newest_version"
-        if [ -f "$legacy_bundle/target.txt" ] &&
-           [ "$(cat "$legacy_bundle/target.txt")" = legacy ] &&
-           [ -f "$ROOT/MiSTer_gui" ] && [ -f "$ROOT/mister-gui" ] &&
-           [ "$(sha "$ROOT/MiSTer_gui")" = "$(sha "$legacy_bundle/MiSTer_gui")" ] &&
-           [ "$(sha "$ROOT/mister-gui")" = "$(sha "$legacy_bundle/mister-gui")" ]; then
-            fail 'legacy rollback is active; use --migrate-legacy to reinstall'
-        fi
         [ ! -L "$ROOT/MiSTer_gui" ] && [ ! -L "$ROOT/mister-gui" ] ||
             fail 'versioned installation has unsafe bootstrap files'
         if [ -e "$LINK" ] || [ -L "$LINK" ]; then
@@ -150,72 +108,6 @@ if [ "$MODE" = install ]; then
         fi
         ROUTINE=1
     fi
-fi
-if [ "$MODE" = --rollback ]; then
-    if ! active_target; then
-        [ ! -e "$LINK" ] && [ ! -L "$LINK" ] || fail 'invalid version pin'
-        newest=
-        newest_version=
-        for path in "$ROOT"/mister-pats-gui-*.so; do
-            [ -f "$path" ] && [ ! -L "$path" ] || continue
-            name=${path##*/}
-            version=${name#mister-pats-gui-}; version=${version%.so}
-            valid_version "$version" || continue
-            if [ -z "$newest_version" ] || [ "$(awk -v a="$newest_version" -v b="$version" 'BEGIN {split(a,x,".");split(b,y,".");for(i=1;i<=3;i++) if(x[i]+0<y[i]+0){print -1;exit} else if(x[i]+0>y[i]+0){print 1;exit} print 0}')" -lt 0 ]; then
-                newest=$name; newest_version=$version
-            fi
-        done
-        [ -n "$newest" ] || fail 'no versioned GUI to roll back'
-        target=$newest; active_version=$newest_version
-    fi
-    bundle="$ROOT/.rollback/$active_version"
-    [ -r "$bundle/target.txt" ] || fail "missing $bundle/target.txt"
-    old=$(cat "$bundle/target.txt")
-    if [ "$old" != legacy ]; then
-        case "$old" in mister-pats-gui-*.so) :;; *) fail 'unsafe rollback target';; esac
-        previous=${old#mister-pats-gui-}; previous=${previous%.so}
-        valid_version "$previous" && [ -f "$ROOT/$old" ] && [ ! -L "$ROOT/$old" ] || fail "missing previous library: $ROOT/$old"
-    fi
-    check_bundle "$bundle" "$old"
-    STAGE=$(mktemp -d "$ROOT/.update-staging/rollback-XXXXXX") || fail 'cannot stage rollback safety copies'
-    for name in MiSTer_gui mister-gui; do
-        [ -f "$ROOT/$name" ] && [ ! -L "$ROOT/$name" ] || fail "missing current $name"
-        cp "$ROOT/$name" "$STAGE/$name" || fail "cannot preserve current $name"
-    done
-    UNDO=$STAGE
-    restore_binary_pair "$bundle"
-    if [ "$old" = legacy ]; then
-        [ ! -L "$LINK" ] || rm -f "$LINK" || fail 'cannot remove active link'
-    else
-        rm -f "$ROOT/mister-pats-gui.so.new-$$"
-        ln -s "$old" "$ROOT/mister-pats-gui.so.new-$$" || fail 'cannot create rollback link'
-        mv -f "$ROOT/mister-pats-gui.so.new-$$" "$ROOT/mister-pats-gui.so" || fail 'cannot switch rollback link'
-    fi
-    ROLLBACK_DONE=1
-    sync
-    echo 'Rollback restored. Restart MiSTer manually.'
-    exit 0
-fi
-# Recover a fully published bundle when a previous run stopped before switching the link.
-recovery_target=
-if [ "$ROUTINE" -eq 0 ]; then
-    if active_target; then recovery_target=$target
-    elif [ "$MODE" = --migrate-legacy ] && [ ! -e "$LINK" ] && [ -f "$ROOT/mister-gui" ]; then recovery_target=legacy
-    fi
-fi
-recovery_bundle=
-if [ -n "$recovery_target" ]; then
-    for dir in "$ROOT"/.rollback/*; do
-        [ -d "$dir" ] || continue
-        [ -r "$dir/target.txt" ] || fail "incomplete rollback bundle: $dir"
-        [ "$(cat "$dir/target.txt")" = "$recovery_target" ] || continue
-        [ -z "$recovery_bundle" ] || fail "ambiguous rollback bundles: $recovery_bundle $dir"
-        recovery_bundle=$dir
-    done
-fi
-if [ -n "$recovery_bundle" ]; then
-    check_bundle "$recovery_bundle" "$recovery_target"
-    restore_binary_pair "$recovery_bundle"
 fi
 command -v curl >/dev/null 2>&1 || fail 'curl is required for verified HTTPS'
 command -v df >/dev/null 2>&1 || fail 'df is required'
@@ -455,10 +347,10 @@ if [ "${relation:--1}" -eq 0 ]; then
     echo 'Already up to date.'
     exit 0
 fi
-# Leave room for new binaries, same-volume staging copies, and rollback copies.
+# Leave room for new binaries and same-volume staging copies.
 free_kb=$(df -Pk "$ROOT" | awk 'NR==2 {print $4}')
 needed_kb=$(du -sk "$STAGE" | awk '{print $1}')
-[ "$free_kb" -ge $((needed_kb*3+1024)) ] || fail 'not enough free space'
+[ "$free_kb" -ge $((needed_kb*2+1024)) ] || fail 'not enough free space'
 newlib="$ROOT/$LIB"
 expected=$(awk -v n="$LIB" '$2==n {print $1}' "$STAGE/SHA256SUMS")
 if [ -e "$newlib" ] || [ -L "$newlib" ]; then
@@ -467,28 +359,10 @@ else
     copy_checked "$STAGE/$LIB" "$newlib.new-$$" "$expected"
     mv "$newlib.new-$$" "$newlib" || fail "cannot install $newlib"
 fi
-bundle="$ROOT/.rollback/$VERSION"
-if [ -n "$old" ]; then
-    if [ -e "$bundle" ]; then
-        check_bundle "$bundle" "$old"
-        restore_binary_pair "$bundle"
-    else
-        pending=$(mktemp -d "$ROOT/.rollback/.${VERSION}.new-XXXXXX") || fail 'cannot stage rollback'
-        printf '%s\n' "$old" > "$pending/target.txt"
-        cp "$ROOT/MiSTer_gui" "$pending/MiSTer_gui" || fail 'cannot back up main process'
-        cp "$ROOT/mister-gui" "$pending/mister-gui" || fail 'cannot back up GUI loader'
-        (cd "$pending" && sha256sum target.txt MiSTer_gui mister-gui > rollback.sha256) || fail 'cannot hash rollback'
-        check_bundle "$pending" "$old"
-        mv "$pending" "$bundle" || fail 'cannot publish rollback bundle'
-        sync
-    fi
-fi
-commit_ok=0
 for name in MiSTer_gui mister-gui; do
     expected=$(awk -v n="$name" '$2==n {print $1}' "$STAGE/SHA256SUMS")
     if ! cp "$STAGE/$name" "$ROOT/$name.new-$$" || ! chmod 755 "$ROOT/$name.new-$$" || [ "$(sha "$ROOT/$name.new-$$")" != "$expected" ] || ! mv -f "$ROOT/$name.new-$$" "$ROOT/$name"; then
-        [ -z "$old" ] || restore_binary_pair "$bundle"
-        fail "commit failed at $name; inspect $bundle"
+        fail "commit failed at $name"
     fi
 done
 sync

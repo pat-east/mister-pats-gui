@@ -37,6 +37,7 @@ public:
     void handle(Action action) override;
     std::string hints() const override;
     std::string favoritePath() const override;
+    bool selectedGame(const GameSystem *&system, Game &game) const override;
 
     // The kind of rows this screen builds, worth testing without a canvas.
     size_t rowCount() const { return rows_.size(); }
