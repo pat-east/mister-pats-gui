@@ -9,6 +9,7 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "Image.h"
 
@@ -46,6 +47,11 @@ public:
     ImagePtr requestAsync(const std::string &path, const std::string &fallback, int width,
                           int height, bool priority = false);
 
+    // Tries candidate paths in order on the image worker. This lets callers preserve format
+    // and location fallbacks without probing the filesystem on the render thread.
+    ImagePtr requestAsyncCandidates(const std::vector<std::string> &candidates, int width,
+                                    int height, bool priority = false);
+
     size_t size() const { return entries_.size(); }
     size_t memoryBytes() const { return cachedBytes_; }
 
@@ -70,8 +76,7 @@ private:
 
     struct Work {
         std::string key;
-        std::string path;
-        std::string fallback;
+        std::vector<std::string> candidates;
         int width;
         int height;
     };

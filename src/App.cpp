@@ -5,8 +5,12 @@
 #include "Version.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <sys/reboot.h>
+#include <unistd.h>
 
 namespace {
 
@@ -44,6 +48,8 @@ bool App::initialize(const Options &options) {
     history_.load();
     hiddenSystems_.load();
     preferences_.load();
+    updateService_.initializeLocalState();
+    updateSnapshot_ = updateService_.snapshot();
 
     context_ = std::make_unique<Context>(*theme_, library_, favorites_, launcher_, images_,
                                         icons_, history_, hiddenSystems_, preferences_);
@@ -69,8 +75,8 @@ bool App::initialize(const Options &options) {
     });
 
     settingsScreen_ = std::make_unique<SettingsScreen>(
-        *context_, [this] { reloadLibrary(); }, [this] { stop(); },
-        [this] { openScan(false); }, [this] { openArtwork(); },
+        *context_, [this] { reloadLibrary(); }, [this] { openScan(false); },
+        [this] { openArtwork(); },
         [this] { startSystemIconDownload(); },
         [this] {
             return systemIconDownload_ ? systemIconDownload_->statusLine() : std::string();
@@ -78,8 +84,22 @@ bool App::initialize(const Options &options) {
         [this] { openVisibility(); }, [this] { openControllers(); },
         [this] { openArcadeSettings(); },
         [this] { toggleGamesTab(); }, [this] { toggleArcadeTab(); }, [this] { cycleDefaultView(); },
-        [this] { startMisterCore(); });
+        [this] { startMisterCore(); },
+        [this] {
+            const bool enabled = !preferences_.checkForUpdates();
+            preferences_.setCheckForUpdates(enabled);
+            if (!enabled) updateService_.cancelAutomaticCheck();
+        },
+        [this] { autoCheckDecisionMade_ = true; updateService_.startCheck(false); },
+        [this] { updateService_.beginConfirmation(); },
+        [this] { updateService_.startInstall(); },
+        [this] { updateService_.cancelBeforeCommit(); },
+        [this] { updateService_.dismissInstallSuccess(); },
+        [this] { updateService_.showInstallSuccess(); },
+        [this] { removePinnedVersion(); },
+        [this](bool removePin) { restartMisterAfterUpdate(removePin); });
     settingsScreen_->setFramebufferInfo(framebuffer_.describe());
+    settingsScreen_->setUpdateSnapshot(updateSnapshot_);
 
     scanScreen_ = std::make_unique<ScanScreen>(
         *context_, scan_, scraper_, [this] { reloadLibrary(); }, [this] { closeScan(); });
@@ -327,11 +347,29 @@ void App::cycleDefaultView() {
 }
 
 void App::startMisterCore() {
+    if (updateService_.commitRunning()) return;
     // The patched Main_MiSTer relaunches this GUI a few seconds after it exits; the marker
     // tells it to leave the stock menu on screen instead. See App.h for the path.
     FILE *marker = std::fopen(kSuspendMarkerPath, "w");
     if (marker) std::fclose(marker);
     stop();
+}
+
+void App::restartMisterAfterUpdate(bool removePin) {
+    std::string error;
+    if (!updateService_.prepareRestart(removePin, error)) {
+        context_->showError("Cannot restart MiSTer", error);
+        return;
+    }
+    ::sync();
+    if (::reboot(RB_AUTOBOOT) != 0)
+        context_->showError("Cannot restart MiSTer", std::strerror(errno));
+}
+
+void App::removePinnedVersion() {
+    std::string error;
+    if (!updateService_.removePinnedVersion(error))
+        context_->showError("Cannot remove version pin", error);
 }
 
 Screen *App::activeScreen() {
@@ -398,6 +436,36 @@ void App::runScript() {
 
 void App::dispatch(Action action) {
     if (action == Action::Quit) DebugLog::warn("input: quit action received");
+    if (updateService_.commitRunning() &&
+        (action == Action::Quit || action == Action::Confirm)) return;
+    const UpdatePhase updatePhase = updateService_.snapshot().phase;
+    if (updatePhase == UpdatePhase::Confirming) {
+        settingsScreen_->setUpdateSnapshot(updateService_.snapshot());
+        if (action == Action::Quit) {
+            updateService_.cancelBeforeCommit();
+            stop();
+        } else {
+            settingsScreen_->handle(action);
+        }
+        return;
+    }
+    if (updatePhase == UpdatePhase::RestartRequired &&
+        updateService_.snapshot().successPromptVisible && !context_->errorActive &&
+        activeScreen() == settingsScreen_.get()) {
+        settingsScreen_->setUpdateSnapshot(updateService_.snapshot());
+        if (action == Action::Quit) {
+            updateService_.dismissInstallSuccess();
+            stop();
+        } else {
+            settingsScreen_->handle(action);
+        }
+        return;
+    }
+    if ((updatePhase == UpdatePhase::Downloading || updatePhase == UpdatePhase::Verifying) &&
+        action == Action::Back) {
+        updateService_.cancelBeforeCommit();
+        return;
+    }
     const std::vector<Tab> tabs = visibleTabs();
     const int tabCount = int(tabs.size());
     const int tabIndex = int(std::find(tabs.begin(), tabs.end(), tab_) - tabs.begin());
@@ -462,6 +530,10 @@ void App::dispatch(Action action) {
     case Action::Back:
         if (detailActive_) { detailActive_ = false; needsFullRedraw_ = true; return; }
         if (arcadeGroupsActive_) { arcadeGroupsActive_ = false; needsFullRedraw_ = true; return; }
+        if (tab_ == Tab::Settings && settingsScreen_->wantsBack()) {
+            settingsScreen_->handle(Action::Back);
+            return;
+        }
         // On the Arcade tab, Back first steps from a tile to its row's title.
         if (tab_ == Tab::Arcade && arcadeScreen_->wantsBack()) {
             arcadeScreen_->handle(Action::Back);
@@ -521,16 +593,18 @@ void App::renderBottomBar(const Rect &area) {
     }
 
     // Small and out of the way in the corner — a build identifier for bug reports, not
-    // something meant to draw the eye. A newer release found on GitHub (see UpdateCheck,
+    // something meant to draw the eye. A newer release found on GitHub (see UpdateService,
     // Settings → Check for updates) rides along in the one place a version number already
     // draws attention, rather than a notification competing with everything else.
     std::string version = std::string("v") + kAppVersion;
-    if (updateCheck_.available()) version += "  ·  v" + updateCheck_.latestVersion() + " available";
+    const bool updateAvailable = updateSnapshot_.phase == UpdatePhase::Available &&
+                                 updateSnapshot_.canInstall;
+    if (updateAvailable) version += "  ·  v" + updateSnapshot_.targetVersion + " available";
     const int versionWidth = theme.regular().measure(version, theme.sizeSmall());
     theme.regular().draw(canvas, area.right() - theme.marginX() - versionWidth, y, version,
                          theme.sizeSmall(),
-                         updateCheck_.available() ? theme.accent.withAlpha(200)
-                                                   : theme.textMuted.withAlpha(90));
+                         updateAvailable ? theme.accent.withAlpha(200)
+                                         : theme.textMuted.withAlpha(90));
 
     if (!favoriteHolding && context_->messageTimer > 0.0f && !context_->message.empty()) {
         // Sits to the left of the version string so the two never overlap.
@@ -568,6 +642,7 @@ int App::run() {
     bool firstFrameLogged = false;
 
     while (running_) {
+        if (signalStopRequested_) { running_ = false; break; }
         const int64_t frameStart = nowMs();
         const float dt = float(frameStart - previous) / 1000.0f;
         previous = frameStart;
@@ -626,6 +701,7 @@ int App::run() {
             favoriteHoldPath_.clear();
         }
         if (!running_) break;
+        if (signalStopRequested_) { running_ = false; break; }
 
         // A core was started: hand the devices and the console straight back.
         if (context_->standDown) {
@@ -652,18 +728,25 @@ int App::run() {
             }
         }
 
+        if (!autoCheckDecisionMade_) {
+            updateCheckDelay_ -= dt;
+            if (updateCheckDelay_ <= 0.0f) {
+                autoCheckDecisionMade_ = true;
+                if (preferences_.checkForUpdates()) updateService_.startCheck(true);
+            }
+        }
+        updateSnapshot_ = updateService_.snapshot();
+        settingsScreen_->setUpdateSnapshot(updateSnapshot_);
+        if (updateSnapshot_.phase == UpdatePhase::RestartRequired &&
+            updateSnapshot_.successPromptVisible && !context_->errorActive &&
+            !scanActive_ && !visibilityActive_ && !controllersActive_ &&
+            !arcadeGamesActive_ && !arcadeSettingsActive_ && tab_ != Tab::Settings)
+            selectTab(Tab::Settings);
+
         Theme &theme = *theme_;
         topBar_.update(dt);
         activeScreen()->update(dt);
         if (context_->messageTimer > 0.0f) context_->messageTimer -= dt;
-
-        // A quiet moment well after boot, not the frame loop's problem to pace — this either
-        // does nothing (off by default) or blocks once, briefly, bounded by UpdateCheck's own
-        // short timeout. Never runs a second time in the same session.
-        if (preferences_.checkForUpdates() && !updateCheck_.checked()) {
-            updateCheckDelay_ -= dt;
-            if (updateCheckDelay_ <= 0.0f) updateCheck_.run(kAppVersion);
-        }
 
         // Measured on the device against a real scraped cover: ~22ms to decode, well down
         // from the ~47ms a full-size PNG cost before the scraper started shrinking and
@@ -741,6 +824,7 @@ int App::run() {
 
     if (!options_.dumpPath.empty()) writeCanvas(options_.dumpPath);
 
+    updateService_.shutdown();
     console_.release();
     DebugLog::warn("run: exited without a fatal signal");
     return 0;

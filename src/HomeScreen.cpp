@@ -266,8 +266,8 @@ void HomeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool acti
     if (context_.preferences.showBoxArt() && active && row.cursor >= row.scroll &&
         row.cursor < last) {
         const Item &focused = row.items[size_t(row.cursor)];
-        context_.images.requestAsync(focused.game.boxart, focused.game.boxartFallback, tileWidth,
-                            tileHeight, true);
+        context_.images.requestAsyncCandidates(focused.game.boxartCandidates, tileWidth,
+                                              tileHeight, true);
     }
 
     for (int pass = 0; pass < 2; ++pass) {
@@ -285,8 +285,8 @@ void HomeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool acti
             content.coverArt = true;
             content.favorite = context_.favorites.contains(item.game.path);
             if (context_.preferences.showBoxArt())
-                content.image = context_.images.requestAsync(item.game.boxart, item.game.boxartFallback,
-                                                    tileWidth, tileHeight);
+                content.image = context_.images.requestAsyncCandidates(
+                    item.game.boxartCandidates, tileWidth, tileHeight);
 
             Tile::draw(canvas, theme, frame, content, row.focus[size_t(i)]);
         }
@@ -311,8 +311,8 @@ void HomeScreen::requestImages(Row &row, int laneWidth) {
     const int last = std::min(int(row.items.size()), row.scroll + perPage + 1);
     for (int i = row.scroll; i < last; ++i) {
         const Item &item = row.items[size_t(i)];
-        context_.images.requestAsync(item.game.boxart, item.game.boxartFallback, m.tileWidth,
-                            m.tileHeight);
+        context_.images.requestAsyncCandidates(item.game.boxartCandidates, m.tileWidth,
+                                               m.tileHeight);
     }
 }
 
@@ -330,14 +330,14 @@ void HomeScreen::requestFavoriteImages(const Rect &body, int gridY, const Metric
     // Put the selected cover ahead of nearby prefetches in the worker queue.
     if (activeRow_ == 1) {
         const Item &item = favorites.items[size_t(favorites.cursor)];
-        context_.images.requestAsync(item.game.boxart, item.game.boxartFallback, m.tileWidth,
-                            m.tileHeight, true);
+        context_.images.requestAsyncCandidates(item.game.boxartCandidates, m.tileWidth,
+                                               m.tileHeight, true);
     }
     for (int i = firstRow * favoriteColumns_;
          i < std::min(int(favorites.items.size()), lastRow * favoriteColumns_); ++i) {
         const Item &item = favorites.items[size_t(i)];
-        context_.images.requestAsync(item.game.boxart, item.game.boxartFallback, m.tileWidth,
-                            m.tileHeight);
+        context_.images.requestAsyncCandidates(item.game.boxartCandidates, m.tileWidth,
+                                               m.tileHeight);
     }
 }
 
@@ -388,8 +388,8 @@ void HomeScreen::renderFavorites(Canvas &canvas, const Rect &body, int sectionY,
             content.coverArt = true;
             content.favorite = true;
             if (context_.preferences.showBoxArt())
-                content.image = context_.images.requestAsync(item.game.boxart, item.game.boxartFallback,
-                                                    m.tileWidth, m.tileHeight);
+                content.image = context_.images.requestAsyncCandidates(
+                    item.game.boxartCandidates, m.tileWidth, m.tileHeight);
             Tile::draw(canvas, theme, frame, content, favorites.focus[size_t(i)]);
         }
     }

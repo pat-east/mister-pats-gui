@@ -6,18 +6,16 @@
 
 namespace {
 
-// Console Mode's own copy first, so an existing install needs nothing further; then a copy
-// placed by hand (see docs/INSTALL.md). Nothing beyond that is worth listing — MiSTer's own OSD
-// draws from a bitmap font compiled into its binary, not a loose TTF on disk, so there is no
-// third system location to reliably find one at. If neither candidate opens, Font::load()
-// reports it and every caller falls back to the built-in bitmap face, which needs no file at
-// all and is the one fallback actually guaranteed to be there.
+// Prefer the bundled-by-setup Space Grotesk files, then Akrobat if present. Font falls back
+// to the built-in system-style bitmap face if neither TrueType family can be loaded.
 const std::vector<std::string> kBoldCandidates = {
+    MISTER_PAT_ROOT "/fonts/SpaceGrotesk-Bold.ttf",
     "/media/fat/ConsoleMode/themeconfig/resources/Akrobat-Bold.ttf",
     MISTER_PAT_ROOT "/fonts/Akrobat-Bold.ttf",
 };
 
 const std::vector<std::string> kRegularCandidates = {
+    MISTER_PAT_ROOT "/fonts/SpaceGrotesk-Medium.ttf",
     "/media/fat/ConsoleMode/themeconfig/resources/Akrobat-SemiBold.ttf",
     MISTER_PAT_ROOT "/fonts/Akrobat-SemiBold.ttf",
 };
@@ -27,6 +25,10 @@ const std::vector<std::string> kRegularCandidates = {
 Theme::Theme(int screenWidth, int screenHeight) : width_(screenWidth), height_(screenHeight) {
     bold_.load(kBoldCandidates);
     regular_.load(kRegularCandidates);
+    if (bold_.path().find("SpaceGrotesk-") != std::string::npos)
+        bold_.setScalePercent(90);
+    if (regular_.path().find("SpaceGrotesk-") != std::string::npos)
+        regular_.setScalePercent(90);
 }
 
 int Theme::px(int designPx) const {

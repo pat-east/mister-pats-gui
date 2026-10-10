@@ -101,7 +101,8 @@ void Tile::draw(Canvas &canvas, Theme &theme, const Rect &frame, const Content &
     }
 
     if (hasArt) {
-        canvas.fillRoundedRect(body, radius, theme.backgroundLo);
+        canvas.fillRoundedRect(body, radius,
+                               content.blackArtBackground ? theme.shadow : theme.backgroundLo);
 
         Rect target = body;
         if (content.coverArt) {

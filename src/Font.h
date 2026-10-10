@@ -18,6 +18,7 @@ public:
 
     // Tries each candidate in order; the first one that opens wins.
     bool load(const std::vector<std::string> &candidates);
+    void setScalePercent(unsigned int percent) { scalePercent_ = percent; }
 
     bool usingTrueType() const { return face_ != nullptr; }
     const std::string &path() const { return path_; }
@@ -43,11 +44,13 @@ private:
 
     const Glyph *glyphFor(unsigned int codepoint, int size);
     int ascender(int size);
+    int renderSize(int size) const;
 
     void *library_ = nullptr;   // FT_Library
     void *face_ = nullptr;      // FT_Face
     std::string path_;
     int activeSize_ = 0;
+    unsigned int scalePercent_ = 100;
     std::map<uint64_t, Glyph> cache_;
     std::map<int, int> ascenders_;
     std::map<int, int> lineHeights_;

@@ -60,9 +60,8 @@ public:
 
 private:
     // A stub (path + name, no I/O — see Library::makeStub) until it is actually about to be
-    // drawn. Every entry in even the whole 10,500-game library can be built this way in a
-    // handful of milliseconds; only artworkResolved marks whether the expensive part
-    // (Library::resolveArtwork, real `stat()` calls) has happened yet for this one.
+    // drawn. Artwork candidates are built lazily for visible entries; the image worker checks
+    // the filesystem and decodes the selected file away from the render path.
     struct Entry {
         const GameSystem *system = nullptr;
         Game game;

@@ -121,10 +121,14 @@ artificial backdrops, every game brings its own.
 
 ### Fonts and symbols
 
-`/media/fat/ConsoleMode/themeconfig/resources/`:
+`/media/fat/mister-pat/fonts/`:
 
-- `Akrobat-Bold.ttf`, `Akrobat-SemiBold.ttf` — a modern geometric sans, a good fit for the target look
-- `back22.png` — background texture
+- `SpaceGrotesk-Bold.ttf` and `SpaceGrotesk-Medium.ttf` — the interface typeface, installed by
+  the setup/update script
+- `back22.png` — background texture from Console Mode, when present
+
+At startup the GUI tries Space Grotesk first, then a secondary TrueType font if one is present,
+and finally its built-in bitmap face. Missing or unreadable font files do not prevent startup.
 
 ### Network and time
 
@@ -203,7 +207,7 @@ A grid of tiles, freely navigable in all four directions.
 - **Groups:** one heading per group ("CONSOLES", "HANDHELDS", "COMPUTERS", "ARCADE", "PORTS")
   taken from the section files, with the number of systems found on the right. Groups run on
   within the same grid, separated by their headings — no separate scrolling per group.
-- **Tile content:** the system logo if one exists, otherwise the name in Akrobat-Bold, wrapped
+- **Tile content:** the system logo if one exists, otherwise the name in Space Grotesk, wrapped
   automatically and fitted to the tile width. Below the tile, the number of games, in a small
   size.
 - **Focus:** the focused tile grows to 112 %, becomes brighter, and gains a stronger shadow and
@@ -266,10 +270,30 @@ Two columns: the list on the left, a large presentation of the focused game on t
 
 ### 5.3 Settings
 
-The current screen is a single settings list with system facts beside it. It includes Build
-game database, Prepare box art, Download System-Icons, Show box art, view and menu toggles,
-controller management, and other actions. See [README.md](../README.md) for the user-facing
-feature list.
+Settings uses three columns: categories on the left, the selected category's actions and
+options in the middle, and live system facts on the right. Use up/down to move within the
+focused column and left/right to switch between categories and options. The categories are
+Library, Controllers, Interface, Updates, and System. See [README.md](../README.md) for the
+user-facing feature list.
+
+Updates keeps the automatic-check switch and a manual **Check now** action. A verified newer
+release adds **Update now**. Its confirmation shows the version, release notes, restart notice
+and any game-database warning. Download and verification progress stays visible after closing
+the confirmation; B can cancel before the installation commit. The system facts column remains
+visible throughout. Updates also shows the running GUI version and the version selected for
+the next start. A valid `mister-pats-gui.so` symlink appears as a version pin; without it the
+loader selects the newest installed library. The release comparison uses the pinned version
+when there is one; an update adds only the new library and preserves any pin.
+After installation, a success dialog offers **A** to restart MiSTer with the current startup
+selection, **B** to continue without restarting, and, when pinned, **X** to remove the pin and
+restart. It shows the version each restart choice will load. After B, **Restart options**
+opens the dialog again.
+Whenever a version pin exists, **Remove pinned version** appears as its own Updates action.
+It removes the symlink, selects the newest installed library for the next start, and offers
+**A** to restart or **B** to continue with the running GUI.
+At startup, an enabled automatic check shows **Waiting for Internet** while it tries GitHub
+HTTPS for about 60 seconds. If it cannot connect, Settings shows an error and **Check now**
+allows a manual retry. **Checking GitHub** appears only after a successful HTTPS response.
 
 ## 6. The Tile — the Central GUI Element
 
@@ -303,7 +327,7 @@ Specification:
 | Base size | 266×200 px (systems), 200×280 px (games, portrait boxart) |
 | Corners | 8 px radius |
 | Content | image, fitted preserving its aspect ratio (`contain`), or text fallback |
-| Text fallback | Akrobat-Bold, wrapped automatically, fitted to the width |
+| Text fallback | Space Grotesk, wrapped automatically, fitted to the width |
 | Caption | below the tile, 18 px, single line, centered, ellipsized when too long |
 | Secondary line | optional, 15 px, 55 % opacity (e.g. "412 games") |
 | Shadow | pre-baked 9-slice sprite, only opacity and size vary |
@@ -349,11 +373,11 @@ Behavior:
 
 | Role | Definition |
 | --- | --- |
-| Heading | Akrobat-Bold 34 px, slightly increased letter spacing, uppercase |
-| Tab | Akrobat-SemiBold 24 px, uppercase |
-| Tile caption | Akrobat-SemiBold 18 px |
-| Secondary text | Akrobat-SemiBold 15 px, 55 % opacity |
-| Time | Akrobat-SemiBold 32 px |
+| Heading | Space Grotesk Bold 34 px, slightly increased letter spacing, uppercase |
+| Tab | Space Grotesk Medium 24 px, uppercase |
+| Tile caption | Space Grotesk Medium 18 px |
+| Secondary text | Space Grotesk Medium 15 px, 55 % opacity |
+| Time | Space Grotesk Medium 32 px |
 
 Colors (placeholders, still to be agreed on):
 

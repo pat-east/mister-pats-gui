@@ -4,7 +4,7 @@
 set -e
 
 HOST=arm-unknown-linux-gnueabihf
-ARCH_FLAGS="-mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard -O2"
+ARCH_FLAGS="-mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard -O2 -fPIC"
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 PREFIX="$HERE/sysroot"

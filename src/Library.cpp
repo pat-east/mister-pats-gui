@@ -69,39 +69,29 @@ bool directoryExists(const std::string &path) {
     return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
 }
 
-bool fileExists(const std::string &path) {
-    struct stat st{};
-    return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
-}
-
-// The scraper writes JPEG — a third the size of the PNGs Console Mode leaves behind, which is
-// the point of scraping our own — but the extension in `Game::boxart` has to match whatever
-// is actually on disk, or the lookup just misses. Checked once here, with a real stat(), not
-// assumed: a stray non-.jpg or non-.png file sits there unfound either way, but a scraped
-// cover no longer does. This is a read, not a write, so it costs nothing on a card that only
-// makes writes expensive.
-// `preferSmall` is only ever honoured when the file is actually there — the scraper writes
-// `-sm.jpg` alongside the full-size artwork, but not every game has been scraped since that
-// existed, and a grid tile is happy to fall back to full-size and let the framebuffer's own
-// scaling do the work rather than show nothing.
-std::string resolveArtworkFile(const std::string &base, bool preferSmall) {
-    if (preferSmall && fileExists(base + "-sm.jpg")) return base + "-sm.jpg";
-    if (fileExists(base + ".jpg")) return base + ".jpg";
-    return base + ".png";
-}
-
-std::string resolveBoxartFile(const std::string &base, ArtworkVariant variant) {
+// Preserve the existing artwork preference order without probing the drive here. The worker
+// tests these paths in order and falls back to the original JPEG/PNG if a prepared file is
+// absent.
+std::vector<std::string> boxartCandidates(const std::string &base, ArtworkVariant variant) {
+    std::vector<std::string> paths;
     if (variant != ArtworkVariant::Full) {
         const ArtworkBounds bounds = artworkBounds(variant);
-        const std::string sized = base + bounds.suffix + ".bmp";
-        if (fileExists(sized)) return sized;
+        paths.push_back(base + bounds.suffix + ".bmp");
     }
+    if (variant == ArtworkVariant::Home || variant == ArtworkVariant::Grid ||
+        variant == ArtworkVariant::Small)
+        paths.push_back(base + "-sm.jpg");
+    paths.push_back(base + ".jpg");
+    paths.push_back(base + ".png");
+    return paths;
+}
 
-    if ((variant == ArtworkVariant::Home || variant == ArtworkVariant::Grid ||
-         variant == ArtworkVariant::Small) && fileExists(base + "-sm.jpg"))
-        return base + "-sm.jpg";
-    if (fileExists(base + ".jpg")) return base + ".jpg";
-    return base + ".png";
+std::vector<std::string> backgroundCandidates(const std::string &base, bool preferSmall) {
+    std::vector<std::string> paths;
+    if (preferSmall) paths.push_back(base + "-sm.jpg");
+    paths.push_back(base + ".jpg");
+    paths.push_back(base + ".png");
+    return paths;
 }
 
 std::string trim(const std::string &s) {
@@ -452,6 +442,12 @@ Game Library::makeGame(const GameSystem &system, const std::string &path,
 
 void Library::resolveArtwork(const GameSystem &system, Game &game, ArtworkVariant variant) {
     const std::string &path = game.path;
+    game.boxartCandidates.clear();
+    game.backgroundCandidates.clear();
+    game.boxart.clear();
+    game.background.clear();
+    game.boxartFallback.clear();
+    game.backgroundFallback.clear();
 
     // Artwork sits next to the game itself. Deriving it from the game's own directory keeps
     // it right no matter which volume the game came from — a system's directories can span
@@ -459,9 +455,11 @@ void Library::resolveArtwork(const GameSystem &system, Game &game, ArtworkVarian
     const size_t slash = path.find_last_of('/');
     if (slash != std::string::npos) {
         const std::string media = path.substr(0, slash) + "/media/" + game.name;
-        game.boxart = resolveBoxartFile(media, variant);
-        game.background = resolveArtworkFile(media + "-BG", variant != ArtworkVariant::Full &&
-                                                                   variant != ArtworkVariant::Detail);
+        game.boxartCandidates = boxartCandidates(media, variant);
+        game.backgroundCandidates = backgroundCandidates(
+            media + "-BG", variant != ArtworkVariant::Full && variant != ArtworkVariant::Detail);
+        game.boxart = game.boxartCandidates.front();
+        game.background = game.backgroundCandidates.front();
     }
 
     // Games organised into subfolders keep their artwork one level up, in the system's own
@@ -470,9 +468,15 @@ void Library::resolveArtwork(const GameSystem &system, Game &game, ArtworkVarian
         if (path.compare(0, dir.size(), dir) != 0) continue;
         const std::string media = dir + "/media/" + game.name;
         if (dir + "/media/" == path.substr(0, slash) + "/media/") break;   // already looking there
-        game.boxartFallback = resolveBoxartFile(media, variant);
-        game.backgroundFallback = resolveArtworkFile(media + "-BG", variant != ArtworkVariant::Full &&
-                                                                            variant != ArtworkVariant::Detail);
+        const std::vector<std::string> boxFallbacks = boxartCandidates(media, variant);
+        const std::vector<std::string> backgroundFallbacks = backgroundCandidates(
+            media + "-BG", variant != ArtworkVariant::Full && variant != ArtworkVariant::Detail);
+        game.boxartFallback = boxFallbacks.front();
+        game.backgroundFallback = backgroundFallbacks.front();
+        game.boxartCandidates.insert(game.boxartCandidates.end(), boxFallbacks.begin(),
+                                     boxFallbacks.end());
+        game.backgroundCandidates.insert(game.backgroundCandidates.end(),
+                                         backgroundFallbacks.begin(), backgroundFallbacks.end());
         break;
     }
 }

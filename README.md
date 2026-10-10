@@ -110,8 +110,12 @@ In practice that means:
 - **Multiple game drives**, resolved live rather than assumed — a drive can come back at a
   different `/media/usbN` after a reboot, or a second volume can hold more games, and box art
   and launching both keep working either way.
-- **An opt-in check for a newer release**, in Settings — off by default, and the only network
-  access here that is not something you asked for in the moment.
+- **Updates in Settings** — *Check now* works at any time; *Update now* confirms release notes,
+  verifies and adds the new GUI library, then offers restart, later, and, when pinned, remove
+  pin and restart. **Remove pinned version** is also available directly in Updates whenever
+  a pin exists; it removes the symlink and offers a restart. Without a version pin,
+  the loader starts the newest installed library. The optional automatic check is off by default;
+  when enabled it waits for Internet access before showing *Checking GitHub*.
 - **Starts games through the MiSTer's own loader** — core loading, ROM mounting and the
   in-game OSD all stay in the code that already does them well.
 - **Boots straight into the GUI** via a small patch to the MiSTer main binary, which
@@ -138,12 +142,11 @@ a dependency for any of that:
 | The catalogue of systems | **built by this GUI** |
 | The index of games | **built by this GUI** |
 | Box art and background images | **prepared and fetched by this GUI** — Settings → *Prepare box art* |
-| Fonts | downloaded once by hand — see [INSTALL.md](docs/INSTALL.md#step-0--the-typeface-if-you-want-it) — or the built-in fallback if you skip that |
+| Fonts | Space Grotesk and its license are downloaded by the install/update script; the built-in fallback remains available |
 
-The typeface, Akrobat, can't be bundled here — Fontfabric's free-font licence allows using it
-in your own designs but not redistributing the font files — so getting it stays a one-time
-manual step instead of something this GUI fetches for you. Skip it and everything still works;
-you get the built-in fallback typeface instead.
+The setup script downloads Space Grotesk from its upstream project under the SIL Open Font
+License, along with the license text. Routine GUI updates only add a new `.so`. If the font
+loading fails, the GUI keeps working with its built-in fallback.
 
 Once installed, this GUI takes over the boot path and Console Mode no longer starts. Only its
 font files are still read, if present.
@@ -163,33 +166,32 @@ the system is modified, and uninstalling means deleting that directory and those
 brew tap messense/macos-cross-toolchains
 brew install arm-unknown-linux-gnueabihf
 
-# 2. Static dependencies: zlib, libpng, freetype, libjpeg-turbo into third_party/sysroot
+# 2. PIC static dependencies: zlib, libpng, freetype, libjpeg-turbo
 third_party/build.sh
 
 # 3. The GUI itself
-make                    # produces build/mister-gui
+make                    # produces build/mister-gui and build/mister-pats-gui-X.Y.Z.so
 
 # 4. The patched MiSTer main binary that boots into it
 git clone https://github.com/MiSTer-devel/Main_MiSTer third_party/Main_MiSTer
 cd third_party/Main_MiSTer
 git apply ../../patches/0001-autostart-gui.patch
-make
+make BASE=arm-unknown-linux-gnueabihf -j4
 ```
 
-The binary is statically linked, so it does not depend on the libraries in the MiSTer root
-filesystem. Builds keep DWARF debug information and frame pointers even at `-O2`; the debug
-symbols are written to `build/mister-gui.debug` while the deployable binary stays stripped and
-small. Linux does not load DWARF sections into memory. Keep the matching `.debug` file from the
-build that produced a crash log, since its addresses are needed to resolve the recorded PCs:
+The GUI is a versioned shared library with `libstdc++` linked statically; the small loader
+stays at the configured `gui=` path. Builds keep DWARF debug information and frame pointers
+even at `-O2`. Keep both matching `.debug` files and `logs/module-map.log` from the crash run:
 
 ```sh
-tools/symbolize-crash.sh crash.log
+tools/symbolize-crash.sh crash.log build
 ```
 
-Deploy both the GUI and the patched MiSTer launcher, then check without looking at a television:
+Deploy the separate dev build and patched MiSTer launcher:
 
 ```sh
-tools/deploy.sh                          # stop the GUI, replace both binaries, reboot
+make deploy                              # stage three artifacts, back up release, reboot
+tools/deploy.sh --restore-release        # restore backed-up release and reboot
 tools/screenshot.sh                      # fetch what is on screen as a PNG
 make -C tests                            # host-side checks, no device needed
 ```
@@ -290,9 +292,9 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 Working: booting into the GUI, browsing every system, box art, favourites, history, letter
 navigation, launching games, returning from a game with a long press on the menu button, and
 hiding systems or the Games tab from Settings for a large library. Arcade and the built-in
-font fallback have been exercised on the MiSTer. The 0.4.0 box-art preparation run over
-11,502 entries completed; the user reports that the current interface looks and feels very
-good. See [CHANGELOG.md](CHANGELOG.md) and [BOXART.md](docs/BOXART.md).
+font fallback have been exercised on the MiSTer. Version 0.5.0 adds the install and update
+flow: a stable loader, versioned GUI libraries, and verified in-GUI updates with a pinning
+option. See [CHANGELOG.md](CHANGELOG.md) and [BOXART.md](docs/BOXART.md).
 
 ## Roadmap
 
@@ -312,7 +314,7 @@ for.
 - [x] **Test the Arcade library, tab, and updated scraper on real hardware.**
 - [x] **Improve box art matching** using the real scrape-miss list and an audit of Libretro's
       index. See [BOXART.md](docs/BOXART.md) for results and the limits of the available counts.
-- [x] **Font fallback and interface fixes** — test without Akrobat, tune fallback sizing,
+- [x] **Font fallback and interface fixes** — test without external TrueType fonts, tune fallback sizing,
       improve spacing, and show Ethernet and Wi-Fi addresses in Settings.
 - [x] **Navigation and input fixes** — alphabetize Arcade group previews and require a
       two-second hold to change a favorite.
@@ -330,17 +332,17 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.3.0 change list.
 - [x] **A much shorter first visit to Systems.** The game database already records which
       systems have games, so the tab can show its grid without building that answer on entry.
 
-#### 0.5.0 — Easy to install ... and to update
+#### 0.5.0 — Install and update flow
 
-- [ ] **A pleasant install flow.** An initial install/update shell script exists in source;
-      release publication and end-to-end validation are still needed.
-- [ ] **A system, or a process, for updating the GUI.** Today an update means replacing files by
-      hand over SSH. There has to be a proper way to get a newer version onto the device.
-- [ ] **An extension of `update_all.sh`** (the Update_All_MiSTer script), so installing and
-      updating this GUI fits into the way MiSTer users already keep their device current.
-- [ ] **Manage Cores / Manage MRAs** for Arcade, syncing against the official distribution
-      manifest — the same download-and-verify machinery an installer and updater need. Design
-      in [ARCADE.md](docs/ARCADE.md#decision-manage-cores-and-manage-mras).
+- [x] **A dependable first-install flow.** The setup script installs the loader, the GUI
+      library, fonts and system icons, and prints the needed `MiSTer.ini` changes.
+- [x] **An in-GUI update flow.** The opt-in GitHub check stays; *Check now* and *Update now*
+      install a verified GUI library, followed by a MiSTer restart. An optional symlink can
+      select an older installed version.
+- [x] **A stable, minimal GUI loader.** The existing `gui=` path stays and loads the active,
+      versioned GUI library; older versions are retained for recovery.
+
+See [CHANGELOG.md](CHANGELOG.md) for the complete 0.5.0 change list.
 
 #### 0.6.0 — Settings, sound and search
 
@@ -352,6 +354,15 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.3.0 change list.
 - [ ] **Search.** This needs an on-screen keyboard that can be driven entirely from a
       controller, which is the real piece of work in it.
 
+#### 0.7.0 — Usability
+
+- [ ] **Improve usability across the Arcade tab**, especially its entry points and the
+      presentation and interaction of individual games.
+- [ ] **Group language and revision variants of one game.** Show one entry for titles such as
+      Pokémon Sapphire even when the library has separate Europe, Japan and USA ROMs or
+      multiple revisions; let the player choose a specific version when needed. Keep the ROMs
+      and their language/revision details intact.
+
 #### Not scheduled yet, but coming
 
 - [ ] **Loader slots for the remaining CD-based cores** (CD-i, Jaguar CD).
@@ -359,6 +370,8 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.3.0 change list.
       `controller_unique_mapping`). Left out of the first pass of controller management on
       purpose — two same-model pads sharing one mapping is the common case.
 - [ ] **Per-game DIP-switch editing** for Arcade.
+- [ ] **Manage Cores / Manage MRAs** for Arcade, syncing against the official distribution
+      manifest. Design in [ARCADE.md](docs/ARCADE.md#decision-manage-cores-and-manage-mras).
 - [ ] **Video modes.** `video_mode=` in `MiSTer.ini`, including a clean fallback when a
       configured mode fails or is not available. Also covers running, and verifying, this GUI
       at resolutions other than 1080p — it only scales its own design pixels to whatever the
@@ -377,11 +390,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.3.0 change list.
 
 ### Ideas, not committed
 
-- [ ] **Group language and revision variants of one game.** Show one entry for titles such as
-      Pokémon Sapphire even when the library has separate Europe, Japan and USA ROMs or
-      multiple revisions; let the player choose a specific version when needed. Keep the ROMs
-      and their language/revision details intact. This is an idea for later, not part of the
-      current scraper work.
+- [ ] **Font selection.** Let the user choose between the available interface fonts in Settings.
 - [ ] **A web interface for managing the library** from a computer or phone, rather than with
       a game pad: everything under *Library management* above, plus a better search, uploading
       new games to the MiSTer, deleting and renaming them, managing box art, and editing
