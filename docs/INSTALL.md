@@ -202,6 +202,16 @@ checkout. Legacy `.rollback/` bundles and old versioned libraries are retained.
 If the confirmation warns of a database format change, choose **Settings → Build game database**
 after restarting. Updating never silently deletes or rebuilds the database.
 
+### Hardware validation status
+
+The 0.5.0 loader and versioned GUI library have been exercised on a MiSTer: installation from a
+local package, repeat installation as a no-op, startup, Settings and a manual update check,
+rollback to an older release, legacy migration, and repeated development deploy/restore cycles
+were checked. A broken active library link fell back to the valid installed library. The
+published-release download path and the GUI install/cancel path still need end-to-end testing
+against a suitable newer GitHub release. Hash failures, interrupted commits, first install
+without a prior version, and the loader's text fallback also remain explicit validation cases.
+
 ## Building from source
 
 Instead of the release files:

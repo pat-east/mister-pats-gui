@@ -28,6 +28,13 @@ public:
     // memory traffic, so transferring just what changed is the largest single win.
     void present(const Canvas &canvas, const std::vector<Rect> &regions);
 
+    // Samples a sparse grid of the framebuffer and compares it with the canvas that was just
+    // presented. Something outside this process can overwrite the mapped memory after the
+    // first frame (observed after a cold boot: the whole content area read back as zeros);
+    // incremental presenting never repairs that on its own. Returns true when the sampled
+    // pixels agree, or when no comparison is possible.
+    bool matches(const Canvas &canvas) const;
+
 private:
     int fd_ = -1;
     uint8_t *memory_ = nullptr;

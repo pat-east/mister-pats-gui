@@ -83,6 +83,29 @@ void Framebuffer::present(const Canvas &canvas, const std::vector<Rect> &regions
     }
 }
 
+bool Framebuffer::matches(const Canvas &canvas) const {
+    // Only the plain 32-bit layout can be compared word for word; the alpha/unused byte is
+    // masked off because the display ignores it.
+    if (!memory_ || !directCopy_) return true;
+
+    const int cols = std::min(width(), canvas.width());
+    const int rows = std::min(height(), canvas.height());
+    if (cols < 200 || rows < 200) return true;
+
+    // Away from the edges, where the text console's cursor and clock-sized chrome sit.
+    constexpr int kColumns = 24, kRows = 14;
+    for (int j = 0; j < kRows; ++j) {
+        const int y = 61 + j * (rows - 122) / (kRows - 1);
+        const uint32_t *src = canvas.row(y);
+        const uint32_t *dst = reinterpret_cast<const uint32_t *>(memory_ + size_t(y) * fix_.line_length);
+        for (int i = 0; i < kColumns; ++i) {
+            const int x = 53 + i * (cols - 106) / (kColumns - 1);
+            if (((src[x] ^ dst[x]) & 0x00FFFFFFu) != 0) return false;
+        }
+    }
+    return true;
+}
+
 void Framebuffer::present(const Canvas &canvas) {
     if (!memory_) return;
 

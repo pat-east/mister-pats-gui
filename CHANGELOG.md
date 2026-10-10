@@ -5,6 +5,27 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] - 2026-10-10
+
+Maintenance fix on the way to the next release; no separate GitHub release.
+
+### Fixed
+
+- **Blank screen after a cold start** — after a cold boot the framebuffer content could be
+  overwritten with zeros after the first frame, leaving only the clock, title and footer
+  visible until the first button press. The GUI now compares a sparse sample of the
+  framebuffer with its canvas a few times a second and repaints everything on a mismatch;
+  the first occurrences are noted in `logs/debug.log`.
+
+### Developer
+
+- **Host tests** — `make -C tests` builds again: it generates the release header that
+  `src/Version.h` includes, the removed update-check test is replaced by checks of the
+  release metadata parsers, and the game database test follows the artwork candidate lists
+  introduced in 0.4.0.
+- **Framebuffer proof of concept** — `poc/gui-hook-test.c` is a tiny framebuffer frontend for
+  checking Main_MiSTer's optional `gui=` hook by hand.
+
 ## [0.5.0] - 2026-10-10
 
 Completes the install and update flow introduced in 0.4.6.

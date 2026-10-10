@@ -2,8 +2,17 @@
 # damage tracking, the navigation maths and the game database can be checked without the MiSTer.
 
 CXX      := c++
-CXXFLAGS := -std=gnu++14 -O1 -g -Wall -Wextra
 BUILDDIR := ../build/tests
+
+# src/Version.h includes a header the ARM build generates from release.mk. The host build
+# generates the same one next to the tests, so they never depend on a cross-build having run.
+include ../release.mk
+CONFIG_HEADER := $(BUILDDIR)/gen/ReleaseConfig.h
+CXXFLAGS := -std=gnu++14 -O1 -g -Wall -Wextra -I$(BUILDDIR)/gen
+
+$(CONFIG_HEADER): ../release.mk
+	@mkdir -p $(dir $@)
+	@printf '#pragma once\nconstexpr const char *kReleaseVersion = "$(VERSION)";\nconstexpr const char *kAppVersion = "$(VERSION)";\nconstexpr unsigned kGamesDbFormat = $(GAMESDB_FORMAT);\nconstexpr const char *kGamesDbHeader = "#mister-pat gamesdb $(GAMESDB_FORMAT)";\n' > $@
 
 DAMAGE   := $(BUILDDIR)/canvas_damage_test
 ALPHABET := $(BUILDDIR)/alphabet_test
@@ -14,12 +23,15 @@ ARCHIVE  := $(BUILDDIR)/archive_test
 MRAFILE  := $(BUILDDIR)/mra_file_test
 ARCADESCAN := $(BUILDDIR)/arcade_scan_test
 LIBRETRO := $(BUILDDIR)/libretro_index_test
-UPDATECHECK := $(BUILDDIR)/update_check_test
+RELEASEINFO := $(BUILDDIR)/release_info_test
 IMAGECACHE := $(BUILDDIR)/image_cache_worker_test
 IMAGE_LIBS := $(shell pkg-config --libs libpng libjpeg)
 IMAGE_CFLAGS := $(shell pkg-config --cflags libpng libjpeg)
 
+.DEFAULT_GOAL := all
 .PHONY: all run clean
+
+$(DAMAGE) $(ALPHABET) $(GAMESDB) $(MISTERINI) $(CONTROLLERMAP) $(ARCHIVE) $(MRAFILE) $(ARCADESCAN) $(LIBRETRO) $(RELEASEINFO) $(IMAGECACHE): | $(CONFIG_HEADER)
 
 all: run
 
@@ -70,11 +82,9 @@ $(LIBRETRO): libretro_index_test.cpp ../src/LibretroIndex.cpp ../src/Downloader.
 	@mkdir -p $(BUILDDIR)
 	$(CXX) $(CXXFLAGS) libretro_index_test.cpp ../src/LibretroIndex.cpp ../src/Downloader.cpp -o $@
 
-$(UPDATECHECK): update_check_test.cpp ../src/UpdateCheck.cpp ../src/Downloader.cpp ../src/DebugLog.cpp \
-                ../src/UpdateCheck.h
+$(RELEASEINFO): release_info_test.cpp ../src/ReleaseInfo.cpp ../src/ReleaseInfo.h
 	@mkdir -p $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) update_check_test.cpp ../src/UpdateCheck.cpp ../src/Downloader.cpp \
-	    ../src/DebugLog.cpp -o $@
+	$(CXX) $(CXXFLAGS) release_info_test.cpp ../src/ReleaseInfo.cpp -o $@
 
 $(IMAGECACHE): image_cache_worker_test.cpp ../src/ImageCache.cpp ../src/Image.cpp \
                ../src/ImageCache.h ../src/Image.h
@@ -82,7 +92,7 @@ $(IMAGECACHE): image_cache_worker_test.cpp ../src/ImageCache.cpp ../src/Image.cp
 	$(CXX) $(CXXFLAGS) $(IMAGE_CFLAGS) -I../src image_cache_worker_test.cpp \
 	    ../src/ImageCache.cpp ../src/Image.cpp $(IMAGE_LIBS) -o $@
 
-run: $(DAMAGE) $(ALPHABET) $(GAMESDB) $(MISTERINI) $(CONTROLLERMAP) $(ARCHIVE) $(MRAFILE) $(ARCADESCAN) $(LIBRETRO) $(UPDATECHECK) $(IMAGECACHE)
+run: $(DAMAGE) $(ALPHABET) $(GAMESDB) $(MISTERINI) $(CONTROLLERMAP) $(ARCHIVE) $(MRAFILE) $(ARCADESCAN) $(LIBRETRO) $(RELEASEINFO) $(IMAGECACHE)
 	@$(DAMAGE)
 	@echo
 	@$(ALPHABET)
@@ -101,7 +111,7 @@ run: $(DAMAGE) $(ALPHABET) $(GAMESDB) $(MISTERINI) $(CONTROLLERMAP) $(ARCHIVE) $
 	@echo
 	@$(LIBRETRO)
 	@echo
-	@$(UPDATECHECK)
+	@$(RELEASEINFO)
 	@echo
 	@$(IMAGECACHE)
 

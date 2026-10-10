@@ -640,6 +640,8 @@ int App::run() {
     int64_t rescanAt = previous + 1000;
     int frame = 0;
     bool firstFrameLogged = false;
+    int framebufferChecks = 0;
+    int framebufferRepairs = 0;
 
     while (running_) {
         if (signalStopRequested_) { running_ = false; break; }
@@ -796,6 +798,19 @@ int App::run() {
         if (full) framebuffer_.present(*canvas_);
         else framebuffer_.present(*canvas_, canvas_->damage());
         needsFullRedraw_ = false;
+
+        // The mapped framebuffer can be overwritten from outside after a frame was presented
+        // (seen after a cold boot, when the content area read back as zeros). Presenting only
+        // damaged regions would leave that blank until the next key press, so a sparse sample
+        // is compared a few times a second and a mismatch repaints everything.
+        if (++framebufferChecks >= 8) {
+            framebufferChecks = 0;
+            if (!framebuffer_.matches(*canvas_)) {
+                needsFullRedraw_ = true;
+                if (framebufferRepairs++ < 3)
+                    DebugLog::warn("run: framebuffer was overwritten, repainting");
+            }
+        }
         if (!firstFrameLogged) {
             DebugLog::info("run: first frame presented");
             firstFrameLogged = true;

@@ -188,8 +188,13 @@ int main() {
         check(d.name == "Bio F.R.E.A.K.S", "a cartridge file loses only its extension");
 
         const Game e = Library::makeGame(disc, "/games/PSX/Wipeout");
-        check(e.boxart == "/games/PSX/media/Wipeout.png", "box art follows the display name");
-        check(e.background == "/games/PSX/media/Wipeout-BG.png", "so does the background");
+        // Artwork is not probed on disk here any more: the image worker walks this ordered list.
+        check(e.boxartCandidates.size() == 2 && e.boxartCandidates[0] == "/games/PSX/media/Wipeout.jpg" &&
+                  e.boxartCandidates[1] == "/games/PSX/media/Wipeout.png",
+              "box art candidates follow the display name, .jpg before .png");
+        check(e.background == "/games/PSX/media/Wipeout-BG.jpg" &&
+                  e.backgroundCandidates.back() == "/games/PSX/media/Wipeout-BG.png",
+              "so do the background candidates");
     }
 
     // --- artwork the scraper actually wrote is found, not just the PNG default -----------
@@ -207,13 +212,13 @@ int main() {
 
         const Game withJpeg = Library::makeGame(disc, dir + "-vol-a/games/PSX/Wipeout");
         check(withJpeg.boxart == media + "/Wipeout.jpg",
-              "a scraped .jpg cover is found ahead of the unwritten .png default");
+              "a scraped .jpg cover is the first candidate, ahead of the .png");
 
         // A cover placed by Console Mode, or by hand, is still a plain .png with nothing
-        // beside it — that has to keep working exactly as before.
+        // beside it — it stays in the candidate list, right behind the .jpg.
         const Game pngOnly = Library::makeGame(disc, dir + "-vol-a/games/PSX/Tekken 3");
-        check(pngOnly.boxart == media + "/Tekken 3.png",
-              "a system with no .jpg falls back to .png as before");
+        check(pngOnly.boxartCandidates.back() == media + "/Tekken 3.png",
+              "a plain .png cover stays a candidate after the .jpg");
     }
 
     // --- a drive that comes back at a different mount point -----------------------------
