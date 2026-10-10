@@ -7,19 +7,33 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.5.0] - 2026-10-10
 
-Install and update flow: the GUI can now update itself from Settings.
+Completes the install and update flow introduced in 0.4.6.
 
 ### Added
 
-- **0.5.0 update path** — a stable loader selects a versioned GUI library; Settings can check,
-  confirm, download and install a verified release in the background. The SSH installer shares
-  the release format and keeps rollback bundles. A separate dev deploy can restore its saved
-  release.
 - **Update completion choices** — after a verified install, Settings shows a success dialog:
   A restarts MiSTer, B continues without restarting, and X removes an active version pin
   before restarting. The dialog names the version each restart choice will load.
 - **Remove pinned version** — the Updates settings include a persistent action while a
   version pin exists. It selects the newest installed library and offers a restart.
+
+### Fixed
+
+- **Wi-Fi startup checks** — network failures during the automatic GitHub check retry quietly
+  for up to 60 seconds, then show an error with a manual retry. The update worker starts only
+  after its state is initialized, which fixes the check staying at "Waiting for Internet"
+  in 0.4.6.
+
+## [0.4.6] - 2026-10-10
+
+This release exercises the new installer and versioned GUI package ahead of 0.5.0.
+
+### Added
+
+- **Versioned GUI update path** — a stable loader selects a versioned GUI library; Settings can check,
+  confirm, download and install a verified release in the background. The SSH installer shares
+  the release format and keeps rollback bundles. A separate dev deploy can restore its saved
+  release. The 0.4.6-to-0.5.0 update will be validated on MiSTer hardware.
 
 ### Changed
 
@@ -38,9 +52,8 @@ Install and update flow: the GUI can now update itself from Settings.
   its link target and all active files have been checked against the saved hashes.
 - **Wi-Fi startup checks** — the automatic GitHub check waits for a network address, DNS and a
   successful HTTPS response before showing "Checking GitHub"; network failures retry quietly
-  for up to 60 seconds, then show an error with a manual retry. The update worker starts only
-  after its state is initialized. A published release older than the selected GUI reports no
-  newer version instead of an asset error.
+  until the connection returns or the check is switched off. A published release older than the
+  selected GUI reports no newer version instead of an asset error.
 - **Library updates** — routine updates publish only a verified versioned `.so`. The loader
   selects the newest installed version unless an optional symlink pins another one; Settings
   shows the running and selected versions. With a pin, update checks compare against its
