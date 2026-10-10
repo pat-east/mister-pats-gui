@@ -224,6 +224,7 @@ void SystemsScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
             content.sublabel = system->launchable() ? std::string() : std::string("no core");
             content.coverArt = true;
             content.keepImageOpaque = true;
+            content.blackArtBackground = true;
 
             const Rect frame = grid_.cellFrame(i, scrollRow_);
             const std::string icon = context_.icons.pathFor(system->name);

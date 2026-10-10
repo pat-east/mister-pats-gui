@@ -65,6 +65,10 @@ Font::~Font() {
     if (library_) FT_Done_FreeType(asLibrary(library_));
 }
 
+int Font::renderSize(int size) const {
+    return std::max(1, int((long(size) * scalePercent_ + 50) / 100));
+}
+
 bool Font::load(const std::vector<std::string> &candidates) {
     FT_Library lib = nullptr;
     if (FT_Init_FreeType(&lib) != 0) return false;
@@ -89,8 +93,9 @@ int Font::ascender(int size) {
     if (it != ascenders_.end()) return it->second;
 
     FT_Face face = asFace(face_);
-    FT_Set_Pixel_Sizes(face, 0, FT_UInt(size));
-    activeSize_ = size;
+    const int actualSize = renderSize(size);
+    FT_Set_Pixel_Sizes(face, 0, FT_UInt(actualSize));
+    activeSize_ = actualSize;
 
     const int value = int(face->size->metrics.ascender >> 6);
     ascenders_[size] = value;
@@ -113,9 +118,10 @@ const Font::Glyph *Font::glyphFor(unsigned int codepoint, int size) {
     if (!face_) return nullptr;
 
     FT_Face face = asFace(face_);
-    if (activeSize_ != size) {
-        FT_Set_Pixel_Sizes(face, 0, FT_UInt(size));
-        activeSize_ = size;
+    const int actualSize = renderSize(size);
+    if (activeSize_ != actualSize) {
+        FT_Set_Pixel_Sizes(face, 0, FT_UInt(actualSize));
+        activeSize_ = actualSize;
     }
 
     if (FT_Load_Char(face, codepoint, FT_LOAD_RENDER) != 0) return nullptr;
@@ -177,12 +183,13 @@ void Font::draw(Canvas &canvas, int x, int y, const std::string &text, int size,
     }
 
     const int baseline = y + ascender(size);
-    canvas.markDamage({x, y, measure(text, size), lineHeight(size) + size / 4});
+    const int actualSize = renderSize(size);
+    canvas.markDamage({x, y, measure(text, size), lineHeight(size) + actualSize / 4});
     int pen = x;
 
     for (unsigned int cp : codepoints) {
         const Glyph *g = glyphFor(cp, size);
-        if (!g) { pen += size / 2; continue; }
+        if (!g) { pen += actualSize / 2; continue; }
 
         for (int gy = 0; gy < g->height; ++gy) {
             for (int gx = 0; gx < g->width; ++gx) {

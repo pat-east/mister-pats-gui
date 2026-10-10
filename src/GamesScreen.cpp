@@ -8,16 +8,9 @@
 #include "Alphabet.h"
 #include "Canvas.h"
 #include "DebugLog.h"
-#include "Input.h"   // nowMs
 #include "Tile.h"
 
 namespace {
-
-// How long a single frame may spend resolving artwork for newly-visible entries. Scrolling
-// normally only reveals a handful of new tiles a frame and finishes well inside this; it
-// exists for the rare jump that reveals a whole screenful at once — a letter jump across a
-// library that has never scrolled there before — so that does not become a stall either.
-constexpr int kResolveBudgetMs = 8;
 
 struct ViewSpec {
     int targetTileWidth;   // design pixels
@@ -298,9 +291,8 @@ void GamesScreen::renderDetail(Canvas &canvas, const Rect &area, const Entry &en
 
     // Background artwork, heavily dimmed so the foreground stays readable.
     if (context_.preferences.showBoxArt()) {
-        if (ImagePtr background = context_.images.get(entry.game.background,
-                                                       entry.game.backgroundFallback,
-                                                       area.w, area.h)) {
+        if (ImagePtr background = context_.images.requestAsyncCandidates(
+                entry.game.backgroundCandidates, area.w, area.h, true)) {
             // Cover the panel instead of fitting into it: scale up until both sides are filled
             // and let the clip crop the overhang, so no bars appear beside the artwork.
             const long scaleW = long(area.w) * background->height();
@@ -328,8 +320,8 @@ void GamesScreen::renderDetail(Canvas &canvas, const Rect &area, const Entry &en
 
     ImagePtr art;
     if (context_.preferences.showBoxArt())
-        art = context_.images.requestAsync(entry.game.boxart, entry.game.boxartFallback,
-                                  artArea.w, artArea.h, true);
+        art = context_.images.requestAsyncCandidates(entry.game.boxartCandidates,
+                                                     artArea.w, artArea.h, true);
     if (art) {
         const Rect target = artArea.fitAspect(art->width(), art->height());
         canvas.dropShadow(target, theme.px(6), theme.px(18), theme.shadow.withAlpha(170));
@@ -434,15 +426,11 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area, bool fullRedraw) 
 
     canvas.pushClip(area);
 
-    // Resolve artwork paths for whatever is newly visible, within a small per-frame budget.
-    // Once resolved an entry stays that way (for this view's size) until it changes, so a
-    // normal scroll only ever touches a handful of never-seen entries; the budget exists for
-    // the rare jump that reveals a whole screenful never visited before — a letter jump deep
-    // into a library that was never scrolled there.
+    // Build candidates for newly visible entries with string operations only. The worker does
+    // the existence checks and file loads so they cannot stall scrolling.
     const ArtworkVariant variant = artworkVariantFor(view_);
-    const int64_t resolveDeadline = nowMs() + kResolveBudgetMs;
     if (context_.preferences.showBoxArt()) {
-        for (int i = first; i < last && nowMs() < resolveDeadline; ++i)
+        for (int i = first; i < last; ++i)
             ensureArtwork(entries_[size_t(i)], variant);
     }
 
@@ -454,8 +442,8 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area, bool fullRedraw) 
     // wait on whichever neighbour happened to be drawn before it.
     if (context_.preferences.showBoxArt() && cursor_ >= first && cursor_ < last) {
         const Entry &focused = entries_[size_t(cursor_)];
-        context_.images.requestAsync(focused.game.boxart, focused.game.boxartFallback,
-                            grid_.tileWidth(), grid_.tileHeight(), true);
+        context_.images.requestAsyncCandidates(focused.game.boxartCandidates,
+                                               grid_.tileWidth(), grid_.tileHeight(), true);
     }
 
     // Keep the current image per visible tile. A cache-wide generation counter makes one
@@ -465,9 +453,8 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area, bool fullRedraw) 
     if (context_.preferences.showBoxArt()) {
         for (int i = first; i < last; ++i) {
             const Entry &entry = entries_[size_t(i)];
-            visibleArtwork[size_t(i - first)] = context_.images.requestAsync(
-                entry.game.boxart, entry.game.boxartFallback, grid_.tileWidth(),
-                grid_.tileHeight(), i == cursor_);
+            visibleArtwork[size_t(i - first)] = context_.images.requestAsyncCandidates(
+                entry.game.boxartCandidates, grid_.tileWidth(), grid_.tileHeight(), i == cursor_);
         }
     }
 

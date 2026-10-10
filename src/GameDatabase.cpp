@@ -9,6 +9,7 @@
 #include <unistd.h>
 
 #include "DebugLog.h"
+#include "Version.h"
 
 namespace {
 
@@ -21,7 +22,7 @@ const char *kRootsFile = "roots.tsv";
 // path at scan time, which a drive moving to a different mount point then left stale even
 // though every actual game path re-resolved correctly around it. 4 adds Arcade as a system
 // with no core, plus its group catalogues and per-group game lists (see writeGroupList).
-const char *kHeader = "#mister-pat gamesdb 4";
+const char *kHeader = kGamesDbHeader;
 
 // In the order MiSTer itself would use them. It creates usb0 through usb7 as empty
 // directories whether or not anything is mounted there, which is exactly why a root is

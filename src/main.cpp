@@ -156,6 +156,8 @@ void onTerminate() {
                 writeLiteral(fd, "non-std-exception");
             }
         }
+        writeLiteral(fd, " pid=");
+        writeDecimal(fd, int(getpid()));
         writeLiteral(fd, " auto_relaunch=paused");
         writeLiteral(fd, "\n");
         close(fd);
@@ -172,9 +174,24 @@ void installFatalSignalLogging() {
     for (int signalNumber : signals) sigaction(signalNumber, &action, nullptr);
 }
 
+void recordModuleMap() {
+    FILE *input = std::fopen("/proc/self/maps", "r");
+    if (!input) return;
+    FILE *output = std::fopen("/media/fat/mister-pat/logs/module-map.log", "w");
+    if (!output) { std::fclose(input); return; }
+    std::fprintf(output, "pid=%ld\n", long(getpid()));
+    char line[1024];
+    while (std::fgets(line, sizeof(line), input)) {
+        if (std::strstr(line, "/media/fat/mister-pat/") != nullptr)
+            std::fputs(line, output);
+    }
+    std::fclose(output);
+    std::fclose(input);
+}
+
 void onSignal(int signalNumber) {
     g_stopSignal = signalNumber;
-    if (g_app) g_app->stop();
+    if (g_app) g_app->requestStopFromSignal();
 }
 
 void onScreenshot(int) {
@@ -275,7 +292,7 @@ int runScanOnly() {
     return 0;
 }
 
-int main(int argc, char **argv) {
+static int runGui(int argc, char **argv) {
     if (argc >= 2 && std::strcmp(argv[1], "--crash-screen") == 0) {
         const int exitStatus = argc >= 3 ? std::atoi(argv[2]) : 1;
         return CrashScreen::show(exitStatus);
@@ -283,6 +300,7 @@ int main(int argc, char **argv) {
 
     std::set_terminate(onTerminate);
     installFatalSignalLogging();
+    recordModuleMap();
 
     App::Options options;
     options.splashMs = 1000;   // first quarter of the splash is the drive settle wait
@@ -309,4 +327,16 @@ int main(int argc, char **argv) {
     if (g_stopSignal == SIGINT) DebugLog::warn("run: stopped by SIGINT");
     else if (g_stopSignal == SIGTERM) DebugLog::warn("run: stopped by SIGTERM");
     return result;
+}
+
+extern "C" __attribute__((visibility("default")))
+int mister_gui_main_v1(int argc, char **argv) noexcept {
+    try {
+        return runGui(argc, argv);
+    } catch (const std::exception &error) {
+        std::fprintf(stderr, "mister-gui: %s\n", error.what());
+    } catch (...) {
+        std::fprintf(stderr, "mister-gui: unhandled exception\n");
+    }
+    return 1;
 }

@@ -20,6 +20,8 @@ struct Game {
     // look, and are empty when the game sits directly in the system directory.
     std::string boxartFallback;
     std::string backgroundFallback;
+    std::vector<std::string> boxartCandidates;
+    std::vector<std::string> backgroundCandidates;
 
     bool isArchive() const;
 };
@@ -60,11 +62,9 @@ public:
     const std::vector<GameSystem> &systems() const { return systems_; }
     std::vector<Game> gamesOf(const GameSystem &system) const;
 
-    // Just the paths, without the per-game artwork resolution `gamesOf`/`makeGame` do — that
-    // is the expensive part (up to four `stat()` calls each), and a screen that wants to
-    // spread it across frames needs the cheap list first. Already sorted by display name when
-    // it comes from our own database (one file, written that way); not sorted otherwise, since
-    // sorting needs each name and getting that is exactly the part being deferred.
+    // Just the paths. Already sorted by display name when it comes from our own database (one
+    // file, written that way); not sorted otherwise, since sorting needs each name and getting
+    // that is exactly the part being deferred.
     std::vector<std::string> pathsOf(const GameSystem &system) const;
 
     // True for the case above: the caller can append entries in this order as it resolves
@@ -89,16 +89,13 @@ public:
     // Resolves the owning system from a ROM path, for entries that only store one.
     const GameSystem *systemForPath(const std::string &path) const;
 
-    // Rebuilds a game entry from a stored path, e.g. when restoring favourites. Includes a
-    // full artwork resolution — for a handful of entries built eagerly this is fine, but
-    // building thousands of these up front is exactly what makeStub()/resolveArtwork() below
-    // exist to avoid.
+    // Rebuilds a game entry from a stored path, e.g. when restoring favourites. Artwork
+    // candidate paths are composed without touching the drive.
     static Game makeGame(const GameSystem &system, const std::string &path,
                          ArtworkVariant variant = ArtworkVariant::Full);
 
     // Just the path and display name — no I/O, safe to call for every candidate in a library
-    // at once. What a screen showing thousands of entries should build immediately; artwork
-    // is resolved later, only for what actually gets drawn.
+    // at once. Artwork candidates are added later for what actually gets drawn.
     static Game makeStub(const GameSystem &system, const std::string &path);
 
     // Just the display name makeGame() would give a path, without any of the I/O that also
@@ -109,8 +106,8 @@ public:
     // Filters known boot media and utilities from both newly built and older databases.
     static bool isSystemFile(const GameSystem &system, const std::string &path);
 
-    // Fills in a stub's artwork fields for a specific view. Uses its pre-sized BMP when
-    // present, then falls back to the existing small or full JPEG/PNG artwork.
+    // Builds an ordered list of artwork paths for a specific view without filesystem I/O.
+    // The image worker tries these candidates in order so path checks never stall navigation.
     static void resolveArtwork(const GameSystem &system, Game &game, ArtworkVariant variant);
 
     static constexpr const char *kDefaultSectionDir =

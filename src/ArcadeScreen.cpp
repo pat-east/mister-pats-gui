@@ -276,8 +276,8 @@ void ArcadeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool is
         }
         if (isActive && row.cursor >= row.scroll && row.cursor < last) {
             const Game &focused = row.items[size_t(row.cursor)].game;
-            context_.images.requestAsync(focused.boxart, focused.boxartFallback, m.tileWidth,
-                                m.tileHeight, true);
+            context_.images.requestAsyncCandidates(focused.boxartCandidates, m.tileWidth,
+                                                   m.tileHeight, true);
         }
     }
 
@@ -296,8 +296,8 @@ void ArcadeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool is
                 content.coverArt = true;
                 content.favorite = context_.favorites.contains(item.game.path);
                 if (context_.preferences.showBoxArt())
-                    content.image = context_.images.requestAsync(item.game.boxart, item.game.boxartFallback,
-                                                        m.tileWidth, m.tileHeight);
+                    content.image = context_.images.requestAsyncCandidates(
+                        item.game.boxartCandidates, m.tileWidth, m.tileHeight);
                 Tile::draw(canvas, theme, frame, content, row.focus[size_t(i)]);
             } else {
                 // Manufacturers and categories are navigation entries, not games. Keep them

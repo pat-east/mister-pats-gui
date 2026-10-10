@@ -5,7 +5,48 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.6] - 2026-10-10
+
+This release exercises the new installer and versioned GUI package ahead of 0.5.0.
+
+### Added
+
+- **Versioned GUI update path** — a stable loader selects a versioned GUI library; Settings can check,
+  confirm, download and install a verified release in the background. The SSH installer shares
+  the release format and keeps rollback bundles. A separate dev deploy can restore its saved
+  release. The 0.4.6-to-0.5.0 update will be validated on MiSTer hardware.
+
+### Changed
+
+- **Interface typeface** — replaced Akrobat with Space Grotesk. The install/update script
+  downloads the font files and their SIL Open Font License; the existing font fallbacks remain.
+- **Grid box-art scrolling** — artwork file checks and loading run on the image worker instead
+  of the render path, keeping navigation responsive as new tiles enter view.
+- **Systems tile backgrounds** — image-backed tiles use black behind their BMP icons for a
+  more consistent edge and background color.
+
+### Fixed
+
+- **Verified HTTPS on MiSTer** — the SSH installer passes the available CA bundle explicitly
+  to `curl`, matching the GUI downloader.
+- **Repeated dev deploys** — a release backup left by `--restore-release` can be reused after
+  its link target and all active files have been checked against the saved hashes.
+- **Wi-Fi startup checks** — the automatic GitHub check waits for a network address, DNS and a
+  successful HTTPS response before showing "Checking GitHub"; network failures retry quietly
+  until the connection returns or the check is switched off. A published release older than the
+  selected GUI reports no newer version instead of an asset error.
+- **Library updates** — routine updates publish only a verified versioned `.so`. The loader
+  selects the newest installed version unless an optional symlink pins another one; Settings
+  shows the running and selected versions. With a pin, update checks compare against its
+  selected version even when a higher library remains installed.
+
+## Planned — 0.7.0
+
+- **Usability improvements**, especially the Arcade tab's entry points and individual game
+  items.
+- **Group language and revision variants of one game.** Show a single entry for a title with
+  regional or revision variants, while preserving each ROM and letting the player choose which
+  version to launch.
 
 ## [0.4.0] - 2026-10-09
 
@@ -91,7 +132,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Favorites** — adding or removing a favorite now requires holding X for two seconds, with a
   progress indicator and cancellation if the selection changes.
 - **Font fallback sizing** — the built-in bitmap typeface uses smaller, proportional sizing;
-  game labels and details adapt when Akrobat is unavailable.
+  game labels and details adapt when the external TrueType fonts are unavailable.
 - **Status-bar spacing** — separates the date from the clock and the IP address from the
   network label.
 - **Console output** — removes routine startup and shutdown messages while retaining the
@@ -105,8 +146,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Verified
 
-- **Font fallback on MiSTer** — tested with both Akrobat files absent; the interface remains
-  usable with the built-in typeface. Akrobat was restored after the test.
+- **Font fallback on MiSTer** — tested with external font files absent; the interface remains
+  usable with the built-in typeface. The installed font files were restored after the test.
 - **Updated box art scraper on MiSTer** — a scrape was completed; see [BOXART.md](docs/BOXART.md)
   for the available audit data and its limits.
 
@@ -456,10 +497,9 @@ source alone — see CONTROLLER.md for the full trace on each:
 
 ### Changed
 
-- Console Mode is no longer required for anything. The typeface (Akrobat) is now a one-time
-  manual download straight from Fontfabric — see `docs/INSTALL.md` — since its licence does not
-  allow redistributing the font file itself; the built-in fallback typeface is used until you
-  do.
+- Console Mode is no longer required for anything. The typeface was a one-time manual download
+  under its original license restrictions; see the installation instructions. The built-in
+  fallback typeface is used until the external font files are installed.
 - Removed a font fallback path that pointed at a desktop-Linux location never actually present
   on the MiSTer. The one guaranteed fallback is now clearly the built-in bitmap typeface,
   which needs no file at all.

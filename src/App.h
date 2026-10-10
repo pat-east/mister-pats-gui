@@ -28,7 +28,7 @@
 #include "SystemIconDownload.h"
 #include "SystemsScreen.h"
 #include "TopBar.h"
-#include "UpdateCheck.h"
+#include "UpdateService.h"
 
 // Owns the services, the screens and the frame loop.
 class App {
@@ -66,6 +66,7 @@ public:
     bool initialize(const Options &options);
     int run();
     void stop() { running_ = false; }
+    void requestStopFromSignal() { signalStopRequested_ = 1; }
 
     // Asks for the next finished frame to be written out. Called from a signal
     // handler, so it only sets a flag; the work happens in the frame loop.
@@ -157,8 +158,10 @@ private:
 
     LibraryScan scan_;
     MediaScraper scraper_;
-    UpdateCheck updateCheck_;
-    float updateCheckDelay_ = 8.0f;   // real seconds of uptime before the one-shot check fires
+    UpdateService updateService_;
+    UpdateSnapshot updateSnapshot_;
+    float updateCheckDelay_ = 8.0f;
+    bool autoCheckDecisionMade_ = false;
     bool scanActive_ = false;     // the database wizard owns the screen
     bool visibilityActive_ = false; // the show/hide list owns the screen
     bool controllersActive_ = false; // Settings -> Controllers owns the screen
@@ -169,6 +172,7 @@ private:
 
     Options options_;
     bool running_ = false;
+    volatile sig_atomic_t signalStopRequested_ = 0;
     volatile sig_atomic_t screenshotRequested_ = 0;
 
     std::vector<std::string> script_;   // Options::script, split; consumed from the front

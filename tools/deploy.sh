@@ -1,79 +1,60 @@
 #!/bin/sh
-# Replaces the GUI and patched MiSTer binaries on the device.
-#
-# The patched main binary can restart the GUI after it exits. Stop its launcher and wait for
-# both processes to disappear before replacing either executable.
-set -e
-
-DEVICE=${DEVICE:-root@192.168.64.191}
-REMOTE=${REMOTE:-/media/fat/mister-pat}
-HERE=$(cd "$(dirname "$0")/.." && pwd)
-BINARY=${1:-$HERE/build/mister-gui}
-MISTER_BINARY=${MISTER_BINARY:-$HERE/third_party/Main_MiSTer/bin/MiSTer}
-SSH_OPTS=${SSH_OPTS:--o BatchMode=yes}
-
-[ -f "$BINARY" ] || { echo "not found: $BINARY"; exit 1; }
-[ -f "$MISTER_BINARY" ] || {
-    echo "not found: $MISTER_BINARY" >&2
-    echo "Build the patched Main_MiSTer binary first (see docs/INSTALL.md)." >&2
-    exit 1
-}
-
-echo "stopping the GUI and waiting for it to exit"
-ssh $SSH_OPTS "$DEVICE" /bin/sh <<'REMOTE_SH'
+# Upload a development build, or restore the previously backed-up release.
 set -eu
-
-# The marker keeps MiSTer_gui from launching another GUI during the handoff. A reboot clears it.
-: > /tmp/mister-pat-suspend-gui
-
-# /tmp/script is the shell that starts the GUI and displays the crash screen after a nonzero
-# exit. Stop it before stopping the GUI, or it can create a new process during our wait.
-launcher_pids=$(ps -o pid,comm,args | awk '$2 == "script" && $0 ~ /\/tmp\/script/ { print $1 }')
-for pid in $launcher_pids; do kill -KILL "$pid" 2>/dev/null || true; done
-
-killall -TERM mister-gui 2>/dev/null || true
-killall -TERM MiSTer_gui 2>/dev/null || true
-
-running() {
-    ps -o comm | awk '$1 == "mister-gui" || $1 == "MiSTer_gui" { found = 1 }
-                       END { exit !found }'
+MODE=${1:-deploy}
+stage=none
+case "$MODE" in deploy|--restore-release) :;; *) echo "unknown option: $MODE" >&2; exit 2;; esac
+[ "$#" -le 1 ] || { echo 'too many arguments' >&2; exit 2; }
+HERE=$(cd "$(dirname "$0")/.." && pwd)
+DEVICE=${DEVICE:-root@192.168.64.163}
+REMOTE=${REMOTE:-/media/fat/mister-pat}
+case "$REMOTE" in /media/fat/*) :;; *) echo 'REMOTE must be under /media/fat' >&2; exit 2;; esac
+case "$REMOTE" in *[!A-Za-z0-9_./-]*) echo 'unsafe REMOTE' >&2; exit 2;; esac
+SSH_OPTS=${SSH_OPTS:--o BatchMode=yes}
+cleanup_upload() {
+    [ "$stage" = none ] || ssh $SSH_OPTS "$DEVICE" "rm -rf '$stage'" 2>/dev/null || :
 }
-
-i=0
-while running && [ "$i" -lt 20 ]; do
-    sleep 1
-    i=$((i + 1))
-done
-
-if running; then
-    # A download or decoder can delay a graceful exit. The launcher is already stopped, so
-    # a forced exit here cannot start the crash screen.
-    killall -KILL mister-gui 2>/dev/null || true
-    killall -KILL MiSTer_gui 2>/dev/null || true
-    sleep 1
+trap cleanup_upload EXIT
+VERSION=$(sed -n 's/^VERSION[[:space:]]*:=[[:space:]]*//p' "$HERE/release.mk")
+printf '%s\n' "$VERSION" | awk -F. 'NF!=3 {exit 1} {for(i=1;i<=3;i++) if($i !~ /^(0|[1-9][0-9]*)$/ || $i+0>65535) exit 1}' || { echo 'invalid release.mk version' >&2; exit 1; }
+LIB="mister-pats-gui-$VERSION.so"
+LOADER="$HERE/build/dev/mister-gui"
+GUI="$HERE/build/dev/$LIB"
+MAIN="$HERE/third_party/Main_MiSTer/bin/MiSTer"
+elf() { [ "$(od -An -tx1 -N4 "$1" | tr -d ' \n')" = 7f454c46 ]; }
+if [ "$MODE" = deploy ]; then
+    for file in "$LOADER" "$GUI" "$MAIN"; do [ -s "$file" ] && elf "$file" || { echo "invalid ELF: $file" >&2; exit 1; }; done
+    ${CROSS:-arm-unknown-linux-gnueabihf}-nm -D "$GUI" | grep -Eq '[[:space:]]mister_gui_main_v1$' || { echo 'missing GUI entry point' >&2; exit 1; }
+    strings "$GUI" | grep -Fq "$VERSION-dev" || { echo 'GUI is not a development build' >&2; exit 1; }
+    strings "$MAIN" | grep -Fq '/media/fat/mister-pat/logs/loader.log' || { echo 'main binary lacks loader error handling' >&2; exit 1; }
+    h_loader=$(sha256sum "$LOADER" | awk '{print $1}')
+    h_gui=$(sha256sum "$GUI" | awk '{print $1}')
+    h_main=$(sha256sum "$MAIN" | awk '{print $1}')
+    stage=$(ssh $SSH_OPTS "$DEVICE" "umask 077; mkdir -p '$REMOTE/.deploy-staging'; mktemp -d '$REMOTE/.deploy-staging/run-XXXXXX'") || exit 1
+    case "$stage" in "$REMOTE"/.deploy-staging/run-*) :;; *) echo 'unsafe remote stage' >&2; exit 1;; esac
+    case "$stage" in *[!A-Za-z0-9_./-]*) echo 'unsafe remote stage characters' >&2; exit 1;; esac
+    scp $SSH_OPTS -q "$LOADER" "$DEVICE:$stage/mister-gui"
+    scp $SSH_OPTS -q "$GUI" "$DEVICE:$stage/library.so"
+    scp $SSH_OPTS -q "$MAIN" "$DEVICE:$stage/MiSTer_gui"
+else
+    stage=none; h_loader=none; h_gui=none; h_main=none
 fi
-
-if running; then
-    echo "GUI or MiSTer_gui is still running" >&2
+if ! ssh $SSH_OPTS "$DEVICE" /bin/sh -s -- "$MODE" "$REMOTE" "$stage" "$VERSION" "$h_loader" "$h_gui" "$h_main" < "$HERE/tools/deploy-remote.sh"; then
+    echo "remote deploy failed; inspect $REMOTE/.development-build and .dev-backup" >&2
     exit 1
 fi
-REMOTE_SH
-
-# Stage complete files beside their destinations before replacing either binary.
-scp $SSH_OPTS -q "$BINARY" "$DEVICE:$REMOTE/mister-gui.deploy"
-scp $SSH_OPTS -q "$MISTER_BINARY" "$DEVICE:$REMOTE/MiSTer_gui.deploy"
-ssh $SSH_OPTS "$DEVICE" "chmod +x '$REMOTE/mister-gui.deploy' '$REMOTE/MiSTer_gui.deploy' && mv -f '$REMOTE/mister-gui.deploy' '$REMOTE/mister-gui' && mv -f '$REMOTE/MiSTer_gui.deploy' '$REMOTE/MiSTer_gui'"
-echo "copied"
-
-# Without the main binary there is nothing to bring the GUI back, so restart the machine.
-echo "rebooting the device"
-ssh $SSH_OPTS "$DEVICE" reboot 2>/dev/null || true
-
+stage=none
+# Commit is complete. A reconnect failure does not make the copied files invalid.
+echo 'Remote files committed; rebooting MiSTer.'
+old_boot=$(ssh $SSH_OPTS "$DEVICE" 'cat /proc/sys/kernel/random/boot_id') || {
+    echo 'files committed, but cannot read the current boot ID' >&2; exit 1;
+}
+ssh $SSH_OPTS "$DEVICE" reboot 2>/dev/null || :
 n=0
-until ssh $SSH_OPTS -o ConnectTimeout=5 "$DEVICE" 'exit 0' 2>/dev/null; do
-    n=$((n + 1))
-    [ $n -gt 40 ] && { echo "device did not come back"; exit 1; }
+until new_boot=$(ssh $SSH_OPTS -o ConnectTimeout=5 "$DEVICE" 'cat /proc/sys/kernel/random/boot_id' 2>/dev/null) &&
+      [ -n "$new_boot" ] && [ "$new_boot" != "$old_boot" ]; do
+    n=$((n+1))
+    [ "$n" -lt 40 ] || { echo 'files committed, but MiSTer did not reconnect' >&2; exit 1; }
     sleep 5
 done
-
-echo "device is back"
+echo 'MiSTer is back.'

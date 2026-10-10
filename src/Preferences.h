@@ -31,7 +31,7 @@ public:
 
     // Off by default — the only network access in this project that is not something the
     // user just asked for in the moment (the box art scraper is a button; this would run on
-    // its own), so it opts in rather than out. See UpdateCheck.
+    // its own), so it opts in rather than out. See UpdateService.
     bool checkForUpdates() const { return checkForUpdates_; }
     void setCheckForUpdates(bool check);
 

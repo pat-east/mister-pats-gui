@@ -1,4 +1,4 @@
 #pragma once
 
-// Bumped by hand, one line, nothing fancier — see CHANGELOG.md for what changed.
-constexpr const char *kAppVersion = "0.4.0";
+// Generated from release.mk for the selected release or development build.
+#include "ReleaseConfig.h"

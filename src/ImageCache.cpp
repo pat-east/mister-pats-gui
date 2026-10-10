@@ -192,12 +192,25 @@ ImagePtr ImageCache::get(const std::string &path, const std::string &fallback, i
 
 ImagePtr ImageCache::requestAsync(const std::string &path, const std::string &fallback,
                                   int width, int height, bool priority) {
+    std::vector<std::string> candidates;
+    if (!path.empty()) candidates.push_back(path);
+    if (!fallback.empty() && fallback != path) candidates.push_back(fallback);
+    return requestAsyncCandidates(candidates, width, height, priority);
+}
+
+ImagePtr ImageCache::requestAsyncCandidates(const std::vector<std::string> &candidates,
+                                           int width, int height, bool priority) {
     try {
-    if (path.empty() || width <= 0 || height <= 0) return nullptr;
-    const std::string key = isBmp(path)
-                                ? path + "@native"
-                                : path + "@" + std::to_string(width) + "x" +
-                                      std::to_string(height);
+    if (candidates.empty() || width <= 0 || height <= 0) return nullptr;
+    std::string key;
+    for (const std::string &candidate : candidates) {
+        key += std::to_string(candidate.size());
+        key += ':';
+        key += candidate;
+        key += '\x1e';
+    }
+    if (isBmp(candidates.front())) key += "@native";
+    else key += "@" + std::to_string(width) + "x" + std::to_string(height);
     auto it = entries_.find(key);
     ImagePtr cachedFallback;
     if (it != entries_.end()) {
@@ -218,7 +231,10 @@ ImagePtr ImageCache::requestAsync(const std::string &path, const std::string &fa
     // worker, preserve the old loading path rather than leaving covers permanently blank.
     if (workerUnavailable_ || workerFailed_.load() || !semaphoreReady_) {
         workerUnavailable_ = true;
-        return get(path, fallback, width, height);
+        for (const std::string &candidate : candidates) {
+            if (ImagePtr image = get(candidate, width, height, !isBmp(candidate))) return image;
+        }
+        return nullptr;
     }
     if (!workerStarted_) {
         try {
@@ -234,11 +250,14 @@ ImagePtr ImageCache::requestAsync(const std::string &path, const std::string &fa
             workerStarted_ = true;
         } catch (...) {
             workerUnavailable_ = true;
-            return get(path, fallback, width, height);
+            for (const std::string &candidate : candidates) {
+                if (ImagePtr image = get(candidate, width, height, !isBmp(candidate))) return image;
+            }
+            return nullptr;
         }
     }
 
-    Work work{key, path, fallback, width, height};
+    Work work{key, candidates, width, height};
     {
         std::lock_guard<std::mutex> lock(workMutex_);
         if (pending_.insert(key).second) {
@@ -318,9 +337,10 @@ void ImageCache::workerLoop() {
         ImagePtr image;
         bool primaryLoaded = false;
         try {
-            image = loadAndFit(work.path);
-            primaryLoaded = bool(image);
-            if (!image) image = loadAndFit(work.fallback);
+            for (size_t i = 0; i < work.candidates.size() && !image; ++i) {
+                image = loadAndFit(work.candidates[i]);
+                if (i == 0) primaryLoaded = bool(image);
+            }
         } catch (...) {
             // Allocation and decoder exceptions must not escape a std::thread entry point:
             // an uncaught exception there calls std::terminate and exits the whole GUI.
