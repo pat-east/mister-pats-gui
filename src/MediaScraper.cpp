@@ -123,7 +123,7 @@ void MediaScraper::start(const GameDatabase &database, const Options &options,
     }
 
     if (systems_.empty()) {
-        error_ = "none of these systems have artwork on the thumbnail server";
+        error_ = "No matching covers were found in the online artwork library.";
         DebugLog::warn("scraper: " + error_);
         state_ = State::Failed;
         return;
@@ -149,7 +149,7 @@ void MediaScraper::startGame(const GameDatabase &database, const Options &option
 
 void MediaScraper::cancel() {
     if (running()) {
-        error_ = "cancelled";
+        error_ = "Cover search stopped. Covers already saved were kept.";
         state_ = State::Failed;
     }
 }
@@ -178,21 +178,21 @@ std::string MediaScraper::statusLine() const {
 
     switch (state_) {
     case State::Idle:
-        return "not started";
+        return "Waiting to prepare covers";
     case State::Preparing:
-        return "Fetching the index for " + currentSystem_ + " …";
+        return "Loading the cover list for " + currentSystem_ + "…";
     case State::Working:
-        std::snprintf(buffer, sizeof(buffer), "%zu / %zu  ·  %s  ·  %s", doneGames_,
+        std::snprintf(buffer, sizeof(buffer), "Game %zu of %zu  ·  %s  ·  %s", doneGames_,
                       totalGames_, currentSystem_.c_str(), currentTitle_.c_str());
         return buffer;
     case State::Done:
         std::snprintf(buffer, sizeof(buffer),
-                      "%zu fetched, %zu optimized for views, %zu already there, %zu not found",
+                      "Covers downloaded %zu  ·  Prepared %zu  ·  Already ready %zu  ·  Not found %zu",
                       fetched_, prepared_, skipped_, missing_);
         return buffer;
     case State::Failed:
     default:
-        return error_.empty() ? "failed" : error_;
+        return error_.empty() ? "Cover preparation failed" : "Could not prepare covers: " + error_;
     }
 }
 

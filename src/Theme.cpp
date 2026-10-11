@@ -54,6 +54,33 @@ bool Theme::spaceGroteskActive() const {
     return bold_.path() == kSpaceBold && regular_.path() == kSpaceMedium;
 }
 
+void Theme::setHighContrast(bool enabled) {
+    highContrast_ = enabled;
+    if (enabled) {
+        background = Color::rgb(0x000000);
+        backgroundLo = Color::rgb(0x000000);
+        surface = Color::rgb(0x111111);
+        surfaceHi = Color::rgb(0x292929);
+        accent = Color::rgb(0x78B7FF);
+        textPrimary = Color::rgb(0xFFFFFF);
+        textMuted = Color::rgb(0xD0D0D0);
+        warning = Color::rgb(0xFF9A8E);
+        favorite = Color::rgb(0x78B7FF);
+        focus = Color::rgb(0xFFE66D);
+    } else {
+        background = Color::rgb(0x0B0D14);
+        backgroundLo = Color::rgb(0x05070C);
+        surface = Color::rgb(0x161A26);
+        surfaceHi = Color::rgb(0x222839);
+        accent = Color::rgb(0x4C8DFF);
+        textPrimary = Color::rgb(0xFFFFFF);
+        textMuted = Color::rgb(0x9AA4C0);
+        warning = Color::rgb(0xE06A5A);
+        favorite = Color::rgb(0x4C8DFF);
+        focus = Color::rgb(0xB9D5FF);
+    }
+}
+
 void Theme::setSpaceGroteskEnabled(bool enabled) {
     spaceGroteskEnabled_ = enabled;
     loadFonts();

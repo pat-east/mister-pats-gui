@@ -1,16 +1,16 @@
 # GUI Design
 
 Design document: layout, behavior and rendering rules. Some sketches and proposals below
-record earlier design choices; the current 0.4.0 changes are summarized in
+record earlier design choices; current release changes are summarized in
 [CHANGELOG.md](../CHANGELOG.md), with measurements in [PERFORMANCE.md](PERFORMANCE.md).
 
 **Implementation status.** The basic framework is built and running; screenshots taken on the
 device are in `build/shots/`. Deviations from this design that came out of the implementation:
 
-- **Tabs:** Home · Favorites · Systems · Arcade · Games · Search · Settings (Arcade appears only when the library has Arcade games — see [ARCADE.md](ARCADE.md#implemented-the-arcade-tab)).
-- **Games** does not show the games of one system, but everything across all systems, in three
-  sections: Recently played, Favorites, All games. The game list of a *single* system is a
-  separate detail view, opened from the Systems tab.
+- **Tabs:** Home · Favorites · Consoles · Arcade · Games · Settings (the Arcade tab appears
+  only when the library has Arcade games — see [ARCADE.md](ARCADE.md#implemented-the-arcade-tab)).
+- **Home** contains Recently played and Favorites rows. **Games** is a flat, alphabetized list
+  across all systems. A single system's game list opens from Consoles.
 - **System logos** are solved: the set from
   [KyleBing/retro-game-console-icons](https://github.com/KyleBing/retro-game-console-icons)
   (GPL-3.0) lives in `assets/icons/`, and `Icons` does the mapping. Systems without an icon
@@ -155,7 +155,7 @@ Applies to every screen. Dimensions are for 1920×1080.
 │                                                                                      │
 │                                                                                      │
 ├──────────────────────────────────────────────────────────────────────────────────────┤
-│  (A) Select        (B) Back        (Y) Search        (Start) Menu                    │  ← 80 px
+│  (A) Select        (B) Back        (Up) Search        (Start) Menu                    │  ← 80 px
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -164,7 +164,7 @@ Applies to every screen. Dimensions are for 1920×1080.
 - **Top center:** the tabs. The active tab is white and bold with a 3 px underline in the
   accent color; inactive ones sit at 45 % opacity. In a modal submenu or error dialog, the
   underline turns gray to show that L1/R1 cannot switch tabs. When you switch tabs, the
-  underline glides to its new position (180 ms).
+  underline fades out, moves to the new tab, and fades back in (45 ms per fade).
 - **Top right:** connection type plus signal strength as bars, with the IP address below it in
   a small size. On a wired connection the bars are omitted. With no connection at all, a muted
   red "Offline" appears there instead.
@@ -174,7 +174,7 @@ Applies to every screen. Dimensions are for 1920×1080.
 
 ## 5. Screens
 
-### 5.1 Systems (the first PoC)
+### 5.1 Consoles (the first PoC)
 
 A grid of tiles, freely navigable in all four directions.
 
@@ -184,7 +184,7 @@ A grid of tiles, freely navigable in all four directions.
 │  Sunday, 21 September                                               192.168.64.163   │
 ├──────────────────────────────────────────────────────────────────────────────────────┤
 │                                                                                      │
-│   CONSOLES                                                              18 systems   │
+│   CONSOLES                                                              18 consoles  │
 │                                                                                      │
 │   ┌────────┐  ┌────────┐  ┏━━━━━━━━━━┓  ┌────────┐  ┌────────┐  ┌────────┐           │
 │   │        │  │        │  ┃          ┃  │        │  │        │  │        │           │
@@ -202,7 +202,7 @@ A grid of tiles, freely navigable in all four directions.
 │                                                                                      │
 │   ● ○ ○                                                                              │
 ├──────────────────────────────────────────────────────────────────────────────────────┤
-│  (A) Open        (Y) Search        (Start) Menu                                      │
+│  (A) Open        (Up) Search        (Start) Menu                                      │
 └──────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -233,24 +233,23 @@ Two columns: the list on the left, a large presentation of the focused game on t
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────┐
-│  14:32                       Systems   GAMES   Settings                 Wi-Fi ▪▪▪▪   │
+│  14:32                      Consoles   GAMES   Settings                 Wi-Fi ▪▪▪▪   │
 │  Sunday, 21 September                                               192.168.64.163   │
 ├──────────────────────────────────────────────────────────────────────────────────────┤
-│                                                     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │
-│  NINTENDO 64                 287 games              ░░░  -BG.png as background  ░░░  │
-│                                                     ░░░  softly darkened        ░░░  │
-│    1080 Snowboarding                                ░░░                         ░░░  │
-│    AeroFighters Assault                             ░░░      ┌─────────────┐    ░░░  │
-│  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓               ░░░      │             │    ░░░  │
-│  ┃  Banjo-Kazooie                   ┃               ░░░      │   Boxart    │    ░░░  │
-│  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛               ░░░      │   large     │    ░░░  │
-│    Diddy Kong Racing                                ░░░      │             │    ░░░  │
-│    Donkey Kong 64                                   ░░░      └─────────────┘    ░░░  │
-│    F-Zero X                                         ░░░                         ░░░  │
-│    GoldenEye 007                                    ░░░   BANJO-KAZOOIE         ░░░  │
-│    Mario Kart 64                                    ░░░   Nintendo 64 · .z64    ░░░  │
-│    Super Mario 64                                   ░░░                         ░░░  │
-│                                                     ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  │
+│                                                     ┌─────────────────────────────┐  │
+│  NINTENDO 64                 287 games              │                             │  │
+│                                                     │                             │  │
+│    1080 Snowboarding                                │       Centered boxart       │  │
+│    AeroFighters Assault                             │                             │  │
+│  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓               │                             │  │
+│  ┃  Banjo-Kazooie                   ┃               └─────────────────────────────┘  │
+│  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛                                             │
+│    Diddy Kong Racing                                                               │
+│    Donkey Kong 64                                                                  │
+│    F-Zero X                                                                        │
+│    GoldenEye 007                                                                   │
+│    Mario Kart 64                                                                   │
+│    Super Mario 64                                                                  │
 ├──────────────────────────────────────────────────────────────────────────────────────┤
 │  (A) Start   (B) Back   (X) Favorite   (Y) View   (L2/R2) Letter                     │
 └──────────────────────────────────────────────────────────────────────────────────────┘
@@ -258,14 +257,23 @@ Two columns: the list on the left, a large presentation of the focused game on t
 
 - The focused list entry gets a bar in the accent color and white text; the remaining entries
   sit at 60 %.
-- On the right, the focused game's available `-BG` image is darkened behind its cover and
-  shadow. The earlier cross-fade idea remains a proposal; current 0.4.0 testing focuses on
-  prompt image arrival and smooth input.
+- The selected cover is centered in the right panel. This view does not load or draw a
+  background image. If the cover is missing, the game title appears large and centered instead.
+- In Favorites, each left-hand row shows the system name below the game title in smaller,
+  muted text. The detail panel also identifies the system beneath the title.
 - **Loading:** visible covers and nearby entries are requested from one bounded worker.
-  Until a cover arrives, its placeholder remains. The decoded cache is bounded by entry
+  While the selected cover loads, the panel says “Loading cover art...”. The decoded cache is bounded by entry
   count and RAM use; stale queued requests are discarded after navigation changes.
+- **Redrawing:** focused rows are repainted as their focus changes; the selected-game panel is
+  repainted when its content changes. This avoids rebuilding static list text every frame.
 - The screen can alternatively be shown as a grid of tiles (the same tile as for systems, with
-  the boxart as its content). Y cycles through List, Grid (with titles) and Boxart small.
+  the boxart as its content). Y cycles through List, Grid (with titles) and Boxart small. In
+  **Settings → Interface → Game view**, choose one view for every area or **Individual** to save
+  a separate view for Home search results, Favorites, console game lists and Games. In Individual
+  mode, Y changes and saves the view for the current area.
+- **Boxart fade-in:** newly loaded, unfocused covers in Home and the Games grid appear through
+  three fixed pixel-reveal phases: 50%, then 25%, then the final 25%, with 20 ms between phases.
+  The focused cover appears immediately. See [BOXART.md](BOXART.md#boxart-fade-in-and-cache).
 - **The following row is deliberately cut off.** A list that ends flush with the bottom edge
   looks complete; a tile cut in half says "there is more below". Simply showing as many whole
   rows as happen to fit is not enough for that — the last one then ends flush by accident.
@@ -273,37 +281,55 @@ Two columns: the list on the left, a large presentation of the focused game on t
   third of a row is left over. In doing so the tile is only compressed, never stretched, and
   the boxart inside it keeps its own proportions anyway.
 
-### 5.3 Search
+### 5.3 Contextual search
 
-Search sits immediately to the right of Games. The clearly outlined search field at the top
-receives focus when the tab opens. Press **A** to open the reusable on-screen keyboard; its
-compact keys include a dedicated numeric keypad on the right. **B** closes the keyboard,
-**Y** inserts a space, and **X** deletes the last character. Select the on-screen **Symbols**
-key with **A** to switch layouts; **Shift** toggles letter case. Press **Start** to submit the
-current text. The field then keeps showing the submitted query while matching games appear below
-in the regular grid view. Before the first search, the results area stays empty; searches with
-no matches rotate through short nerdy messages. Long messages wrap to fit the results area.
-Search splits the query into words and matches each word against the beginning of a word in the
-game title or system name, regardless of order; for example, `cap com` finds “Captain Commando”.
-Browse the results as usual: **A** starts a game and hold **X** to mark it as a favorite. The
-D-pad navigates the grid; **Up** moves focus to the search field from its top row, then **A** opens
-the keyboard to edit the query. The game index is prepared in small batches while the view is open.
+Home, Games, Favorites, a system's game list and Arcade each show the same search field below
+their screen title. The field is not focused on entry; **Up** from the first game row focuses it,
+then **A** opens the reusable on-screen keyboard. The compact keyboard includes a separate
+numeric keypad on the right. **B** cancels the draft, **Y** inserts a space, **X** deletes the
+last character, and **Start** submits. Select **Symbols** with **A** to switch layouts; **Shift**
+toggles letter case. Submitting an empty query restores the complete collection for that area.
+
+Search is scoped to the current area: Home and Games use all games; Favorites uses only favorites;
+a system list uses only that system; Arcade searches the Arcade game collection regardless of its
+manufacturer or category grouping. Multiple terms are matched in any order, and every term must
+match the beginning of a word in a game title. Home, Games and Favorites also search system names;
+system lists and Arcade search titles only. Matching ignores case, so `cap com` finds “Captain
+Commando”. Results use that area's normal game actions, letter jump and available views. Search
+queries remain independent between areas. There is no Search tab, and Settings and the Systems
+overview have no search field.
 
 ### 5.4 Settings
 
 Settings uses three columns: categories on the left, the selected category's actions and
-options in the middle, and live system facts on the right. Use up/down to move within the
-focused column and left/right to switch between categories and options. The categories are
-Library, Controllers, Interface, Updates, and System. Interface settings include the default
-game view, a 12-hour or 24-hour clock, a Linux time zone, the Space Grotesk font switch or
-download action, and separate **Start sound** and **Menu sounds** switches. Both sound options
+options in the middle, and a larger explanation of the selected option on the right. Use
+up/down to move within the focused column and left/right to switch between categories and
+options. Choose **Settings → System → Info** to open system facts in a modal. The categories are
+Library, Controllers, Interface, Accessibility, Updates, and System. Interface settings include
+**Game view**—Grid, Boxart small, List or Individual—tab display as names, icons or both, and
+interface sound controls.
+Accessibility settings include the Space Grotesk font switch or download action, three font sizes
+(Standard, Larger and Largest), and a high-contrast switch. Clear focus indicators remain visible
+throughout the interface. Time format and time zone are in System, directly below **Info**. The six selected
+Bootstrap Icons are recorded in `assets/tab-icons/manifest.tsv`; their upstream SVGs, license and
+BMP conversion script are kept alongside them for future additions. The script produces 26×26
+24-bit BMPs with a solid black background, matching the tab icon's 1080p display size and
+avoiding runtime resizing there. Separate **Start sound** and **Menu sounds** switches are also
+available. Both sound options
 default to on. The start sound plays after the splash screen; menu sounds cover navigation,
-tab changes, and successful game launches. The menu-sounds switch controls those three cues
-together. The time-zone picker lists the
+tab changes, and successful game launches. The menu-sounds switch controls those three cues together. **Show Arcade in Consoles** is off by
+default. Toggle settings show a round checkbox
+beside **On** or **Off** in a fixed-width value slot, keeping checkbox columns aligned. The
+dark-blue outline stays empty when off and contains an inset light-gray circle when on. The
+time-zone picker lists the
 continent/region folders and city files in `/usr/share/zoneinfo/posix`; choosing one copies its
 zoneinfo file to `/media/fat/linux/timezone`, following MiSTer's `Scripts/timezone.sh` method.
-System shows Ethernet and Wi-Fi details under **Networking**, with the Wi-Fi IP and network name
-adjacent. It also includes **Connect to Wi-Fi…**, **Start MiSTer Core**, and **Reboot MiSTer**.
+**Info** opens hardware, storage, network and software details in a modal. System also includes
+the full **Changelog**, loaded from the project on GitHub with loading and retry
+states, plus scroll arrows when the text extends beyond the view. It also includes **Download
+Assets**, which checks for missing console and tab icon BMPs and fetches only those assets. GUI updates also fetch missing tab icons from the installed release's
+manifest. **Info** shows Ethernet and Wi-Fi details under **Networking**, with the Wi-Fi IP and
+network name adjacent. System also includes **Connect to Wi-Fi…**, **Start MiSTer Core**, and **Reboot MiSTer**.
 Reboot requires a separate confirmation and syncs pending writes before requesting the Linux
 system action. Wi-Fi setup scans when an adapter is present; it supports open and WPA-PSK
 networks, hidden SSIDs, a password keyboard with Show/Hide and Start-to-confirm, a temporary
@@ -316,8 +342,7 @@ user-facing feature list.
 Updates keeps the automatic-check switch and a manual **Check now** action. A verified newer
 release adds **Update now**. Its confirmation shows the version, release notes, restart notice
 and any game-database warning. Download and verification progress stays visible after closing
-the confirmation; B can cancel before the installation commit. The system facts column remains
-visible throughout. Updates also shows the running GUI version and the version selected for
+the confirmation; B can cancel before the installation commit. Updates also shows the running GUI version and the version selected for
 the next start. A valid `mister-pats-gui.so` symlink appears as a version pin; without it the
 loader selects the newest installed library. The release comparison uses the pinned version
 when there is one; an update adds only the new library and preserves any pin.
@@ -380,7 +405,7 @@ interpolated together.
 | D-pad / stick | Move the focus within the grid or the list, freely in four directions |
 | A | Select (open a system, start a game) |
 | B | Back; no effect at the topmost level |
-| Select | Open the selected game's actions: Start Game or Load box art |
+| Select | Open the selected game's actions: play it or find/prepare its cover art |
 | Hold X for 2 seconds | Add or remove the selected game from favorites; a progress bar fills while held |
 | Y | Change view |
 | L1 / R1 | Switch tabs when the underline is blue |

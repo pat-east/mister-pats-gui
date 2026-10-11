@@ -103,11 +103,11 @@ float ArcadeScan::progress() const {
 std::string ArcadeScan::statusLine() const {
     char buffer[128];
     if (state_ == State::Discovering) {
-        std::snprintf(buffer, sizeof(buffer), "Looking for .mra files… %zu found so far",
+        std::snprintf(buffer, sizeof(buffer), "Searching Arcade folders… %zu game files found",
                       files_.size());
         return buffer;
     }
-    std::snprintf(buffer, sizeof(buffer), "Checking %zu of %zu .mra files", position_,
+    std::snprintf(buffer, sizeof(buffer), "Checking Arcade game %zu of %zu", position_,
                   files_.size());
     return buffer;
 }

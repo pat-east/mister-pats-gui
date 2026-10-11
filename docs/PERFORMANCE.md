@@ -4,6 +4,30 @@ All numbers measured on real hardware (DE10-Nano, dual-core Cortex-A9 @ 800 MHz,
 framebuffer 1920×1080 × 32 bpp). Target: **smooth 30 fps at native 1080p**, i.e. ≤ 33 ms
 per frame.
 
+## 0.7.0 List rendering
+
+List view no longer requests or draws the selected game's background artwork. The selected
+cover is centered in its panel, and a missing cover falls back to the game title. List rows are
+repainted as their focus changes; the right-hand panel is refreshed when its selected game's
+content changes. This avoids rebuilding static list text on every frame. These are implementation
+changes; no new frame-time measurements are recorded here.
+
+## 0.6.3 idle redraw and artwork reload investigation
+
+During a quiet Games-tab session with a library of 11,606 games, the MiSTer log recorded four
+full-screen redraws around startup and tab entry, then no further full redraws in the captured
+idle period. The visible covers nevertheless restarted their reveal. Logged image-pointer
+replacements, combined with the cache retry path, identified the cause: after loading a valid
+JPEG/PNG fallback, the cache retried the absent preferred BMP every 90 frames. Each retry
+decoded and installed the same fallback again, replacing the image used by the tiles.
+
+The 0.6.3 source now treats a successful fallback as a stable cache result. Failed image loads
+can still be retried, and explicit artwork invalidation can still refresh a game's images. This
+fix prevents the observed repeated image replacement and animation restart. At the time of the
+0.6.3 release, the source had been built but this correction had not yet been verified on the
+MiSTer. The four startup redraws were observed in that log; this does not establish that every
+screen or startup path is free of later redraws.
+
 ## 0.4.0 implementation and measurement status
 
 The detailed frame and icon benchmarks below are historical measurements. The 0.4.0 build:
@@ -59,7 +83,7 @@ with box art shown or hidden; it does not assume the cause of a delay.
 | 6 | Scroll into games whose artwork has not been seen this session | Stalls, placeholders and delay until cover art appears | |
 | 7 | Use L2/R2 for a distant letter jump | Delay before focus and the destination list settle | |
 | 8 | Open Home with recent games and favorites | Initial tile appearance and response while rows populate | |
-| 9 | Open Arcade games, then Manufacturers/Categories | Delay to first row and response while navigating | |
+| 9 | Open Arcade games and browse the configured view | Delay to first entries and response while navigating | |
 | 10 | Choose Build game database, confirm the warning, then wait for progress | Previously reported: several seconds of apparent stillness. Recheck the gap to first visible progress and whether controls respond | |
 | 11 | Choose Reload library and confirm | Time until visible feedback and first progress; any pause before it | |
 | 12 | Choose Prepare box art | Time until visible feedback and first progress; whether the screen remains alive | |

@@ -1,4 +1,5 @@
 #include "App.h"
+#include "ButtonLabels.h"
 #include "DebugLog.h"
 #include "ErrorModal.h"
 #include "Splash.h"
@@ -15,6 +16,52 @@
 namespace {
 
 constexpr int kTargetFrameMs = 33;   // ~30 fps; the CPU renders every pixel in software
+constexpr char kDpadHintToken[] = "{DPAD}";
+
+int hintTextWidth(Font &font, const std::string &text, int size, int iconSize, int gap) {
+    int width = 0;
+    size_t start = 0;
+    for (;;) {
+        const size_t marker = text.find(kDpadHintToken, start);
+        const size_t end = marker == std::string::npos ? text.size() : marker;
+        width += font.measure(text.substr(start, end - start), size);
+        if (marker == std::string::npos) break;
+        width += iconSize + gap;
+        start = marker + sizeof(kDpadHintToken) - 1;
+    }
+    return width;
+}
+
+void drawHintText(Canvas &canvas, Theme &theme, Font &font, int x, int y, int size,
+                  Color color, const std::string &text) {
+    const int iconSize = theme.px(18);
+    const int gap = theme.px(5);
+    const int lineHeight = font.lineHeight(size);
+    size_t start = 0;
+    for (;;) {
+        const size_t marker = text.find(kDpadHintToken, start);
+        const size_t end = marker == std::string::npos ? text.size() : marker;
+        const std::string part = text.substr(start, end - start);
+        font.draw(canvas, x, y, part, size, color);
+        x += font.measure(part, size);
+        if (marker == std::string::npos) break;
+
+        const int iconX = x;
+        const int iconY = y + (lineHeight - iconSize) / 2;
+        const int arm = std::max(theme.px(5), iconSize / 3);
+        const int center = (iconSize - arm) / 2;
+        const int radius = std::max(1, theme.px(1));
+        canvas.fillRoundedRect({iconX + center, iconY, arm, center - radius}, radius, color);
+        canvas.fillRoundedRect({iconX, iconY + center, center - radius, arm}, radius, color);
+        canvas.fillRoundedRect({iconX + center + arm, iconY + center,
+                                center - radius, arm}, radius, color);
+        canvas.fillRoundedRect({iconX + center, iconY + center + arm,
+                                arm, center - radius}, radius, color);
+        canvas.fillRoundedRect({iconX + center, iconY + center, arm, arm}, radius, color);
+        x += iconSize + gap;
+        start = marker + sizeof(kDpadHintToken) - 1;
+    }
+}
 
 } // namespace
 
@@ -33,20 +80,35 @@ bool App::initialize(const Options &options) {
     background_ = std::make_unique<Canvas>(framebuffer_.width(), framebuffer_.height());
     theme_ = std::make_unique<Theme>(framebuffer_.width(), framebuffer_.height());
 
+    // Grab pads before the splash can show anything they type into the MiSTer terminal or
+    // OSD. This is released automatically on exit, and explicitly on the core handoff below.
+    if (options_.readInput) {
+        if (options_.dumpPath.empty()) console_.acquire();
+        input_.setExclusive(options_.exclusive);
+        input_.rescan();
+    }
+
     // Listing icon filenames is cheap; their PNG data is decoded only after the initial splash
     // wait, and is cached at the Systems tile size before the screen can be opened.
     icons_.load();
+    tabIcons_.refresh();
     preferences_.load();
+    theme_->setFontSizeScale(preferences_.fontSizeScale());
+    theme_->setHighContrast(preferences_.highContrast());
+    setFaceButtonStyle(preferences_.faceButtonStyle());
     if (options_.splashMs > 0) {
-        Splash::show(framebuffer_, *theme_, options_.splashMs, icons_, images_);
+        Splash::show(framebuffer_, *theme_, options_.splashMs, icons_, images_,
+                     [this] { library_.load(); });
         if (preferences_.startSoundEnabled()) UiSounds::play();
+    } else {
+        library_.load();
     }
 
     systemIconDownload_ = std::make_unique<SystemIconDownload>(icons_);
+    tabIconDownload_ = std::make_unique<TabIconDownload>(tabIcons_);
 
     renderBackground(*background_);
 
-    library_.load();
     favorites_.load();
     history_.load();
     hiddenSystems_.load();
@@ -57,20 +119,49 @@ bool App::initialize(const Options &options) {
     context_ = std::make_unique<Context>(*theme_, library_, favorites_, launcher_, images_,
                                         icons_, history_, hiddenSystems_, preferences_);
     context_->background = background_.get();
+    context_->onThemeChanged = [this] {
+        renderBackground(*background_);
+        needsFullRedraw_ = true;
+    };
 
     gamesScreen_ = std::make_unique<GamesScreen>(*context_);
+    arcadeLibraryScreen_ = std::make_unique<GamesScreen>(*context_);
     allGamesScreen_ = std::make_unique<GamesScreen>(*context_);
     favoritesScreen_ = std::make_unique<GamesScreen>(*context_);
-    searchScreen_ = std::make_unique<SearchScreen>(*context_);
 
-    const GameView initialView =
-        options_.viewExplicit ? options_.view : gameViewFromName(preferences_.defaultView());
-    gamesScreen_->setView(initialView);
-    allGamesScreen_->setView(initialView);
-    favoritesScreen_->setView(initialView);
+    const auto initialView = [this](const std::string &individualView) {
+        if (options_.viewExplicit) return options_.view;
+        return gameViewFromName(preferences_.defaultView() == "individual"
+                                    ? individualView : preferences_.defaultView());
+    };
+    gamesScreen_->setView(initialView(options_.tab == Tab::Games
+                                         ? preferences_.gamesView()
+                                         : preferences_.consolesView()));
+    arcadeLibraryScreen_->setView(options_.viewExplicit
+        ? options_.view : gameViewFromName(preferences_.defaultView()));
+    allGamesScreen_->setView(initialView(preferences_.gamesView()));
+    favoritesScreen_->setView(initialView(preferences_.favoritesView()));
     favoritesScreen_->showFavorites();
 
     homeScreen_ = std::make_unique<HomeScreen>(*context_);
+    homeScreen_->setSearchView(initialView(preferences_.homeView()));
+    const auto rememberView = [this](void (Preferences::*save)(const std::string &), GameView view) {
+        if (preferences_.defaultView() == "individual")
+            (preferences_.*save)(nameForGameView(view));
+    };
+    gamesScreen_->setViewChangedCallback([this, rememberView](GameView view) {
+        rememberView(tab_ == Tab::Games ? &Preferences::setGamesView
+                                        : &Preferences::setConsolesView, view);
+    });
+    favoritesScreen_->setViewChangedCallback([rememberView](GameView view) {
+        rememberView(&Preferences::setFavoritesView, view);
+    });
+    allGamesScreen_->setViewChangedCallback([rememberView](GameView view) {
+        rememberView(&Preferences::setGamesView, view);
+    });
+    homeScreen_->setSearchViewChangedCallback([rememberView](GameView view) {
+        rememberView(&Preferences::setHomeView, view);
+    });
 
     systemsScreen_ = std::make_unique<SystemsScreen>(*context_, [this](const GameSystem &system) {
         gamesScreen_->showSystem(system);
@@ -81,10 +172,7 @@ bool App::initialize(const Options &options) {
     settingsScreen_ = std::make_unique<SettingsScreen>(
         *context_, [this] { reloadLibrary(); }, [this] { openScan(false); },
         [this] { openArtwork(); },
-        [this] { startSystemIconDownload(); },
-        [this] {
-            return systemIconDownload_ ? systemIconDownload_->statusLine() : std::string();
-        },
+        [this] { startAssetDownload(); }, [this] { return assetDownloadStatus(); },
         [this] { openVisibility(); }, [this] { openControllers(); },
         [this] { openArcadeSettings(); },
         [this] { toggleGamesTab(); }, [this] { toggleArcadeTab(); }, [this] { cycleDefaultView(); },
@@ -103,6 +191,7 @@ bool App::initialize(const Options &options) {
         [this] { removePinnedVersion(); },
         [this](bool removePin) { restartMisterAfterUpdate(removePin); },
         [this] { return spaceGroteskStatus(); }, [this] { activateSpaceGrotesk(); },
+        [this] { return updateService_.startChangelog(); },
         [this] { rebootMister(); });
     settingsScreen_->setFramebufferInfo(framebuffer_.describe());
     settingsScreen_->setUpdateSnapshot(updateSnapshot_);
@@ -118,19 +207,6 @@ bool App::initialize(const Options &options) {
 
     arcadeGamesScreen_ =
         std::make_unique<ArcadeGamesScreen>(*context_, [this] { closeArcadeGames(); });
-
-    arcadeScreen_ = std::make_unique<ArcadeScreen>(
-        *context_, [this](ArcadeScreen::Dimension d) { openArcadeFull(d); },
-        [this](ArcadeScreen::Dimension d, const DatabaseGroup &g) { openArcadeGroup(d, g); });
-    arcadeScreen_->refresh();
-
-    arcadeGroupsScreen_ = std::make_unique<ArcadeGroupsScreen>(
-        *context_, [this](const DatabaseGroup &group) {
-            openArcadeGroup(arcadeGroupsScreen_->manufacturers()
-                                ? ArcadeScreen::Dimension::Manufacturers
-                                : ArcadeScreen::Dimension::Categories,
-                            group);
-        });
 
     arcadeSettingsScreen_ = std::make_unique<ArcadeSettingsScreen>(
         *context_, [this] { openArcadeGames(); }, [this] { closeArcadeSettings(); });
@@ -167,14 +243,6 @@ bool App::initialize(const Options &options) {
         }
     }
 
-    if (options_.readInput) {
-        // A capture (--dump) is often taken next to a GUI that is already running. It must not
-        // take the console from that one, nor hand it back on the way out.
-        if (options_.dumpPath.empty()) console_.acquire();   // stop the kernel console drawing over us
-        input_.setExclusive(options_.exclusive);
-        input_.rescan();
-    }
-
     return true;
 }
 
@@ -186,13 +254,12 @@ void App::reloadLibrary() {
     homeScreen_->refresh();
     favoritesScreen_->showFavorites();
     allGamesScreen_->showAllGames();
-    searchScreen_->reload();
+    homeScreen_->invalidateSearchIndex();
     if (!gamesScreen_->empty()) gamesScreen_->reload();
-    arcadeScreen_->refresh();
-
-    // The Arcade system may have gone or changed, which would leave an open Arcade view, or
-    // the copy of the system a group's games point into, dangling.
-    arcadeGroupsActive_ = false;
+    if (tab_ == Tab::Arcade) {
+        if (const GameSystem *arcade = library_.arcadeSystem())
+            arcadeLibraryScreen_->showSystem(*arcade);
+    }
     if (tab_ == Tab::Arcade && !arcadeTabShown()) selectTab(Tab::Home);
 }
 
@@ -208,30 +275,41 @@ void App::openArtwork() {
     needsFullRedraw_ = true;
 }
 
-void App::startSystemIconDownload() {
-    if (!systemIconDownload_) return;
-    if (systemIconDownload_->running()) {
-        context_->notify("System icon download is already running");
+void App::startAssetDownload() {
+    if (assetsDownloadActive_) {
+        context_->notify("An icon download is already running.");
         return;
     }
 
-    if (!systemIconDownload_->start()) {
-        context_->notify(systemIconDownload_->error(), 6.0f);
-        return;
+    const bool systemStarted = systemIconDownload_ && systemIconDownload_->start();
+    const bool tabsStarted = tabIconDownload_ && tabIconDownload_->start();
+    assetsDownloadActive_ = (systemIconDownload_ && systemIconDownload_->running()) ||
+                            (tabIconDownload_ && tabIconDownload_->running());
+    if (assetsDownloadActive_) {
+        context_->notify("Downloading missing console and navigation icons…", 4.0f);
+    } else if (!systemStarted || !tabsStarted) {
+        const std::string error = !systemStarted && systemIconDownload_
+            ? systemIconDownload_->error() : tabIconDownload_->error();
+        context_->notify(error, 8.0f);
+    } else {
+        context_->notify("All console and navigation icons are ready.");
     }
+}
 
-    if (systemIconDownload_->state() == SystemIconDownload::State::Done) {
-        context_->notify(systemIconDownload_->statusLine());
-        return;
-    }
-    context_->notify("Downloading system icons", 4.0f);
+std::string App::assetDownloadStatus() const {
+    if (assetsDownloadActive_) return "Downloading icons…";
+    if ((systemIconDownload_ && systemIconDownload_->state() == SystemIconDownload::State::Failed) ||
+        (tabIconDownload_ && tabIconDownload_->state() == TabIconDownload::State::Failed))
+        return "Try download again";
+    const size_t missing = icons_.missingBitmaps().size() + tabIcons_.missingFiles().size();
+    return missing ? std::to_string(missing) + " icons missing" : "All icons ready";
 }
 
 std::string App::spaceGroteskStatus() const {
     if (spaceGroteskDownload_.running()) return spaceGroteskDownload_.status();
     if (!Theme::spaceGroteskAvailable())
         return spaceGroteskDownload_.state() == SpaceGroteskDownload::State::Failed
-                   ? std::string("Retry") : std::string("Download");
+                   ? std::string("Try font download again") : std::string("Download font");
     return preferences_.useSpaceGrotesk() ? "On" : "Off";
 }
 
@@ -245,7 +323,7 @@ void App::activateSpaceGrotesk() {
         preferences_.setUseSpaceGrotesk(enabled);
         theme_->setSpaceGroteskEnabled(enabled);
         needsFullRedraw_ = true;
-        context_->notify(enabled ? "Space Grotesk enabled" : "Space Grotesk disabled");
+        context_->notify(enabled ? "Space Grotesk font enabled" : "Space Grotesk font disabled");
         return;
     }
     if (!spaceGroteskDownload_.start()) {
@@ -257,7 +335,7 @@ void App::activateSpaceGrotesk() {
         theme_->setSpaceGroteskEnabled(true);
         needsFullRedraw_ = true;
     } else {
-        context_->notify("Downloading Space Grotesk", 4.0f);
+        context_->notify("Downloading the Space Grotesk font…", 4.0f);
     }
 }
 
@@ -344,47 +422,24 @@ void App::toggleArcadeTab() {
     needsFullRedraw_ = true;
 }
 
-void App::openArcadeFull(ArcadeScreen::Dimension dimension) {
-    const GameSystem *arcade = library_.arcadeSystem();
-    if (!arcade) return;
-
-    if (dimension == ArcadeScreen::Dimension::Games) {
-        // Exactly what Systems -> Arcade shows: one list, reached from two places.
-        gamesScreen_->showSystem(*arcade);
-        detailActive_ = true;
-    } else {
-        arcadeGroupsScreen_->show(dimension == ArcadeScreen::Dimension::Manufacturers);
-        arcadeGroupsActive_ = true;
-    }
-    needsFullRedraw_ = true;
-}
-
-void App::openArcadeGroup(ArcadeScreen::Dimension dimension, const DatabaseGroup &group) {
-    const GameSystem *arcade = library_.arcadeSystem();
-    if (!arcade) return;
-
-    arcadeGroupSystem_ = *arcade;
-    arcadeGroupSystem_.dbKey = group.key;
-
-    const char *kind = dimension == ArcadeScreen::Dimension::Manufacturers ? "Manufacturers"
-                                                                           : "Categories";
-    gamesScreen_->showSystem(arcadeGroupSystem_,
-                             std::string("Arcade > ") + kind + " > " +
-                                 group.name);
-    detailActive_ = true;
-    needsFullRedraw_ = true;
-}
-
 void App::cycleDefaultView() {
-    const GameView current = gameViewFromName(preferences_.defaultView());
-    const GameView next = GameView(((int)current + 1) % (int)GameView::kCount);
-    preferences_.setDefaultView(nameForGameView(next));
+    const std::string &current = preferences_.defaultView();
+    const std::string next = current == "grid" ? "small" :
+                             current == "small" ? "list" :
+                             current == "list" ? "individual" : "grid";
+    preferences_.setDefaultView(next);
 
-    // Applied immediately, not just on the next screen shown — a setting that visibly does
-    // nothing until some later, unrelated action looks broken.
-    gamesScreen_->setView(next);
-    allGamesScreen_->setView(next);
-    favoritesScreen_->setView(next);
+    const auto viewFor = [this, &next](const std::string &individualView) {
+        return gameViewFromName(next == "individual" ? individualView : next);
+    };
+    gamesScreen_->setView(viewFor(preferences_.consolesView()));
+    favoritesScreen_->setView(viewFor(preferences_.favoritesView()));
+    allGamesScreen_->setView(viewFor(preferences_.gamesView()));
+    homeScreen_->setSearchView(viewFor(preferences_.homeView()));
+    arcadeLibraryScreen_->setView(next == "individual"
+        ? gameViewFromName(preferences_.defaultView()) : gameViewFromName(next));
+    context_->notify("Game view: " + (next == "individual"
+        ? std::string("Individual") : std::string(displayNameForGameView(gameViewFromName(next)))));
     needsFullRedraw_ = true;
 }
 
@@ -428,15 +483,13 @@ Screen *App::activeScreen() {
     if (arcadeGamesActive_) return arcadeGamesScreen_.get();
     if (arcadeSettingsActive_) return arcadeSettingsScreen_.get();
     if (detailActive_) return gamesScreen_.get();
-    if (arcadeGroupsActive_) return arcadeGroupsScreen_.get();
 
     switch (tab_) {
     case Tab::Home:      return homeScreen_.get();
     case Tab::Favorites: return favoritesScreen_.get();
     case Tab::Systems:   return systemsScreen_.get();
-    case Tab::Arcade:    return arcadeScreen_.get();
+    case Tab::Arcade:    return arcadeLibraryScreen_.get();
     case Tab::Games:     return allGamesScreen_.get();
-    case Tab::Search:    return searchScreen_.get();
     case Tab::Settings:  return settingsScreen_.get();
     }
     return systemsScreen_.get();
@@ -445,11 +498,12 @@ Screen *App::activeScreen() {
 void App::selectTab(Tab tab) {
     const bool changed = tab_ != tab;
     detailActive_ = false;
-    arcadeGroupsActive_ = false;
     needsFullRedraw_ = true;
     if (tab == Tab::Home) homeScreen_->refresh();
     if (tab == Tab::Favorites) favoritesScreen_->showFavorites();
-    if (tab == Tab::Arcade) arcadeScreen_->refresh();
+    if (tab == Tab::Arcade)
+        if (const GameSystem *arcade = library_.arcadeSystem())
+            arcadeLibraryScreen_->showSystem(*arcade);
     // The whole library is gathered when the tab is first opened and then kept; a library
     // reload is what throws it away again. Building the list itself is no longer the
     // expensive part — see GamesScreen::reload() — so there is no longer a mid-build state
@@ -526,16 +580,27 @@ void App::renderGameActions() {
     const int left = panel.x + theme.px(36);
     const int textWidth = panel.w - 2 * theme.px(36);
     int y = panel.y + theme.px(32);
-    theme.bold().draw(canvas, left, y, "Game actions", theme.sizeHeading(), theme.textPrimary);
+    theme.bold().draw(canvas, left, y, "Game options", theme.sizeHeading(), theme.textPrimary);
     y += theme.px(42);
     theme.regular().draw(canvas, left, y,
                          theme.regular().elide(gameActionGame_.name, theme.sizeBody(), textWidth),
                          theme.sizeBody(), theme.textMuted);
-    y += theme.px(42);
+    y += theme.px(36);
+
+    const std::string description = gameActionCursor_ == 0
+        ? "Play starts this game."
+        : "Find a missing cover online or prepare an existing cover for the game views.";
+    theme.regular().draw(canvas, left, y,
+                         theme.regular().elide(description, theme.sizeSmall(), textWidth),
+                         theme.sizeSmall(), theme.textMuted);
+    y += theme.px(34);
 
     if (gameActionWorking_) {
         const bool done = scraper_.finished();
-        theme.bold().draw(canvas, left, y, done ? "Box art task finished" : "Loading box art",
+        const bool succeeded = scraper_.state() == MediaScraper::State::Done;
+        theme.bold().draw(canvas, left, y,
+                          done ? (succeeded ? "Cover art ready" : "Could not prepare cover art")
+                               : "Preparing cover art",
                           theme.sizeBody(), theme.textPrimary);
         y += theme.px(34);
         theme.regular().draw(canvas, left, y,
@@ -543,12 +608,13 @@ void App::renderGameActions() {
                                                    textWidth),
                              theme.sizeSmall(), theme.textMuted);
         y = panel.bottom() - theme.px(50);
-        theme.regular().draw(canvas, left, y, done ? "A / B  Close" : "B  Cancel",
+        theme.regular().draw(canvas, left, y,
+                             formatButtonLabels(done ? "A / B  Close" : "B  Cancel"),
                              theme.sizeSmall(), theme.textMuted);
         return;
     }
 
-    const char *items[] = {"Start Game", "Load box art"};
+    const char *items[] = {"Play this game", "Find or prepare cover art"};
     for (int i = 0; i < 2; ++i) {
         const Rect row{left - theme.px(12), y - theme.px(7), width - theme.px(48),
                        theme.px(44)};
@@ -559,7 +625,8 @@ void App::renderGameActions() {
         y += theme.px(52);
     }
     theme.regular().draw(canvas, left, panel.bottom() - theme.px(34),
-                         "A  Choose     B  Close", theme.sizeSmall(), theme.textMuted);
+                         formatButtonLabels("A  Choose     B  Close"), theme.sizeSmall(),
+                         theme.textMuted);
 }
 
 void App::refreshGameActionArtwork() {
@@ -586,12 +653,10 @@ void App::dispatch(Action action) {
     default:
         break;
     }
-    // Start used to share Confirm's action for every screen. Search reserves it for
-    // submitting the query; elsewhere keep its established confirm behavior.
+    // Start usually shares Confirm's action. Search fields reserve it for submitting queries.
     if (action == Action::Start &&
         !(tab_ == Tab::Settings && settingsScreen_->wantsStartForWifiPassword()) &&
-        (tab_ != Tab::Search || gameActionsActive_ || detailActive_ || scanActive_ ||
-         visibilityActive_ || controllersActive_ || arcadeGamesActive_ || arcadeSettingsActive_))
+        !activeScreen()->usesStartAction())
         action = Action::Confirm;
     if (action == Action::Quit) DebugLog::warn("input: quit action received");
     if (updateService_.commitRunning() &&
@@ -669,7 +734,7 @@ void App::dispatch(Action action) {
                 gameActionWorking_ = true;
                 gameActionScrapePendingRefresh_ = true;
             } else {
-                context_->notify("Build the game database before loading box art");
+                context_->notify("First build the game list in Settings → Library.");
                 gameActionsActive_ = false;
                 needsFullRedraw_ = true;
             }
@@ -722,24 +787,23 @@ void App::dispatch(Action action) {
         selectTab(tabs[size_t((tabIndex + 1) % tabCount)]);
         return;
     case Action::Back:
-        if (tab_ == Tab::Search && searchScreen_->wantsBack()) {
-            searchScreen_->handle(Action::Back);
+        if (activeScreen()->hasBackOverlay()) {
+            activeScreen()->handle(Action::Back);
             return;
         }
         if (detailActive_) { detailActive_ = false; needsFullRedraw_ = true; return; }
-        if (arcadeGroupsActive_) { arcadeGroupsActive_ = false; needsFullRedraw_ = true; return; }
         if (tab_ == Tab::Settings && settingsScreen_->wantsBack()) {
             settingsScreen_->handle(Action::Back);
             return;
         }
         // On the Arcade tab, Back first steps from a tile to its row's title.
-        if (tab_ == Tab::Arcade && arcadeScreen_->wantsBack()) {
-            arcadeScreen_->handle(Action::Back);
-            return;
-        }
         if (tab_ != Tab::Home) { selectTab(Tab::Home); return; }
         break;
     case Action::Select:
+        if (activeScreen()->usesStartAction()) {
+            activeScreen()->handle(action);
+            return;
+        }
         openGameActions();
         return;
     default:
@@ -769,13 +833,16 @@ void App::renderBottomBar(const Rect &area) {
     const bool favoriteHolding = input_.favoriteHoldActive() &&
                                  favoriteHoldScreen_ == activeScreen() &&
                                  !favoriteHoldPath_.empty();
-    const std::string hints = activeScreen()->hints();
+    const std::string hints = formatButtonLabels(activeScreen()->hints());
+    const int iconSize = theme.px(18);
+    const int iconGap = theme.px(5);
     const int y = area.y + (area.h - theme.regular().lineHeight(theme.sizeSmall())) / 2;
 
     if (favoriteHolding) {
         const bool removing = favorites_.contains(favoriteHoldPath_);
-        const std::string label = removing ? "Hold X for 2s to remove favorite" :
-                                             "Hold X for 2s to add favorite";
+        const std::string label = formatButtonLabels(
+            removing ? "Hold X for 2s to remove favorite" :
+                      "Hold X for 2s to add favorite");
         const int x = area.x + theme.marginX();
         theme.bold().draw(canvas, x, area.y + theme.px(8), "*", theme.sizeBody(),
                           theme.favorite);
@@ -788,9 +855,22 @@ void App::renderBottomBar(const Rect &area) {
         const int filled = std::max(1, int(barWidth * input_.favoriteHoldProgress()));
         canvas.fillRoundedRect({track.x, track.y, filled, track.h}, theme.px(3),
                                theme.favorite);
+    } else if (theme.highContrast()) {
+        const int x = area.x + theme.marginX();
+        const int textWidth = hintTextWidth(theme.bold(), hints, theme.sizeSmall(), iconSize,
+                                            iconGap);
+        const int paddingX = theme.px(10);
+        const int paddingY = theme.px(4);
+        const int lineHeight = theme.bold().lineHeight(theme.sizeSmall());
+        const Rect hintFrame{x - paddingX, y - paddingY,
+                             textWidth + paddingX * 2, lineHeight + paddingY * 2};
+        canvas.fillRoundedRect(hintFrame, theme.px(6), theme.surfaceHi);
+        canvas.strokeRoundedRect(hintFrame, theme.px(6), theme.px(2), theme.focus);
+        drawHintText(canvas, theme, theme.bold(), x, y, theme.sizeSmall(), theme.textPrimary,
+                     hints);
     } else {
-        theme.regular().draw(canvas, area.x + theme.marginX(), y, hints, theme.sizeSmall(),
-                             theme.textMuted.withAlpha(110));
+        drawHintText(canvas, theme, theme.regular(), area.x + theme.marginX(), y,
+                     theme.sizeSmall(), theme.textMuted, hints);
     }
 
     // Small and out of the way in the corner — a build identifier for bug reports, not
@@ -805,7 +885,7 @@ void App::renderBottomBar(const Rect &area) {
     theme.regular().draw(canvas, area.right() - theme.marginX() - versionWidth, y, version,
                          theme.sizeSmall(),
                          updateAvailable ? theme.accent.withAlpha(200)
-                                         : theme.textMuted.withAlpha(90));
+                                         : theme.textMuted.withAlpha(155));
 
     if (!favoriteHolding && context_->messageTimer > 0.0f && !context_->message.empty()) {
         // Sits to the left of the version string so the two never overlap.
@@ -839,10 +919,11 @@ int App::run() {
     DebugLog::info("run: entering frame loop");
     int64_t previous = nowMs();
     int64_t rescanAt = previous + 1000;
+    const int64_t startupHomeRefreshAt = previous + 2000;
     int frame = 0;
     bool firstFrameLogged = false;
-    int framebufferChecks = 0;
-    int framebufferRepairs = 0;
+    bool startupHomeRefreshDone = false;
+    bool previousFrameWasFull = false;
 
     while (running_) {
         if (signalStopRequested_) { running_ = false; break; }
@@ -921,14 +1002,26 @@ int App::run() {
         // being hammered flat out.
         if (scan_.running()) scan_.step();
         else if (scraper_.running()) scraper_.step();
-        else if (systemIconDownload_ && systemIconDownload_->running()) {
-            systemIconDownload_->step();
-            if (!systemIconDownload_->running()) {
+        else if (assetsDownloadActive_) {
+            if (systemIconDownload_ && systemIconDownload_->running())
+                systemIconDownload_->step();
+            else if (tabIconDownload_ && tabIconDownload_->running())
+                tabIconDownload_->step();
+            if ((!systemIconDownload_ || !systemIconDownload_->running()) &&
+                (!tabIconDownload_ || !tabIconDownload_->running())) {
+                assetsDownloadActive_ = false;
                 needsFullRedraw_ = true;
-                if (systemIconDownload_->state() == SystemIconDownload::State::Done)
-                    context_->notify(systemIconDownload_->statusLine(), 6.0f);
-                else
-                    context_->notify(systemIconDownload_->error(), 8.0f);
+                const bool failed =
+                    (systemIconDownload_ && systemIconDownload_->state() == SystemIconDownload::State::Failed) ||
+                    (tabIconDownload_ && tabIconDownload_->state() == TabIconDownload::State::Failed);
+                if (failed) {
+                    const std::string error = systemIconDownload_ &&
+                        systemIconDownload_->state() == SystemIconDownload::State::Failed
+                        ? systemIconDownload_->error() : tabIconDownload_->error();
+                    context_->notify(error, 8.0f);
+                } else {
+                    context_->notify("All console and navigation icons are ready.", 6.0f);
+                }
             }
         }
         else if (spaceGroteskDownload_.running()) {
@@ -938,7 +1031,7 @@ int App::run() {
                 if (spaceGroteskDownload_.state() == SpaceGroteskDownload::State::Done) {
                     preferences_.setUseSpaceGrotesk(true);
                     theme_->setSpaceGroteskEnabled(true);
-                    context_->notify("Space Grotesk installed and enabled", 6.0f);
+                    context_->notify("Space Grotesk font installed and enabled", 6.0f);
                 } else {
                     context_->notify(spaceGroteskDownload_.error(), 8.0f);
                 }
@@ -985,11 +1078,25 @@ int App::run() {
                            bottom.y - top.bottom() - 2 * theme.marginY()};
 
         Screen *screen = activeScreen();
+        // MiSTer can clear the mapped framebuffer shortly after the splash on cold boot.
+        // Give Home one delayed full repaint to recover, then leave the resting screen alone.
+        if (!startupHomeRefreshDone && frameStart >= startupHomeRefreshAt) {
+            startupHomeRefreshDone = true;
+            if (screen == homeScreen_.get()) needsFullRedraw_ = true;
+        }
         // An error modal draws over whatever screen is underneath rather than replacing it,
         // so that screen must be fully repainted every frame it is up — there is no damage
         // tracking for "the same dialog is still sitting on top of you".
         const bool full = needsFullRedraw_ || !options_.incremental || context_->errorActive ||
                           gameActionsActive_;
+        if (full && !previousFrameWasFull) {
+            char message[160];
+            std::snprintf(message, sizeof(message),
+                          "run: full redraw begins (requested=%d, incremental=%d, error=%d, modal=%d)",
+                          needsFullRedraw_ ? 1 : 0, options_.incremental ? 1 : 0,
+                          context_->errorActive ? 1 : 0, gameActionsActive_ ? 1 : 0);
+            DebugLog::info(message);
+        }
 
         canvas_->clearDamage();
 
@@ -1005,7 +1112,7 @@ int App::run() {
             canvas_->restoreFrom(*background_, bottom);
         }
         topBar_.render(*canvas_, theme, top, tab_, preferences_.showGamesTab(), arcadeTabShown(),
-                       tabNavigationAvailable());
+                       tabNavigationAvailable(), preferences_.tabDisplay(), tabIcons_);
         renderBottomBar(bottom);
         const int64_t t2 = nowMs();
 
@@ -1021,19 +1128,7 @@ int App::run() {
         if (full) framebuffer_.present(*canvas_);
         else framebuffer_.present(*canvas_, canvas_->damage());
         needsFullRedraw_ = false;
-
-        // The mapped framebuffer can be overwritten from outside after a frame was presented
-        // (seen after a cold boot, when the content area read back as zeros). Presenting only
-        // damaged regions would leave that blank until the next key press, so a sparse sample
-        // is compared a few times a second and a mismatch repaints everything.
-        if (++framebufferChecks >= 8) {
-            framebufferChecks = 0;
-            if (!framebuffer_.matches(*canvas_)) {
-                needsFullRedraw_ = true;
-                if (framebufferRepairs++ < 3)
-                    DebugLog::warn("run: framebuffer was overwritten, repainting");
-            }
-        }
+        previousFrameWasFull = full;
         if (!firstFrameLogged) {
             DebugLog::info("run: first frame presented");
             firstFrameLogged = true;

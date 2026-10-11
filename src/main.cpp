@@ -201,7 +201,7 @@ void onScreenshot(int) {
 void usage() {
     std::printf(
         "mister-gui [options]\n"
-        "  --tab home|favorites|systems|arcade|games|search|settings  screen to open\n"
+        "  --tab home|favorites|systems|arcade|games|settings  screen to open\n"
         "  --view list|grid|small                  game presentation\n"
         "  --system NAME                            preselect a system\n"
         "  --frames N                               render N frames, then exit\n"
@@ -212,7 +212,7 @@ void usage() {
         "  --no-wizard                              never open the database wizard\n"
         "  --scan                                   build the game database and exit\n"
         "  --no-input                               do not open the input devices\n"
-        "  --exclusive                              grab inputs (blocks the MiSTer OSD)\n"
+        "  --exclusive                              grab inputs exclusively (default)\n"
         "  --full-redraw                            repaint everything every frame\n"
         "  --no-splash                              skip the startup splash delay\n"
         "  --splash-ms N                            splash settle wait in ms (default 1000)\n");
@@ -232,7 +232,7 @@ bool parse(int argc, char **argv, App::Options &options) {
             else if (value == "systems") options.tab = Tab::Systems;
             else if (value == "arcade") options.tab = Tab::Arcade;
             else if (value == "games") options.tab = Tab::Games;
-            else if (value == "search") options.tab = Tab::Search;
+            else if (value == "search") options.tab = Tab::Games; // legacy alias
             else if (value == "settings") options.tab = Tab::Settings;
         } else if (arg == "--view" && hasValue) {
             options.view = gameViewFromName(argv[++i]);

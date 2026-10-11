@@ -6,8 +6,6 @@
 #include <vector>
 
 #include "ArcadeGamesScreen.h"
-#include "ArcadeGroupsScreen.h"
-#include "ArcadeScreen.h"
 #include "ArcadeSettingsScreen.h"
 #include "Canvas.h"
 #include "Console.h"
@@ -23,11 +21,12 @@
 #include "MediaScraper.h"
 #include "Preferences.h"
 #include "ScanScreen.h"
-#include "SearchScreen.h"
 #include "Screen.h"
 #include "SettingsScreen.h"
 #include "SystemVisibilityScreen.h"
 #include "SystemIconDownload.h"
+#include "TabIconDownload.h"
+#include "TabIcons.h"
 #include "SpaceGroteskDownload.h"
 #include "SystemsScreen.h"
 #include "TopBar.h"
@@ -45,7 +44,7 @@ public:
         std::string system;      // empty picks the first one with games
         int exitAfterFrames = 0; // 0 runs until stopped
         bool readInput = true;   // open the input devices at all
-        bool exclusive = false;  // keep other readers out (blocks the MiSTer OSD)
+        bool exclusive = true;   // GUI owns controller input until exit or core handoff
         std::string dumpPath;    // writes the finished canvas here before exiting
         bool launchNow = false;  // starts the preselected game right away
         bool dryRun = false;     // builds the MGL and prints it instead of loading the core
@@ -91,7 +90,8 @@ private:
     void reloadLibrary();
     void openScan(bool firstRun);
     void openArtwork();
-    void startSystemIconDownload();
+    void startAssetDownload();
+    std::string assetDownloadStatus() const;
     void closeScan();
     void openVisibility();
     void closeVisibility();
@@ -106,8 +106,6 @@ private:
     bool arcadeTabShown() const;
     bool tabNavigationAvailable() const;
     std::vector<Tab> visibleTabs() const;
-    void openArcadeFull(ArcadeScreen::Dimension dimension);
-    void openArcadeGroup(ArcadeScreen::Dimension dimension, const DatabaseGroup &group);
     void cycleDefaultView();
     void startMisterCore();
     void rebootMister();
@@ -135,6 +133,9 @@ private:
     ImageCache images_;
     Icons icons_;
     std::unique_ptr<SystemIconDownload> systemIconDownload_;
+    TabIcons tabIcons_;
+    std::unique_ptr<TabIconDownload> tabIconDownload_;
+    bool assetsDownloadActive_ = false;
     SpaceGroteskDownload spaceGroteskDownload_;
     History history_;
     HiddenSystems hiddenSystems_;
@@ -150,18 +151,15 @@ private:
     std::unique_ptr<SystemsScreen> systemsScreen_;
     std::unique_ptr<HomeScreen> homeScreen_;
     std::unique_ptr<GamesScreen> gamesScreen_;   // per-system detail view
+    std::unique_ptr<GamesScreen> arcadeLibraryScreen_; // Arcade tab, with its own search state
     std::unique_ptr<GamesScreen> allGamesScreen_;// the Games tab: the whole library at once
     std::unique_ptr<GamesScreen> favoritesScreen_;
-    std::unique_ptr<SearchScreen> searchScreen_;
     std::unique_ptr<SettingsScreen> settingsScreen_;
     std::unique_ptr<ScanScreen> scanScreen_;
     std::unique_ptr<SystemVisibilityScreen> visibilityScreen_;
     std::unique_ptr<ControllersScreen> controllersScreen_;
     std::unique_ptr<ArcadeSettingsScreen> arcadeSettingsScreen_;
     std::unique_ptr<ArcadeGamesScreen> arcadeGamesScreen_;
-    std::unique_ptr<ArcadeScreen> arcadeScreen_;              // the Arcade tab
-    std::unique_ptr<ArcadeGroupsScreen> arcadeGroupsScreen_;  // ...its Manufacturers/Categories list
-    bool arcadeGroupsActive_ = false;   // that list is showing, between the tab and a group's games
     bool gameActionsActive_ = false;
     bool gameActionWorking_ = false;
     bool gameActionScrapePendingRefresh_ = false;
@@ -173,7 +171,6 @@ private:
     // database key names the group's list. Kept here so the pointer GamesScreen holds stays
     // valid for as long as it is showing; it is a copy of Arcade, not a system of its own,
     // so a favourite or history entry made from it still files under "Arcade".
-    GameSystem arcadeGroupSystem_;
 
     LibraryScan scan_;
     MediaScraper scraper_;

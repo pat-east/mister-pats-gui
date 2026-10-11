@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
+#include <utility>
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -8,6 +10,8 @@
 
 #include "GridView.h"
 #include "Artwork.h"
+#include "BoxartFadeIn.h"
+#include "GameSearch.h"
 #include "Screen.h"
 
 enum class GameView { List, Grid, BoxartSmall, kCount };
@@ -37,7 +41,9 @@ public:
     // the letter jump works over the whole library rather than within one console.
     void showAllGames();
     void showSearchResults(const std::vector<std::pair<const GameSystem *, Game>> &games);
+    void setSearchQuery(const std::string &query);
     void reload();
+    void renderBody(Canvas &canvas, const Rect &area, bool fullRedraw);
 
     bool empty() const { return entries_.empty(); }
     bool canMoveUp() const;
@@ -48,11 +54,13 @@ public:
 
     GameView view() const { return view_; }
     void setView(GameView view);
+    void setViewChangedCallback(std::function<void(GameView)> callback) {
+        viewChanged_ = std::move(callback);
+    }
 
-    // Grid tiles are repainted only when their content or focus changes. The list detail
-    // panel still uses a full redraw because its background fade changes continuously.
+    // Grid tiles and list rows are repainted only when their content or focus changes.
     bool incremental() const override {
-        return view_ != GameView::List && !entries_.empty() && context_.background;
+        return !entries_.empty() && context_.background;
     }
 
     void update(float deltaSeconds) override;
@@ -61,6 +69,8 @@ public:
     std::string hints() const override;
     std::string favoritePath() const override;
     bool selectedGame(const GameSystem *&system, Game &game) const override;
+    bool usesStartAction() const override { return search_.usesStartAction(); }
+    bool hasBackOverlay() const override { return search_.wantsBack(); }
 
 private:
     // A stub (path + name, no I/O — see Library::makeStub) until it is actually about to be
@@ -71,17 +81,20 @@ private:
         Game game;
         bool artworkResolved = false;
         ArtworkVariant artworkVariant = ArtworkVariant::Full;
+        BoxartFadeIn boxartFadeIn;
     };
 
     const Entry *current() const;
-    void renderList(Canvas &canvas, const Rect &area);
+    void renderList(Canvas &canvas, const Rect &area, bool fullRedraw);
     void renderGrid(Canvas &canvas, const Rect &area, bool fullRedraw);
     void renderHeader(Canvas &canvas, const Rect &area);
-    void renderDetail(Canvas &canvas, const Rect &area, const Entry &entry);
+    void renderDetail(Canvas &canvas, const Rect &area, const Entry &entry, bool force);
+    void renderDetailBackground(Canvas &canvas, const Rect &area, const Entry &entry);
     void toggleFavorite();
     void launch();
     void moveCursor(int dx, int dy);
     void jumpLetter(int direction);
+    void applySearch(const std::string &query);
 
     // Resolves artwork for one entry if it has not been, or was resolved for the other size
     // variant. Idempotent and cheap to call every frame for the same entry once it is done.
@@ -89,16 +102,18 @@ private:
 
     Context &context_;
     std::vector<Entry> entries_;
+    std::vector<Entry> unfilteredEntries_;
     std::vector<float> focus_;
     std::string title_;
     bool favoritesMode_ = false;
     bool allMode_ = false;
     bool searchResultsMode_ = false;
     std::string searchEmptyMessage_;
-    unsigned searchEmptyMessageIndex_ = 0;
     const GameSystem *system_ = nullptr;
 
     GameView view_ = GameView::Grid;
+    std::function<void(GameView)> viewChanged_;
+    GameSearch search_;
     GridView grid_;
     int cursor_ = 0;
     int scrollRow_ = 0;
@@ -112,5 +127,14 @@ private:
     int paintedColumns_ = -1;
     int paintedTileWidth_ = -1;
     int paintedTileHeight_ = -1;
+    std::vector<float> paintedListFocus_;
+    int paintedListScrollRow_ = -1;
+    size_t paintedListCount_ = size_t(-1);
+    std::string paintedDetailPath_;
+    const Image *paintedDetailArt_ = nullptr;
+    bool paintedDetailLoading_ = false;
+    bool paintedDetailBoxArtEnabled_ = false;
+    bool paintedDetail_ = false;
     bool needsPaint_ = true;
+    bool keyboardWasVisible_ = false;
 };

@@ -20,6 +20,9 @@ public:
     bool spaceGroteskEnabled() const { return spaceGroteskEnabled_; }
     bool spaceGroteskActive() const;
     static bool spaceGroteskAvailable();
+    void setFontSizeScale(int percent) { fontSizeScalePercent_ = percent; }
+    void setHighContrast(bool enabled);
+    bool highContrast() const { return highContrast_; }
 
     // Colours
     Color background   = Color::rgb(0x0B0D14);
@@ -32,6 +35,7 @@ public:
     Color warning      = Color::rgb(0xE06A5A);
     Color favorite     = Color::rgb(0x4C8DFF);
     Color shadow       = Color::rgb(0x000000);
+    Color focus        = Color::rgb(0xB9D5FF);
 
     // Metrics, in design pixels
     int marginX() const { return px(72); }
@@ -42,20 +46,23 @@ public:
     int gap() const { return px(26); }
 
     // Font sizes
-    int sizeHeading() const { return px(34); }
-    int sizeTab() const { return px(25); }
-    int sizeBody() const { return px(19); }
-    int sizeSmall() const { return px(15); }
-    int sizeClock() const { return px(31); }
-    int sizeTitle() const { return px(46); }
-    int sizeGameLabel() const { return regular_.usingTrueType() ? sizeBody() : px(16); }
-    int sizeGameDetail() const { return bold_.usingTrueType() ? sizeTitle() : px(32); }
+    int sizeHeading() const { return fontPx(34); }
+    int sizeTab() const { return fontPx(25); }
+    int sizeBody() const { return fontPx(19); }
+    int sizeSmall() const { return fontPx(15); }
+    int sizeClock() const { return fontPx(31); }
+    int sizeTitle() const { return fontPx(46); }
+    int sizeGameLabel() const { return regular_.usingTrueType() ? sizeBody() : fontPx(16); }
+    int sizeGameDetail() const { return bold_.usingTrueType() ? sizeTitle() : fontPx(32); }
 
 private:
     int width_;
     int height_;
+    int fontSizeScalePercent_ = 100;
+    bool highContrast_ = false;
     bool spaceGroteskEnabled_ = true;
     Font regular_;
     Font bold_;
     void loadFonts();
+    int fontPx(int designPx) const { return px(designPx * fontSizeScalePercent_ / 100); }
 };

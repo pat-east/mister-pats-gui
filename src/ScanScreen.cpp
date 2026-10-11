@@ -104,27 +104,28 @@ void ScanScreen::renderIntro(Canvas &canvas, const Rect &panel) {
     std::vector<std::string> text;
     if (firstRun_) {
         text = {
-            "This GUI has no record of your games yet.",
+            "The game list has not been created yet.",
             "",
-            "It will look through the volumes below for game directories that",
-            "match an installed core, and write one index file per system to",
-            MISTER_PAT_ROOT "/gamesdb.",
+            "MiSTer will look through connected drives for games it can run.",
+            "It saves a list so menus open faster next time.",
         };
     } else {
         text = {
-            "This reads your drives again and replaces the current index.",
+            "Search the connected drives again and replace the saved game list.",
             "",
-            "Do it after adding or removing games.",
+            "Do this after adding or removing games.",
         };
     }
     drawParagraph(canvas, body, text, theme.sizeBody(), theme.textMuted, y);
 
     y += theme.px(16);
-    theme.bold().draw(canvas, body.x, y, "Volumes", theme.sizeBody(), theme.textPrimary);
+    theme.bold().draw(canvas, body.x, y, "Drives to search", theme.sizeBody(), theme.textPrimary);
     y += theme.regular().lineHeight(theme.sizeBody()) + theme.px(10);
 
     if (roots_.empty()) {
-        theme.regular().draw(canvas, body.x, y, "none found", theme.sizeBody(), theme.warning);
+        theme.regular().draw(canvas, body.x, y,
+                             "No connected drives found. Connect a game drive and try again.",
+                             theme.sizeBody(), theme.warning);
         y += theme.regular().lineHeight(theme.sizeBody()) + theme.px(6);
     } else {
         for (const std::string &root : roots_) {
@@ -137,7 +138,7 @@ void ScanScreen::renderIntro(Canvas &canvas, const Rect &panel) {
     y += theme.px(20);
     std::vector<std::string> footer = {
         "Nothing on your drives is changed — this only reads.",
-        "It can take a few minutes with a large library.",
+        "A large collection can take a few minutes to scan.",
     };
     drawParagraph(canvas, body, footer, theme.sizeSmall(), theme.textMuted.withAlpha(170), y);
 }
@@ -145,9 +146,9 @@ void ScanScreen::renderIntro(Canvas &canvas, const Rect &panel) {
 void ScanScreen::renderWorking(Canvas &canvas, const Rect &panel) {
     Theme &theme = context_.theme;
     char counts[96];
-    std::snprintf(counts, sizeof(counts), "%zu systems  ·  %zu games", scan_.systemsFound(),
+    std::snprintf(counts, sizeof(counts), "%zu systems found  ·  %zu games found", scan_.systemsFound(),
                   scan_.gamesFound());
-    LoadingIndicator::draw(canvas, theme, panel.inset(theme.px(44)), "Reading your library",
+    LoadingIndicator::draw(canvas, theme, panel.inset(theme.px(44)), "Searching your drives for games",
                            scan_.progress(), scan_.statusLine(), counts);
 }
 
@@ -160,19 +161,19 @@ void ScanScreen::renderArtworkOffer(Canvas &canvas, const Rect &panel) {
 
     int y = body.y + theme.px(78);
     drawParagraph(canvas, body,
-                  {"Covers come from the libretro thumbnail server; existing local covers",
-                   "are converted too. No account or key is needed.",
+                  {"Download missing covers from the libretro artwork library. Existing",
+                   "covers on your drives are prepared too. No account is needed.",
                    "",
-                   "Five uncompressed BMP sizes are stored per cover, up to about",
-                   "1.7 MB per game. The JPEG fallback stays in place.",
+                   "The GUI saves cover sizes for each game view so pictures open",
+                   "quickly. Original covers are kept.",
                    "",
-                   "Missing covers need the network. Existing covers can be converted",
-                   "offline. Stopping is safe; run it again to continue."},
+                   "An Internet connection is needed for missing covers. Existing",
+                   "covers can be prepared offline. You can stop and continue later."},
                   theme.sizeBody(), theme.textMuted, y);
 
     y += theme.px(14);
     char scope[128];
-    std::snprintf(scope, sizeof(scope), "%zu games in the library",
+    std::snprintf(scope, sizeof(scope), "Covers checked for %zu games",
                   context_.library.database().totalGames());
     theme.regular().draw(canvas, body.x, y, scope, theme.sizeSmall(),
                          theme.textMuted.withAlpha(170));
@@ -182,25 +183,25 @@ void ScanScreen::renderArtworkWorking(Canvas &canvas, const Rect &panel) {
     Theme &theme = context_.theme;
     char counts[128];
     std::snprintf(counts, sizeof(counts),
-                  "%zu fetched  ·  %zu optimized  ·  %zu already there  ·  %zu not found",
+                  "Covers downloaded %zu  ·  Prepared %zu  ·  Already ready %zu  ·  Not found %zu",
                   scraper_.fetched(), scraper_.prepared(), scraper_.skipped(),
                   scraper_.missing());
     char eta[64];
     const int64_t remaining = scraper_.estimatedRemainingSeconds();
     if (remaining < 0) {
-        std::snprintf(eta, sizeof(eta), "ETA calculating…");
+        std::snprintf(eta, sizeof(eta), "Finish time calculating…");
     } else {
         const std::time_t finish = std::time(nullptr) + remaining;
         std::tm local{};
         char clock[32]{};
         if (localtime_r(&finish, &local) &&
             std::strftime(clock, sizeof(clock), "%H:%M %Z", &local)) {
-            std::snprintf(eta, sizeof(eta), "ETA ~%s", clock);
+            std::snprintf(eta, sizeof(eta), "Finishes around %s", clock);
         } else {
-            std::snprintf(eta, sizeof(eta), "ETA unavailable");
+            std::snprintf(eta, sizeof(eta), "Finish time unavailable");
         }
     }
-    LoadingIndicator::draw(canvas, theme, panel.inset(theme.px(44)), "Preparing box art",
+    LoadingIndicator::draw(canvas, theme, panel.inset(theme.px(44)), "Downloading and preparing covers",
                            scraper_.progress(), scraper_.statusLine(), counts, eta);
 }
 
@@ -219,21 +220,21 @@ void ScanScreen::renderDone(Canvas &canvas, const Rect &panel) {
 
         if (ok) {
             char summary[128];
-            std::snprintf(summary, sizeof(summary), "%zu systems, %zu games indexed.",
+            std::snprintf(summary, sizeof(summary), "%zu systems and %zu games added to the game list.",
                           scan_.systemsFound(), scan_.gamesFound());
             drawParagraph(canvas, body, {summary, "",
-                                         "The index lives beside the application, so the drives",
-                                         "are not touched again until you rebuild it."},
+                                         "The saved list is kept on the MiSTer. Your game files",
+                                         "are not changed."},
                           theme.sizeBody(), theme.textMuted, y);
         } else {
             drawParagraph(canvas, body, {scan_.error(), "",
-                                         "The database may be incomplete. Run it again from the",
-                                         "settings when you are ready."},
+                                         "If you stopped the scan, no new game list was saved.",
+                                         "You can start another scan in Settings → Library."},
                           theme.sizeBody(), theme.textMuted, y);
         }
     } else if (scraper_.state() != MediaScraper::State::Idle) {
         const bool ok = scraper_.state() == MediaScraper::State::Done;
-        theme.bold().draw(canvas, body.x, body.y, ok ? "Box art fetched" : "Box art fetch stopped",
+        theme.bold().draw(canvas, body.x, body.y, ok ? "Cover art ready" : "Cover search stopped",
                           theme.sizeTitle(), ok ? theme.textPrimary : theme.warning);
 
         if (!ok) {
@@ -245,14 +246,14 @@ void ScanScreen::renderDone(Canvas &canvas, const Rect &panel) {
     if (scraper_.state() != MediaScraper::State::Idle) {
         char art[160];
         std::snprintf(art, sizeof(art),
-                      "%zu fetched, %zu optimized for views, %zu already there, %zu missing.",
+                      "Downloaded %zu covers, prepared %zu, %zu already ready, %zu not found.",
                       scraper_.fetched(), scraper_.prepared(), scraper_.skipped(),
                       scraper_.missing());
         y += theme.px(10);
 
         std::vector<std::string> lines = {art};
         if (scraper_.missing())
-            lines.push_back(std::string("Titles nothing was found for are listed in ") +
+            lines.push_back(std::string("Games with no matching cover are listed in ") +
                             MediaScraper::kMissesFile);
         drawParagraph(canvas, body, lines, theme.sizeSmall(), theme.textMuted.withAlpha(180), y);
     }
@@ -289,11 +290,11 @@ void ScanScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*/) {
 
 std::string ScanScreen::hints() const {
     switch (page_) {
-    case Page::Intro:          return "A Start   B Later";
-    case Page::Working:        return "B Cancel";
-    case Page::ArtworkOffer:   return "A Fetch box art   B Skip";
-    case Page::ArtworkWorking: return "B Stop";
+    case Page::Intro:          return "A Scan connected drives   B Do this later";
+    case Page::Working:        return "B Cancel game scan";
+    case Page::ArtworkOffer:   return "A Download missing covers   B Skip for now";
+    case Page::ArtworkWorking: return "B Stop cover download";
     case Page::Done:
-    default:                   return "A Continue";
+    default:                   return "A Finish";
     }
 }

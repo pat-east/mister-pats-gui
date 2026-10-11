@@ -49,6 +49,9 @@ public:
     static Rect shadowBounds(const Rect &r, int spread);
 
     void drawImage(const Image &img, const Rect &dst, uint8_t alpha = 255, int radius = 0);
+    // Deterministic scattered reveal used by the boxart fade-in animation.
+    void drawImageReveal(const Image &img, const Rect &dst, uint8_t alpha, int radius,
+                         int percent);
 
     // Coverage is 0..255; used by the glyph rasteriser.
     void blendPixel(int x, int y, Color c, uint8_t coverage);

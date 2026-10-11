@@ -18,7 +18,7 @@ asks the MiSTer to load it, the same way the stock menu does.
 | --- | --- |
 | ![Systems](screenshots/systems.png) | ![Arcade](screenshots/arcade.png) |
 
-Every system's games in the presentation you prefer — Y cycles through them. Here, SNES in Grid, Boxart small and List:
+Every system's games in the presentation you prefer — Y cycles through them. Settings can use one shared view or remember a different view for each area. Here, SNES in Grid, Boxart small and List:
 
 | Grid | Boxart small |
 | --- | --- |
@@ -28,30 +28,21 @@ Every system's games in the presentation you prefer — Y cycles through them. H
 | --- | --- |
 | ![SNES, list view](screenshots/snes-list.png) | ![Games](screenshots/games.png) |
 
-Settings, with the update page and the controller input test:
+Settings, including Interface, Accessibility, System, the Changelog, the update page and controller input test:
 
 | Settings | Interface settings |
 | --- | --- |
 | ![Settings](screenshots/settings.png) | ![Interface settings](screenshots/settings-interface.png) |
+
+| Accessibility settings | System settings |
+| --- | --- |
+| ![Accessibility settings](screenshots/settings-accessibility.png) | ![System settings](screenshots/settings-system.png) |
 
 | Updates | Controller input test |
 | --- | --- |
 | ![Updates](screenshots/settings-updates.png) | ![Controller input test](screenshots/controller-test.png) |
 
 <!-- screenshots:end -->
-
-## A note on how this was built
-
-This project was built with the help of AI.
-
-I want to be honest about that: without it, this project would not have grown from a proof
-of concept into something that actually works — a project genuinely capable of replacing the
-official Console Mode. Between the lack of documentation and the fact that Console Mode's own
-source is no longer publicly available, reaching this point without that help would have
-taken several months, if not years.
-
-At the same time, I want to be just as clear that AI alone would not have gotten here either.
-A lot of hard, careful work went into this project — done by a person. Me.
 
 ## Why
 
@@ -88,19 +79,21 @@ In practice that means:
 
 - **Tile grid** with box art in three presentations per system: list with a large preview,
   grid with titles, and small box art.
-- **Games tab** across every system at once, in three rows: recently played, favourites, all
-  games.
-- **Search tab** immediately beside Games, with a reusable controller-operated on-screen
-  keyboard, a separate numeric keypad, and submitted results across the library. Empty results
-  are distinguished from the initial, not-yet-searched state.
+- **Home** with recently played games and favourites; **Games** is the flat, alphabetized list
+  across every system.
+- **Boxart fade-in animation** — newly loaded, unfocused covers appear in the same three fixed
+  pixel-reveal phases across Home and the Games grid. Focused covers appear immediately.
+- **Contextual game search** in Home, Games, Favorites, system game lists and Arcade. Each search
+  is limited to that area; the reusable controller-operated keyboard has a separate numeric
+  keypad. Settings and the Consoles overview have no search field.
 - **Letter jump** on the shoulder triggers. A single console can hold a few thousand titles;
   L2/R2 skip whole initial letters.
 - **Favourites and history**, stored as plain text files you can read and edit.
 - **Arcade.** MiSTer's arcade library does not fit "one folder, one core", so it has its own
-  treatment: a library of the games that actually work — core installed, ROM zip found,
-  every CRC correct, checked the way MiSTer searches for them — an Arcade tab that browses
-  it by manufacturer and category, box art matched to the exact ROM revision, and a
-  diagnostic table that explains why a game is missing. See [ARCADE.md](docs/ARCADE.md).
+  game validation: core installed, ROM zip found, every CRC correct, checked the way MiSTer
+  searches for them. The Arcade tab opens the games directly in the configured game view;
+  box art matches the exact ROM revision. A diagnostic table explains why a game is missing.
+  See [ARCADE.md](docs/ARCADE.md).
 - **Its own game database.** A scan works out which systems are installed and what is in
   them, and writes one index file per system. Opening a console reads that one file and
   nothing else.
@@ -110,15 +103,23 @@ In practice that means:
 - **Opens instantly, even at 10,000+ games.** A system's list — or the whole library, merged
   and sorted, in the Games tab — fills in progressively rather than blocking on every game's
   artwork before showing anything.
-- **Console icons** for systems without art, with a Settings action to download missing BMPs
-  and PNG fallback for older installations.
-- **Manage systems**, in Settings — hide the systems you do not use from the Systems tab, and
-  toggle the Games tab off entirely for a library large enough that browsing it flat stops
-  being useful.
-- **A default presentation**, in Settings — pick Grid, List or Boxart small once and it
-  applies everywhere from then on.
-- **Clock settings**, in Settings → Interface — choose a 12-hour AM/PM or 24-hour clock and
-  set Linux's time zone using the MiSTer zoneinfo file.
+- **Console icons** for systems without art, with PNG fallback for older installations.
+- **Tab icons**, with names, icons or both. Settings can download only missing BMPs; GUI updates
+  also fetch missing tab assets from that release.
+- **Download Assets**, in Settings → System — checks and downloads missing console and tab icons.
+- **Accessibility**, in Settings — choose a larger interface font and high contrast. Focused
+  controls have visible indicators throughout the interface.
+- **Full Changelog**, in Settings → System — load and read the project's complete changelog from
+  GitHub, with retry and scroll indicators.
+- **Consoles** overview — the Systems tab, renamed, lists consoles with games. Arcade is
+  excluded by default; **Show Arcade in Consoles** in Settings → Interface adds it to the grid.
+  Manage systems can hide entries, and the Games tab can be switched off for a library large
+  enough that browsing it flat stops being useful.
+- **Game view**, in Settings → Interface — choose Grid, Boxart small or List for every game area, or
+  choose Individual to remember a separate view for Home search results, Favorites, console
+  game lists in Consoles, and Games. Press Y while browsing to change the current area's view.
+- **Clock settings**, in Settings → System — choose a 12-hour AM/PM or 24-hour clock and set
+  Linux's time zone using the MiSTer zoneinfo file.
 - **Interface sounds**, in Settings → Interface — control the splash startup sound separately
   from menu sounds for navigation, tab changes, and successful game launches.
 - **Wi-Fi setup**, in Settings → System — scan for networks, connect to open or WPA-PSK
@@ -141,7 +142,8 @@ In practice that means:
   in-game OSD all stay in the code that already does them well.
 - **Boots straight into the GUI** via a small patch to the MiSTer main binary, which
   also teaches it to recognise a DVI display even when the video mode is pinned in the INI.
-- **Scales from 480p to 4K.** Everything is authored against 1080p and scaled.
+- **Designed for 1080p.** The interface scales to the framebuffer dimensions, but other output
+  resolutions have not yet been verified on hardware.
 
 ## Requirements
 
@@ -163,10 +165,10 @@ a dependency for any of that:
 | The catalogue of systems | **built by this GUI** |
 | The index of games | **built by this GUI** |
 | Box art and background images | **prepared and fetched by this GUI** — Settings → *Prepare box art* |
-| Fonts | Space Grotesk and its license are downloaded by the install/update script or from Settings → Interface; the built-in fallback remains available |
+| Fonts | Space Grotesk and its license are downloaded by the install/update script or from Settings → Accessibility; the built-in fallback remains available |
 
 The setup script downloads Space Grotesk from its upstream project under the SIL Open Font
-License, along with the license text. If those files are missing, Settings → Interface can fetch
+License, along with the license text. If those files are missing, Settings → Accessibility can fetch
 them directly. Space Grotesk is enabled by default when available; the same setting can disable
 it to check the fallback typeface. Routine GUI updates only add a new `.so`.
 
@@ -232,14 +234,17 @@ make -C tests                            # host-side checks, no device needed
 | Menu button, long press | Leave a running game and return to the GUI |
 | Q | Quit |
 
-In the Search tab, the search field is focused on entry; press **A** to open the on-screen keyboard.
-While it is open, **B** closes the keyboard, **Y** inserts a space, **X** deletes the last
-character, and **Start** submits the search. Select the on-screen Symbols key with **A** to
-switch layouts; the Shift key toggles letter case. In the results grid, **Up** moves to the
-search field from the top row; press **A** to edit.
+In Home, Games, Favorites, a system's game list or Arcade, press **Up** from the first game row to
+focus its search field, then **A** to open the on-screen keyboard. While it is open, **B** cancels
+the draft, **Y** inserts a space, **X** deletes the last character, and **Start** submits the
+search. Select the on-screen Symbols key with **A** to switch layouts; Shift toggles letter case.
+Search terms match the beginnings of words in game titles; Home, Games and Favorites also match
+system names. All terms must match, in any order. Clear the field and submit to restore the full
+current collection.
 
-The MiSTer's own OSD stays reachable at all times — the GUI deliberately does not grab input
-devices exclusively.
+While the GUI is running, it grabs controller devices exclusively so button presses do not
+also reach the terminal or MiSTer OSD. It releases them when the GUI exits or hands control to
+a core, so core input works normally.
 
 ## Tested controllers
 
@@ -260,8 +265,8 @@ the controller-management feature this is building towards.
 | --- | --- |
 | `/media/fat/mister-pat/favorites.txt` | Favourites, one per line |
 | `/media/fat/mister-pat/history.txt` | Recently played |
-| `/media/fat/mister-pat/hidden-systems.txt` | Systems hidden from the Systems tab, one per line — see *Manage systems* in Settings |
-| `/media/fat/mister-pat/preferences.txt` | Interface toggles, including sound, tab visibility, box art and time settings |
+| `/media/fat/mister-pat/hidden-systems.txt` | Consoles hidden from the Consoles tab, one per line — see *Manage systems* in Settings |
+| `/media/fat/mister-pat/preferences.txt` | Interface options, including sound, tab visibility, time settings and saved game views |
 | `/media/fat/mister-pat/systems.conf` | Per-system loader slot overrides, see [the example](assets/systems.conf.example) |
 | `/media/fat/mister-pat/icons/` | Console icons |
 | `/media/fat/mister-pat/gamesdb/` | The game database: `catalog.tsv`, `roots.tsv` and one `<System>.tsv` per system |
@@ -282,7 +287,7 @@ captured without a controller:
 --no-wizard                              never open the database wizard
 --scan                                   build the game database and exit
 --no-input                               do not open the input devices
---exclusive                              grab inputs (blocks the MiSTer OSD)
+--exclusive                              grab inputs exclusively (default)
 --stats                                  report where frame time is spent
 --full-redraw                            repaint everything every frame
 --no-splash                              skip the startup splash
@@ -319,10 +324,19 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 
 Working: booting into the GUI, browsing every system, box art, favourites, history, letter
 navigation, launching games, returning from a game with a long press on the menu button, and
-hiding systems or the Games tab from Settings for a large library. Version 0.6.0 adds controller-
+hiding systems or the Games tab from Settings for a large library. The 0.6 series adds controller-
 operated search, clock and time-zone settings, Wi-Fi setup, interface sound controls, per-game
-artwork actions, and a confirmed system reboot action. See [CHANGELOG.md](CHANGELOG.md) and
-[BOXART.md](docs/BOXART.md).
+artwork actions, a confirmed system reboot action, and selectable face-button labels. Version
+0.6.3 extended the existing three-phase boxart reveal to Home's recent and favorite covers and
+fixed repeated fallback reloads. Version 0.6.4 adds a fading tab underline, selectable tab icons,
+a unified asset download action, clearer toggle indicators, and the Consoles tab changes. Version
+0.6.5 adds accessibility controls, a GitHub changelog viewer, explanations for settings and
+clearer library and cover-art progress messages, the revised Settings layout and a Wi-Fi
+activation fix. Version 0.7.0 adds a shared or individually remembered game view for Home,
+Favorites, console game lists and Games. It also simplifies the List view's artwork panel,
+shows each favorite's system, and avoids repainting unchanged list content. See
+[CHANGELOG.md](CHANGELOG.md),
+[GUI.md](docs/GUI.md), and [BOXART.md](docs/BOXART.md).
 
 ## Roadmap
 
@@ -386,23 +400,23 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.5.0 change list.
       sound and menu sounds independently; menu sounds include navigation, tab changes, and game
       launches.
 
-#### 0.7.0 — Usability & Accessibility
+#### 0.7.0 — Usability
 
-- [ ] **Improve usability across the Arcade tab**, especially its entry points and the
-      presentation and interaction of individual games.
-- [ ] **Font-size and contrast options** for improved readability and accessibility, with clear
-      focus indicators throughout the interface.
-- [ ] **Improve help and status text** with clearer explanations for settings and updated hints
+- [x] **Simplify the Arcade tab:** remove the Manufacturers and Categories entry points and show
+      Arcade games directly in the configured standard Games view.
+- [x] **Improve help and status text** with clearer explanations for settings and updated hints
       in views, including library loading and box-art scraping.
-- [ ] **Show a checkbox alongside “On” or “Off”** for toggle settings.
-- [ ] **Add tab icons** with options to show tab names, tab icons or both.
-- [ ] **Fade in tab content when switching tabs** instead of sliding it into view.
-- [ ] **Rename the Systems tab to Consoles** and add a “Show Arcade in Consoles” option.
-- [ ] **Add a search bar to relevant tabs** and search within the current context: all games in
+- [x] **Show a checkbox alongside “On” or “Off”** for toggle settings, with fixed-width values.
+- [x] **Face button style** setting with XBOX, PlayStation and Nintendo labels. Confirm stays on
+      the bottom face button and Back on the right; swapping them remains a separate backlog item.
+- [x] **Add tab icons** with options to show tab names, tab icons or both; download missing BMPs
+      through Settings → System → Download Assets or during a GUI update.
+- [x] **Rename the Systems tab to Consoles** and add a “Show Arcade in Consoles” option,
+      off by default.
+- [x] **Add a search bar to relevant tabs** and search within the current context: all games in
       Home and Games, favorites in Favorites, the selected system in its game list, and Arcade
       games in Arcade. Remove the Search tab; Settings has no search.
-- [ ] **Ordering the systems** in the Consoles tab. Hiding the ones you do not use already works.
-- [ ] **A separately remembered view per tab** — Home, Favorites, Consoles and Games — instead
+- [x] **A separately remembered view per tab** — Home, Favorites, Consoles and Games — instead
       of the one default view for all of them.
 
 #### 0.8.0 — Game variants
@@ -414,12 +428,19 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.5.0 change list.
 
 #### Not scheduled yet
 
+- [ ] **Disc-drive support for the SuperStation Dock.** Read and launch games using the Dock's disc drive.
+- [ ] **Option to swap Confirm and Back buttons**, with the current European mapping as the
+      default.
+- [ ] **Fade in tab content when switching tabs** instead of sliding it into view.
+- [ ] **Choose the order of consoles** in the Consoles tab. Hiding unused consoles already works.
 - [ ] **Boxart scraping using TheGamesDB**, with a list of titles that have no match and the
       option to retry artwork lookup for one title or all unmatched titles.
 - [ ] **Use `update_all.sh` from the GUI**, showing the installed version, what will be updated
       and whether a restart is needed.
 - [ ] **Back up and restore settings.** Export favorites, hidden systems, per-tab views and GUI
       settings, and restore them after a reinstall.
+- [ ] **Screensaver and screen dimming after inactivity.** Dim the display after a period
+      without input and activate a screensaver after a longer idle period.
 - [ ] **Localisation.** Everything is English today, with the strings still inline; extracting
       them is the prerequisite.
 - [ ] **Loader slots for the remaining CD-based cores** (CD-i, Jaguar CD).
@@ -456,6 +477,19 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.5.0 change list.
   drive it learned from
 - [retro-game-console-icons](https://github.com/KyleBing/retro-game-console-icons) — the
   console icon set
+
+## A note on how this was built
+
+This project was built with the help of AI.
+
+I want to be honest about that: without it, this project would not have grown from a proof
+of concept into something that actually works — a project genuinely capable of replacing the
+official Console Mode. Between the lack of documentation and the fact that Console Mode's own
+source is no longer publicly available, reaching this point without that help would have
+taken several months, if not years.
+
+At the same time, I want to be just as clear that AI alone would not have gotten here either.
+A lot of hard, careful work went into this project — done by a person. Me.
 
 ## Disclaimer
 

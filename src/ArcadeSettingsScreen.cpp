@@ -56,6 +56,7 @@ void ArcadeSettingsScreen::render(Canvas &canvas, const Rect &area, bool /*fullR
         if (active) {
             canvas.fillRoundedRect({frame.x, frame.y, theme.px(4), frame.h}, theme.px(2),
                                    theme.accent);
+            canvas.strokeRoundedRect(frame, theme.px(8), std::max(1, theme.px(2)), theme.focus);
         }
 
         const int textY = frame.y + (frame.h - theme.regular().lineHeight(theme.sizeBody())) / 2;
@@ -64,4 +65,4 @@ void ArcadeSettingsScreen::render(Canvas &canvas, const Rect &area, bool /*fullR
     }
 }
 
-std::string ArcadeSettingsScreen::hints() const { return "A Select   B Back"; }
+std::string ArcadeSettingsScreen::hints() const { return "A Open Arcade game list   B Back"; }

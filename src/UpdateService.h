@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "ReleaseInfo.h"
+#include "Downloader.h"
 #include "UpdateInstaller.h"
 #include "VerifiedDownloader.h"
 
@@ -34,6 +35,10 @@ struct UpdateSnapshot {
     bool canInstall = false;
     bool successPromptVisible = false;
     bool pinRemoved = false;
+    bool changelogLoading = false;
+    uint32_t changelogGeneration = 0;
+    std::string changelog;
+    std::string changelogError;
 };
 
 class UpdateService {
@@ -45,6 +50,7 @@ public:
 
     void initializeLocalState();
     bool startCheck(bool automatic);
+    bool startChangelog();
     void cancelAutomaticCheck();
     bool beginConfirmation();
     bool startInstall();
@@ -58,10 +64,11 @@ public:
     void shutdown();
 
 private:
-    enum class Command { None, Check, AutomaticCheck, Install };
+    enum class Command { None, Check, AutomaticCheck, Install, Changelog };
     void workerLoop();
     void check(bool automatic);
     void install();
+    void fetchChangelog();
     void publishError(const std::string &error);
     std::string localBlockReason() const;
 
@@ -70,10 +77,12 @@ private:
     std::atomic<bool> cancel_{false};
     bool stopping_ = false;
     bool automaticCheckActive_ = false;
+    bool changelogQueued_ = false;
     Command pending_ = Command::None;
     UpdateSnapshot snapshot_;
     ReleaseCandidate candidate_;
     VerifiedDownloader downloader_;
+    Downloader changelogDownloader_;
     // Construct the worker last so every field it reads is already initialized.
     std::thread worker_;
 };

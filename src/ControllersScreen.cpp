@@ -1,5 +1,7 @@
 #include "ControllersScreen.h"
 
+#include "ButtonLabels.h"
+
 #include <algorithm>
 #include <cstdio>
 #include <linux/input.h>
@@ -147,21 +149,21 @@ void ControllersScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedr
 std::string ControllersScreen::hints() const {
     switch (mode_) {
     case Mode::List:
-        return "A Input test   X Deadzone   Y Button mapping   B Back";
+        return "A Test controller   X Stick deadzone   Y Set up buttons   B Back";
     case Mode::InputTest:
-        return "Every input lights up below — hold Start 5s to leave";
+        return "Press buttons or move sticks to test   Hold Start 5s to exit";
     case Mode::Deadzone:
-        return "Left/Right Adjust   A Save   B Cancel";
+        return "←/→ Change stick deadzone   A Save   B Cancel";
     case Mode::Wizard:
-        if (wizardOpeningShown_) return "A Begin   B Cancel, nothing captured yet";
-        return "Start: press = skip this button, hold 5s = cancel wizard, nothing saved";
+        if (wizardOpeningShown_) return "A Begin button setup   B Cancel (nothing saved yet)";
+        return "Press Start to skip this button   Hold Start 5s to cancel setup";
     case Mode::Bluetooth:
         switch (btState_) {
-        case BtState::Idle: return "A Start scanning   B Close";
-        case BtState::Scanning: return "B Cancel";
-        case BtState::Found: return "A Set up mapping now   B Skip for now";
+        case BtState::Idle: return "A Scan for Bluetooth controllers   B Close";
+        case BtState::Scanning: return "B Stop scanning";
+        case BtState::Found: return "A Set up buttons now   B Do this later";
         case BtState::NoBluetooth: return "B Close";
-        case BtState::Timeout: return "A Try again   B Close";
+        case BtState::Timeout: return "A Scan again   B Close";
         }
     }
     return "B Back";
@@ -193,7 +195,7 @@ void ControllersScreen::handleListAction(Action action) {
         if (const Row *row = selectedRow()) {
             int32_t lo, hi;
             if (input_.absInfo(currentSlot(*row), ABS_X, lo, hi)) enterDeadzone();
-            else context_.notify("This controller has no analogue stick");
+            else context_.notify("This controller has no analog stick to adjust");
         }
         break;
     case Action::CycleView: // physical Y — button mapping
@@ -214,7 +216,7 @@ void ControllersScreen::renderList(Canvas &canvas, const Rect &area) {
     const Rect body{area.x, area.y + headerHeight, area.w, area.h - headerHeight};
 
     if (rows_.empty() && !bluetoothAvailable_) {
-        theme.regular().drawCentered(canvas, body, "No controllers connected", theme.sizeHeading(),
+        theme.regular().drawCentered(canvas, body, "No controller connected. Connect one and try again.", theme.sizeHeading(),
                                      theme.textMuted);
         return;
     }
@@ -236,6 +238,8 @@ void ControllersScreen::renderList(Canvas &canvas, const Rect &area) {
         if (active)
             canvas.fillRoundedRect({frame.x, frame.y, theme.px(4), frame.h}, theme.px(2),
                                    theme.accent);
+        if (active)
+            canvas.strokeRoundedRect(frame, theme.px(8), std::max(1, theme.px(2)), theme.focus);
 
         const int textY = frame.y + (frame.h - theme.regular().lineHeight(theme.sizeBody())) / 2;
         theme.regular().draw(canvas, frame.x + theme.px(20), textY, row.device.name,
@@ -411,7 +415,7 @@ void ControllersScreen::renderInputTest(Canvas &canvas, const Rect &area) {
     const int slot = currentSlot(*row);
     if (slot < 0) { mode_ = Mode::List; refresh(); return; }
 
-    const int headerHeight = theme.px(58);
+    const int headerHeight = theme.px(76);
     Rect body{area.x, area.y + headerHeight, area.w, area.h - headerHeight};
 
     if (inputTestStartHold_ > 0.0f) {
@@ -426,24 +430,29 @@ void ControllersScreen::renderInputTest(Canvas &canvas, const Rect &area) {
     // distracting noise on a screen whose whole job is watching *other* things light up.
     if (inputTestIdleSeconds_ > 5.0f) {
         char idle[64];
-        std::snprintf(idle, sizeof(idle), "No input for a while — leaving in %.0fs",
+        std::snprintf(idle, sizeof(idle), "No input detected — returning in %.0fs",
                      double(10.0f - inputTestIdleSeconds_));
         const int idleWidth = theme.regular().measure(idle, theme.sizeSmall());
         theme.regular().draw(canvas, area.right() - idleWidth, area.y + theme.px(10), idle,
                              theme.sizeSmall(), theme.warning);
     }
 
-    auto drawButton = [&](int x, int y, int w, const char *label, bool pressed) {
+    auto drawButton = [&](int x, int y, int w, const std::string &label, bool pressed) {
         const Rect frame{x, y, w, theme.px(40)};
         canvas.fillRoundedRect(frame, theme.px(8),
-                               pressed ? theme.accent : theme.surface.withAlpha(160));
-        theme.regular().drawCentered(canvas, frame, label, theme.sizeSmall(),
-                                     pressed ? theme.textPrimary : theme.textMuted);
+                               pressed ? theme.accent : theme.surfaceHi);
+        canvas.strokeRoundedRect(frame, theme.px(8), theme.px(2),
+                                  pressed ? theme.focus : theme.focus.withAlpha(90));
+        const std::string mappedLabel = buttonName(label);
+        theme.regular().drawCentered(canvas, frame, mappedLabel, theme.sizeSmall(),
+                                     pressed ? theme.textPrimary : theme.textPrimary.withAlpha(230));
     };
 
-    int y = body.y;
-    const int colWidth = theme.px(140);
-    const int gap = theme.gap();
+    const int colWidth = theme.px(170);
+    const int gap = theme.px(34);
+    const int groupWidth = colWidth * 3 + gap * 2;
+    body.x = area.x + std::max(0, (area.w - groupWidth) / 2);
+    int y = body.y + theme.px(24);
 
     // D-pad — lit by either a literal BTN_DPAD_* key or a hat's digital edge: a D-pad-only
     // pad (a Saturn-style pad, for one) reports its D-pad as a hat axis, not as keys at all.
@@ -452,23 +461,31 @@ void ControllersScreen::renderInputTest(Canvas &canvas, const Rect &area) {
     const bool dpadDown = input_.keyState(slot, BTN_DPAD_DOWN) || hatEdge(slot, ABS_HAT0Y) == 2;
     const bool dpadLeft = input_.keyState(slot, BTN_DPAD_LEFT) || hatEdge(slot, ABS_HAT0X) == 1;
     const bool dpadRight = input_.keyState(slot, BTN_DPAD_RIGHT) || hatEdge(slot, ABS_HAT0X) == 2;
-    drawButton(body.x, y, colWidth, "D-pad Up", dpadUp);
-    drawButton(body.x, y + theme.px(46), colWidth, "D-pad Down", dpadDown);
-    drawButton(body.x, y + theme.px(92), colWidth, "D-pad Left", dpadLeft);
-    drawButton(body.x, y + theme.px(138), colWidth, "D-pad Right", dpadRight);
+    const int arrowSize = theme.px(54);
+    const int arrowGap = theme.px(6);
+    const int dpadCenterX = body.x + (colWidth - arrowSize) / 2;
+    const int dpadY = y + theme.px(50);
+    drawButton(dpadCenterX, dpadY - arrowSize - arrowGap,
+               arrowSize, "↑", dpadUp);
+    drawButton(dpadCenterX - arrowSize - arrowGap, dpadY, arrowSize, "←", dpadLeft);
+    drawButton(dpadCenterX + arrowSize + arrowGap, dpadY, arrowSize, "→", dpadRight);
+    drawButton(dpadCenterX, dpadY + arrowSize + arrowGap,
+               arrowSize, "↓", dpadDown);
 
     // Label the physical Xbox positions. This controller reports BTN_NORTH for its left
     // X button and BTN_WEST for its top Y button; use the same mapping as Input.
     const int faceX = body.x + colWidth + gap;
     const int diamondCx = faceX + colWidth + gap / 2;
-    const int diamondCy = y + theme.px(100);
-    const int diamondR = theme.px(70);
-    const int faceSize = theme.px(52);
+    const int diamondCy = y + theme.px(110);
+    const int diamondR = theme.px(82);
+    const int faceSize = theme.px(64);
     auto drawFaceButton = [&](int cx, int cy, const char *label, bool pressed) {
         const Rect frame{cx - faceSize / 2, cy - faceSize / 2, faceSize, faceSize};
-        canvas.fillRoundedRect(frame, faceSize / 2, pressed ? theme.accent : theme.surface.withAlpha(160));
-        theme.regular().drawCentered(canvas, frame, label, theme.sizeSmall(),
-                                     pressed ? theme.textPrimary : theme.textMuted);
+        canvas.fillRoundedRect(frame, faceSize / 2, pressed ? theme.accent : theme.surfaceHi);
+        canvas.strokeRoundedRect(frame, faceSize / 2, theme.px(2),
+                                 pressed ? theme.focus : theme.focus.withAlpha(90));
+        theme.regular().drawCentered(canvas, frame, label, theme.sizeBody(),
+                                     pressed ? theme.textPrimary : theme.textPrimary.withAlpha(230));
     };
     drawFaceButton(diamondCx, diamondCy - diamondR, "Y", input_.keyState(slot, BTN_WEST));
     drawFaceButton(diamondCx - diamondR, diamondCy, "X", input_.keyState(slot, BTN_NORTH));
@@ -480,41 +497,42 @@ void ControllersScreen::renderInputTest(Canvas &canvas, const Rect &area) {
     // turn it on any more.
 
     // Shoulders — digital, or a fill bar if the pad reports it as an analogue trigger.
-    y += theme.px(200);
+    y += theme.px(220);
     drawButton(body.x, y, colWidth, "L", input_.keyState(slot, BTN_TL));
     drawButton(faceX, y, colWidth, "R", input_.keyState(slot, BTN_TR));
 
-    auto drawTrigger = [&](int x, const char *label, uint16_t absCode, uint16_t digitalCode) {
+    auto drawTrigger = [&](int x, const std::string &label, uint16_t absCode,
+                           uint16_t digitalCode) {
         int32_t lo, hi;
         if (input_.absInfo(slot, absCode, lo, hi) && hi > lo) {
             const int32_t value = input_.absValue(slot, absCode);
             const float fraction = std::max(0.0f, std::min(1.0f, float(value - lo) / float(hi - lo)));
-            const Rect frame{x, y + theme.px(46), colWidth, theme.px(28)};
-            canvas.fillRoundedRect(frame, theme.px(6), theme.surface.withAlpha(160));
+            const Rect frame{x, y + theme.px(52), colWidth, theme.px(28)};
+            canvas.fillRoundedRect(frame, theme.px(6), theme.surfaceHi);
             canvas.fillRoundedRect({frame.x, frame.y, int(frame.w * fraction), frame.h}, theme.px(6),
                                    theme.accent);
             theme.regular().drawCentered(canvas, frame, label, theme.sizeSmall(), theme.textPrimary);
         } else {
-            drawButton(x, y + theme.px(46), colWidth, label, input_.keyState(slot, digitalCode));
+            drawButton(x, y + theme.px(52), colWidth, label, input_.keyState(slot, digitalCode));
         }
     };
-    drawTrigger(body.x, "L2", ABS_Z, BTN_TL2);
-    drawTrigger(faceX, "R2", ABS_RZ, BTN_TR2);
+    drawTrigger(body.x, buttonName("L2"), ABS_Z, BTN_TL2);
+    drawTrigger(faceX, buttonName("R2"), ABS_RZ, BTN_TR2);
 
     // Select / Start / Home
-    y += theme.px(100);
-    drawButton(body.x, y, colWidth, "Select", input_.keyState(slot, BTN_SELECT));
-    drawButton(faceX, y, colWidth, "Start", input_.keyState(slot, BTN_START));
+    y += theme.px(112);
+    drawButton(body.x, y, colWidth, buttonName("Select"), input_.keyState(slot, BTN_SELECT));
+    drawButton(faceX, y, colWidth, buttonName("Start"), input_.keyState(slot, BTN_START));
     drawButton(faceX + colWidth + gap, y, colWidth, "Home", input_.keyState(slot, BTN_MODE));
 
     // Sticks — a small square standing in for the circle this renderer has no dedicated
     // primitive for (fillRoundedRect at half-width radius reads as a circle at this size),
     // with a dot at the live position and a ring at the configured deadzone.
-    y += theme.px(80);
+    y += theme.px(92);
     auto drawStick = [&](int x, uint16_t codeX, uint16_t codeY, const char *label) {
-        const int size = theme.px(140);
+        const int size = theme.px(170);
         const Rect frame{x, y, size, size};
-        canvas.strokeRoundedRect(frame, size / 2, theme.px(3), theme.surfaceHi);
+        canvas.strokeRoundedRect(frame, size / 2, theme.px(3), theme.focus.withAlpha(175));
 
         int32_t loX, hiX, loY, hiY;
         if (input_.absInfo(slot, codeX, loX, hiX) && input_.absInfo(slot, codeY, loY, hiY) &&
@@ -527,7 +545,7 @@ void ControllersScreen::renderInputTest(Canvas &canvas, const Rect &area) {
             canvas.fillRoundedRect({cx - dotSize / 2, cy - dotSize / 2, dotSize, dotSize},
                                    dotSize / 2, theme.accent);
         }
-        theme.regular().draw(canvas, frame.x, frame.bottom() + theme.px(6), label, theme.sizeSmall(),
+        theme.regular().draw(canvas, frame.x, frame.bottom() + theme.px(8), label, theme.sizeBody(),
                              theme.textMuted);
     };
     drawStick(body.x, ABS_X, ABS_Y, "Stick 1");
@@ -556,7 +574,7 @@ void ControllersScreen::handleDeadzoneAction(Action action) {
     case Action::Confirm: {
         const Row *row = selectedRow();
         if (row && MisterIni::writeDeadzone(row->vidPid, deadzoneValue_)) {
-            context_.notify("Deadzone saved");
+            context_.notify("Stick deadzone saved");
             rows_[size_t(cursor_)].hasDeadzone = true;
             rows_[size_t(cursor_)].deadzoneValue = deadzoneValue_;
             mode_ = Mode::List;
@@ -594,9 +612,9 @@ void ControllersScreen::renderDeadzone(Canvas &canvas, const Rect &area) {
     std::snprintf(valueLine, sizeof(valueLine), "%d", deadzoneValue_);
     theme.bold().draw(canvas, body.x, body.y, valueLine, theme.sizeHeading(), theme.textPrimary);
 
-    theme.regular().draw(canvas, body.x, track.bottom() + theme.px(24),
-                         "Move the stick around — the position above shows the raw reading "
-                         "this value is compared against.",
+        theme.regular().draw(canvas, body.x, track.bottom() + theme.px(24),
+                         "Move the stick to see its position. It must move past this mark "
+                         "before MiSTer registers a direction.",
                          theme.sizeBody(), theme.textMuted);
 
     int32_t loX, hiX;
@@ -946,25 +964,33 @@ void ControllersScreen::renderPadDiagram(Canvas &canvas, const Rect &area, PadHi
     drawPart({dpadCx + dpadStep - dpadSize / 2, clusterCy - dpadSize / 2, dpadSize, dpadSize},
              theme.px(8), PadHighlight::DpadRight, "Right");
 
-    // Xbox-letter positions (Y top, X left, B right, A bottom) — matching this wizard's own
-    // prompts, which are deliberately not MiSTer's internal SNES-position slot names. See the
-    // comment in beginWizard().
+    // The default Xbox positions (Y top, X left, B right, A bottom) — matching this wizard's
+    // prompts, which are deliberately not MiSTer's internal SNES-position slot names. The
+    // labels themselves are selected by the Face button style setting.
     const int faceR = theme.px(60);
     const int faceSize = theme.px(48);
     auto faceFrame = [&](int cx, int cy) {
         return Rect{cx - faceSize / 2, cy - faceSize / 2, faceSize, faceSize};
     };
-    drawPart(faceFrame(faceCx, clusterCy - faceR), faceSize / 2, PadHighlight::FaceTop, "Y");
-    drawPart(faceFrame(faceCx - faceR, clusterCy), faceSize / 2, PadHighlight::FaceLeft, "X");
-    drawPart(faceFrame(faceCx + faceR, clusterCy), faceSize / 2, PadHighlight::FaceRight, "B");
-    drawPart(faceFrame(faceCx, clusterCy + faceR), faceSize / 2, PadHighlight::FaceBottom, "A");
+    drawPart(faceFrame(faceCx, clusterCy - faceR), faceSize / 2, PadHighlight::FaceTop,
+             buttonName("Y").c_str());
+    drawPart(faceFrame(faceCx - faceR, clusterCy), faceSize / 2, PadHighlight::FaceLeft,
+             buttonName("X").c_str());
+    drawPart(faceFrame(faceCx + faceR, clusterCy), faceSize / 2, PadHighlight::FaceRight,
+             buttonName("B").c_str());
+    drawPart(faceFrame(faceCx, clusterCy + faceR), faceSize / 2, PadHighlight::FaceBottom,
+             buttonName("A").c_str());
 
     const int midY = clusterCy + faceR + theme.px(30);
     const int midCx = (dpadCx + faceCx) / 2;
     const int midW = theme.px(110);
     const int midH = theme.px(40);
-    drawPart({midCx - midW - theme.px(10), midY, midW, midH}, theme.px(10), PadHighlight::Select, "Select");
-    drawPart({midCx + theme.px(10), midY, midW, midH}, theme.px(10), PadHighlight::Start, "Start");
+    const std::string selectLabel = buttonName("Select");
+    const std::string startLabel = buttonName("Start");
+    drawPart({midCx - midW - theme.px(10), midY, midW, midH}, theme.px(10),
+             PadHighlight::Select, selectLabel.c_str());
+    drawPart({midCx + theme.px(10), midY, midW, midH}, theme.px(10),
+             PadHighlight::Start, startLabel.c_str());
 
     const int stickY = midY + midH + theme.px(30);
     const int stickSize = theme.px(70);
@@ -1008,12 +1034,15 @@ void ControllersScreen::renderWizard(Canvas &canvas, const Rect &area) {
     const Rect body{area.x, area.y + headerHeight, area.w, area.h - headerHeight};
 
     if (wizardOpeningShown_) {
-        theme.bold().draw(canvas, body.x, body.y, "First button to configure: Start",
+        theme.bold().draw(canvas, body.x, body.y,
+                          formatButtonLabels("First button to configure: Start"),
                           theme.sizeBody(), theme.textPrimary);
         theme.regular().draw(canvas, body.x, body.y + theme.px(48),
-                             "This button must be assigned correctly — it is also how you "
-                             "cancel this wizard once it starts. Hold Start for 5 seconds at "
-                             "any point to abandon it, discarding everything captured so far.",
+                             formatButtonLabels(
+                                 "This button must be assigned correctly — it is also how you "
+                                 "cancel this wizard once it starts. Hold Start for 5 seconds "
+                                 "at any point to abandon it, discarding everything captured "
+                                 "so far."),
                              theme.sizeBody(), theme.textMuted);
         theme.bold().draw(canvas, body.x, body.y + theme.px(110), "Choose wisely.",
                           theme.sizeBody(), theme.textPrimary);
@@ -1025,12 +1054,14 @@ void ControllersScreen::renderWizard(Canvas &canvas, const Rect &area) {
     const WizardStep &step = wizardSteps_[wizardIndex_];
     char heading[128];
     std::snprintf(heading, sizeof(heading), "Press the button for  %s", step.label.c_str());
-    theme.bold().draw(canvas, body.x, body.y, heading, theme.sizeBody(), theme.textPrimary);
+    theme.bold().draw(canvas, body.x, body.y, formatButtonLabels(heading), theme.sizeBody(),
+                      theme.textPrimary);
 
     if (wizardIndex_ > 0) {
         const float remaining = std::max(0.0f, 60.0f - stepIdleSeconds_);
         char waiting[64];
-        std::snprintf(waiting, sizeof(waiting), "waiting... skips in %.0fs", double(remaining));
+            std::snprintf(waiting, sizeof(waiting), "No button detected — skipping in %.0fs",
+                          double(remaining));
         theme.regular().draw(canvas, body.x, body.y + theme.px(48), waiting, theme.sizeSmall(),
                              theme.textMuted);
 
@@ -1046,7 +1077,8 @@ void ControllersScreen::renderWizard(Canvas &canvas, const Rect &area) {
                 {hold.x, hold.y, int(hold.w * std::min(1.0f, startHoldSeconds_ / 5.0f)), hold.h},
                 theme.px(7), theme.warning);
             theme.regular().draw(canvas, body.x, hold.bottom() + theme.px(6),
-                                 "holding Start — release before 5s to just skip this button",
+                                 formatButtonLabels("holding Start — release before 5s to just "
+                                                    "skip this button"),
                                  theme.sizeSmall(), theme.warning);
         }
     }
@@ -1167,7 +1199,8 @@ void ControllersScreen::renderBluetooth(Canvas &canvas, const Rect &area) {
     switch (btState_) {
     case BtState::Idle:
         theme.regular().draw(canvas, textArea.x, textArea.y,
-                             "Put your controller into pairing mode, then press A",
+                             formatButtonLabels(
+                                 "Put your controller into pairing mode, then press A"),
                              theme.sizeBody(), theme.textMuted);
         break;
     case BtState::Scanning: {

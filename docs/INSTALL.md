@@ -19,7 +19,7 @@ version, follow [Building from source](#building-from-source).
 | Install directory | `/media/fat/mister-pat` |
 | INI section | `[MiSTer]` in `/media/fat/MiSTer.ini` |
 | Stock binary | left in place |
-| Typeface | Space Grotesk, downloaded by setup or Settings → Interface; built-in fallback available |
+| Typeface | Space Grotesk, downloaded by setup or Settings → Accessibility; built-in fallback available |
 | Choose an older GUI | Pin its versioned `.so` with `mister-pats-gui.so`, then restart |
 
 ## Requirements
@@ -130,17 +130,18 @@ once there is at least one working Arcade game. If a game you expected is missin
 The result lands in `/media/fat/mister-pat/gamesdb/`: a small `catalog.tsv` read at every
 start, and one `<System>.tsv` per system, read only when you open that system.
 
-Then choose **Settings → Prepare box art**. The GUI converts existing covers into five
+Then choose **Settings → Library → Prepare box art**. The GUI converts existing covers into five
 view-sized BMP variants and downloads missing artwork when the thumbnail server has a match.
 It can be interrupted and resumed; completed covers stay in place. The progress screen shows
 an approximate completion clock time after the first game is processed. Budget up to about
 1.7 MB per cover for the BMP variants, in addition to the existing JPEG/PNG files. See
 [BOXART.md](BOXART.md) for the exact sizes and fallbacks.
 
-If system pictures are missing, choose **Settings → Download System-Icons**. The GUI prefers
-BMP icons and can still display older PNG icons while the BMPs are absent.
+If system pictures or tab icons are missing, choose **Settings → System → Download Assets**.
+The GUI downloads only missing BMPs and can still display older PNG system icons while BMPs are
+absent.
 
-Rebuild the database after adding or removing games; run Prepare box art again to fill artwork
+Rebuild the game list after adding or removing games; run Prepare box art again to fill artwork
 for new games. The database scan does not alter the games on your drives.
 
 ## After a game
@@ -195,7 +196,7 @@ sh /tmp/install-update.sh
 The script leaves `MiSTer.ini` untouched and does not reboot. It rejects an unknown installation,
 a different same-version library, and a downgrade.
 
-If the confirmation warns of a database format change, choose **Settings → Build game database**
+If the confirmation warns of a database format change, choose **Settings → Build game list**
 after restarting. Updating never silently deletes or rebuilds the database.
 
 ### Hardware validation status
@@ -261,12 +262,12 @@ The device then boots exactly as it did before. Nothing else was modified.
 | Blinking cursor in the top left | The console is in text mode. `ssh root@<mister-ip> 'chvt 1'`, or reboot. |
 | Nothing on a DVI monitor | Should be detected automatically. If not, set `dvi_mode=1` in `MiSTer.ini`. Note that DVI mode carries no audio. |
 | Controller moves two positions per press | A mirror input device is being read as well. It should be filtered by name; check with `grep input:` in the GUI's output. |
-| Menu button does not open the OSD | The GUI is running with `--exclusive`. Start it without that option. |
-| No games listed | The database has not been built. Settings → Build game database. |
-| No box art | The scraper has not run yet, or has not reached that system. Settings → Prepare box art. Existing JPEG/PNG covers remain usable without BMP variants. |
+| Menu button does not open the OSD | The GUI owns controller input while it runs, so its exclusive grab blocks the MiSTer OSD. The grab is released on exit and before a core starts. |
+| No games listed | The game list has not been built. Open Settings → Library → Build game list. |
+| No box art | Covers have not been prepared yet, or the game has no match online. Open Settings → Library → Prepare box art. Existing JPEG/PNG covers remain usable without BMP variants. |
 | No Arcade tab, or an Arcade tab with few games | The tab only appears when at least one Arcade game passes the check, and only games that pass are listed: core installed, ROM zip found, every CRC right. Settings → Manage Arcade → Arcade Games shows why each one fails. Then rebuild the database. |
-| Systems show plain tiles instead of console pictures | Choose Settings → Download System-Icons or rerun the setup script in step 2. Existing PNGs work as a fallback. |
-| Text looks like a blocky, all-caps placeholder font | Space Grotesk could not be loaded, so the built-in fallback typeface is drawing. Choose Settings → Interface → Space Grotesk to download the font files, or rerun the setup script with network access. |
+| Systems show plain tiles or tab icons are missing | Choose Settings → System → Download Assets or rerun the setup script in step 2. Existing PNG console icons work as a fallback. |
+| Text looks like a blocky, all-caps placeholder font | Space Grotesk could not be loaded, so the built-in fallback typeface is drawing. Choose Settings → Accessibility → Space Grotesk to download the font files, or rerun the setup script with network access. |
 | Games on a CD-based core do not start | The core expects a different loader slot. See the table in [POC.md](POC.md) and `assets/systems.conf.example`. |
 
 A reboot is always the safe way back, and removing the two INI lines always returns the
@@ -280,8 +281,8 @@ All four things the GUI needs are covered without it:
 | --- | --- |
 | System catalogue | **built here**, `/media/fat/mister-pat/gamesdb/catalog.tsv` |
 | Game index | **built here**, one `<System>.tsv` per system |
-| Box art and backgrounds | **prepared/fetched here** — Settings → Prepare box art |
-| Fonts | Space Grotesk and its license are downloaded by the setup/update script or from Settings → Interface; the built-in fallback remains available |
+| Box art and backgrounds | **prepared/fetched here** — Settings → Library → Prepare box art |
+| Fonts | Space Grotesk and its license are downloaded by the setup/update script or from Settings → Accessibility; the built-in fallback remains available |
 
 Console Mode itself never runs once this GUI is installed: `main=` sends the boot path to the
 patched binary instead. The GUI uses its own Space Grotesk files, installed alongside it.

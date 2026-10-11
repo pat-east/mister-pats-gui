@@ -1,5 +1,7 @@
 #include "ErrorModal.h"
 
+#include "ButtonLabels.h"
+
 #include <algorithm>
 #include <sstream>
 #include <vector>
@@ -66,7 +68,8 @@ void draw(Canvas &canvas, Theme &theme, const Rect &area, const std::string &tit
     }
 
     y += theme.px(28);
-    theme.regular().draw(canvas, panel.x + theme.px(36), y, "A / B  Dismiss", theme.sizeSmall(),
+    theme.regular().draw(canvas, panel.x + theme.px(36), y,
+                         formatButtonLabels("A / B  Dismiss"), theme.sizeSmall(),
                          theme.textMuted);
 }
 

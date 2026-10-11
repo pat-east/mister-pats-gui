@@ -1,8 +1,8 @@
 # Wi-Fi settings — design and MiSTer notes
 
-Settings → System shows Ethernet and Wi-Fi status in the right-hand system facts. The Wi-Fi IP
-and network name are adjacent under **Networking**. The controller-operated setup flow has been
-tested successfully on MiSTer hardware.
+Settings → System → Info shows Ethernet and Wi-Fi status in a modal. The Wi-Fi IP and network
+name are adjacent under **Networking**. The controller-operated setup flow has been tested
+successfully on MiSTer hardware.
 
 The MiSTer image includes the `wpa_supplicant` tools. Use `wpa_cli` for status, scans, and
 runtime network control, and `wpa_passphrase` to derive a PSK from a password supplied through
@@ -11,7 +11,7 @@ the wireless interface rather than starting a second `wpa_supplicant` instance.
 
 ## Connection flow
 
-Under **Settings → System**, the right-hand system facts list the Ethernet address, Wi-Fi IP,
+Under **Settings → System → Info**, the system facts list the Ethernet address, Wi-Fi IP,
 and Wi-Fi network name (SSID), with the two Wi-Fi values adjacent. Provide **Connect to Wi-Fi…**
 to start setup:
 
@@ -42,12 +42,23 @@ layouts, a separate numeric keypad, Shift, Space, Delete, Clear, and Done. For a
 
 ```text
 ┌──────────────────────────── Settings / System ────────────────────────────┐
-│  System settings                   System facts                           │
-│  > Connect to Wi-Fi…               Networking                            │
-│                                   Ethernet       192.168.1.10             │
-│                                   Wi-Fi          192.168.1.42             │
-│                                   Wi-Fi network  MisterNet                │
+│  > Info                Time format     24-hour     WHAT THIS DOES         │
+│  Time format           Time zone       Europe/Berlin  View system details │
+│  Time zone             Download Assets              about this MiSTer.    │
+│  …                     Connect to Wi-Fi…                                  │
 └───────────────────────────────────────────────────────────────────────────┘
+
+Selecting **Info** opens a modal with the live system facts:
+
+```text
+┌────────────────────────── System information ─────────────────────────────┐
+│  Networking                                                               │
+│  Ethernet       192.168.1.10                                               │
+│  Wi-Fi          192.168.1.42                                               │
+│  Wi-Fi network  MisterNet                                                  │
+│                                                                  B Close  │
+└───────────────────────────────────────────────────────────────────────────┘
+```
 ```
 
 Without a Wi-Fi adapter, the network name reports **No Wi-Fi adapter**. With an adapter but no

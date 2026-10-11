@@ -36,7 +36,7 @@ void warmUpNextDrive(int &index) {
 namespace Splash {
 
 void show(Framebuffer &framebuffer, Theme &theme, int initialWaitMs, const Icons &icons,
-          ImageCache &images) {
+          ImageCache &images, const std::function<void()> &startupTask) {
     // /tmp is a RAM disk on a MiSTer (see MediaScraper's kTempImage) — writing the embedded
     // bytes out is just to reuse Image::load()'s JPEG decoder, not a real disk access.
     const char *tempPath = "/tmp/mister-pat-splash.jpg";
@@ -72,10 +72,16 @@ void show(Framebuffer &framebuffer, Theme &theme, int initialWaitMs, const Icons
     const std::vector<std::string> iconPaths = icons.paths();
     size_t loadedIcons = 0;
     bool completionFrameShown = false;
+    bool startupTaskDone = false;
 
     int64_t now = startedAt;
     while (now < waitEndsAt || loadedIcons < iconPaths.size() || !completionFrameShown) {
-        // The first 25% is a real two-second settle period. Afterwards each icon accounts for
+        if (now >= waitEndsAt && !startupTaskDone) {
+            if (startupTask) startupTask();
+            startupTaskDone = true;
+        }
+
+        // The first 25% is the drive settle period. Afterwards each icon accounts for
         // an equal share of the remaining 75%; one decode per frame keeps the work sequential
         // and lets the splash redraw between assets. If decoding takes longer, this loop simply
         // keeps the splash up until the final icon is cached.

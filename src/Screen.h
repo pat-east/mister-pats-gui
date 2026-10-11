@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <functional>
 
 #include "Favorites.h"
 #include "HiddenSystems.h"
@@ -31,6 +32,7 @@ struct Context {
     History &history;
     HiddenSystems &hiddenSystems;
     Preferences &preferences;
+    std::function<void()> onThemeChanged;
 
     // Prepared background, for restoring the area under a changed element.
     const Canvas *background = nullptr;
@@ -74,6 +76,10 @@ public:
     virtual void render(Canvas &canvas, const Rect &area, bool fullRedraw) = 0;
 
     virtual void handle(Action action) = 0;
+
+    // A screen may reserve Start for a field action or Back for closing an overlay.
+    virtual bool usesStartAction() const { return false; }
+    virtual bool hasBackOverlay() const { return false; }
 
     // Button legend for the bottom bar.
     virtual std::string hints() const = 0;

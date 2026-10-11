@@ -11,9 +11,13 @@ that does not exist yet is left out, with a warning. tools/screenshot.sh runs th
 rendering the standard set; it can also be run on its own.
 
 Usage: update-readme-screenshots.py [README.md]
+
+Running the script refreshes the standard screenshots from the MiSTer and then rewrites the
+gallery. It always replaces the PNGs, even when they already exist.
 """
 
 import os
+import subprocess
 import sys
 
 START = "<!-- screenshots:start -->"
@@ -28,8 +32,10 @@ GALLERY = [
              "Here, SNES in Grid, Boxart small and List:"),
     ("pair", [("snes-grid", "Grid"), ("snes-small", "Boxart small")]),
     ("pair", [("snes-list", "List"), ("games", "Games")]),
-    ("text", "Settings, with the update page and the controller input test:"),
+    ("text", "Settings, including Interface, Accessibility, System, the Changelog, the update page and controller input test:"),
     ("pair", [("settings", "Settings"), ("settings-interface", "Interface settings")]),
+    ("pair", [("settings-accessibility", "Accessibility settings"),
+               ("settings-system", "System settings")]),
     ("pair", [("settings-updates", "Updates"), ("controller-test", "Controller input test")]),
 ]
 
@@ -43,6 +49,15 @@ ALT = {
 def main():
     root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
     readme = sys.argv[1] if len(sys.argv) > 1 else os.path.join(root, "README.md")
+
+    # This entry point is also the refresh command: always render a fresh set first so an
+    # existing PNG can never cause stale README images to be kept. screenshot.sh invokes us
+    # again after rendering; the environment marker makes that second call gallery-only.
+    if os.environ.get("MISTER_SCREENSHOTS_GALLERY_ONLY") != "1":
+        env = os.environ.copy()
+        env["MISTER_SCREENSHOTS_GALLERY_ONLY"] = "1"
+        subprocess.run([os.path.join(root, "tools", "screenshot.sh"), "set"],
+                       cwd=root, env=env, check=True)
 
     with open(readme, encoding="utf-8") as handle:
         text = handle.read()
@@ -77,4 +92,5 @@ def main():
     print("  README.md gallery " + ("updated" if new != text else "already current"))
 
 
-main()
+if __name__ == "__main__":
+    main()

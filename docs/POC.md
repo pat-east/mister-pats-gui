@@ -658,9 +658,10 @@ controlling terminal; a plain `open("/dev/tty0", O_RDWR)` then makes the console
 because we are not in its foreground process group the kernel kills us with `SIGTTOU` — without a
 single log line. `SIGHUP`, `SIGTTOU` and `SIGTTIN` are ignored on top of that.
 
-**5. Do not grab inputs exclusively.** `EVIOCGRAB` locks out the MiSTer main binary, and only it
-can open the OSD — the Xbox button then does nothing. Console Mode likewise does not grab
-exclusively. Exclusive mode is available via `--exclusive`, but off by default.
+**5. The GUI owns controller input while active.** It grabs inputs exclusively so they do not
+also reach the terminal or MiSTer OSD. The grab is released when the GUI exits or hands control
+to a core, so cores receive input normally. This supersedes the early prototype behavior noted
+in the original research.
 
 **6. Skip `MiSTer virtual input`.** The main binary mirrors the inputs it reads onto a uinput
 device of its own. Reading both counts every button press twice — the focus jumps two positions.

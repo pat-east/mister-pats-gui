@@ -28,15 +28,15 @@ enum class Action {
     Quit,
 };
 
-// evdev reader. Devices are grabbed exclusively so the frontend underneath does not act on
-// the same presses, and rescanned periodically because wireless pads reappear as new nodes.
+// evdev reader. Devices are grabbed exclusively while the GUI owns input, and rescanned
+// periodically because wireless pads reappear as new nodes.
 class Input {
 public:
     static constexpr int kFavoriteHoldMs = 2000;
     ~Input();
 
-    // Exclusive reading keeps other readers out — including the MiSTer binary, which
-    // would then never see the menu button. Off by default for that reason.
+    // Exclusive reading keeps other readers out while the GUI runs. The app releases devices
+    // when it exits or hands control to a MiSTer core.
     void setExclusive(bool exclusive) { exclusive_ = exclusive; }
 
     void rescan();

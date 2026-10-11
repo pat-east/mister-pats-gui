@@ -56,7 +56,7 @@ void LibraryScan::start(const std::vector<std::string> &roots) {
 
 void LibraryScan::cancel() {
     if (running()) {
-        error_ = "cancelled";
+        error_ = "Scan cancelled. The game list was not replaced.";
         state_ = State::Failed;
     }
 }
@@ -77,33 +77,34 @@ std::string LibraryScan::statusLine() const {
 
     switch (state_) {
     case State::Idle:
-        return "not started";
+        return "Waiting to scan";
     case State::Discovering:
-        return "Looking for systems on " + std::to_string(roots_.size()) + " volume(s) …";
+        return "Looking for game folders on " + std::to_string(roots_.size()) + " drives…";
     case State::Scanning:
         if (position_ >= queue_.size()) {
             if (arcadePrepared_) {
                 std::snprintf(buffer, sizeof(buffer),
-                              "Arcade  ·  %zu games that work  ·  writing lists %zu / %zu",
+                              "Arcade: %zu games ready  ·  saving lists %zu of %zu",
                               arcadeKept_, std::min(arcadeListsDone_, arcadeLists_.size()),
                               arcadeLists_.size());
                 return buffer;
             }
             return "Arcade  ·  " + arcade_.statusLine();
         }
-        std::snprintf(buffer, sizeof(buffer), "%zu / %zu  ·  %s  ·  %zu games so far",
+        std::snprintf(buffer, sizeof(buffer), "System %zu of %zu: %s  ·  %zu games found",
                       position_, queue_.size(), current_.c_str(), games_);
         return buffer;
     case State::Writing:
-        std::snprintf(buffer, sizeof(buffer), "Writing the catalogue …  %zu / %zu",
+        std::snprintf(buffer, sizeof(buffer), "Saving game lists: %zu of %zu",
                       database_.finishDone(), database_.finishTotal());
         return buffer;
     case State::Done:
-        std::snprintf(buffer, sizeof(buffer), "%zu systems, %zu games", written_, games_);
+        std::snprintf(buffer, sizeof(buffer), "%zu systems and %zu games added to the saved list",
+                      written_, games_);
         return buffer;
     case State::Failed:
     default:
-        return error_.empty() ? "failed" : error_;
+        return error_.empty() ? "The game scan could not finish" : error_;
     }
 }
 
@@ -339,7 +340,7 @@ void LibraryScan::step() {
     switch (state_) {
     case State::Discovering: {
         if (roots_.empty()) {
-            fail("no volumes found");
+            fail("No connected drives were found. Connect a drive with your games and try again.");
             return;
         }
 
@@ -353,13 +354,13 @@ void LibraryScan::step() {
 
         cores_.scan(roots_);
         if (cores_.empty() && !hasArcade) {
-            fail("no cores found — is this a MiSTer?");
+            fail("No MiSTer cores were found on the connected drives. Connect the MiSTer SD card and try again.");
             return;
         }
 
         queue_ = SystemCatalog::discover(roots_, cores_);
         if (queue_.empty() && !hasArcade) {
-            fail("no game directories found next to an installed core");
+            fail("No supported game folders were found. Check that your games are in the folders used by the installed systems.");
             return;
         }
 

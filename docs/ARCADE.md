@@ -11,11 +11,11 @@ below that cites MiSTer's own source was confirmed by reading it
 (`third_party/Main_MiSTer/file_io.cpp`, `support/arcade/mra_loader.cpp`, `input.cpp`); the case
 study was confirmed live, on real hardware, in the session this document was written from.
 
-**Status, as of 0.2.0.** Built:
+**Current status (0.7.0 source).** Built:
 
 - the [diagnostic table](#implemented-the-diagnostic-table), which also launches a game;
 - [Arcade as a real system](#implemented-arcade-as-a-real-system) — a library of only the games
-  that work, each once, with manufacturer and category lists in the game database;
+  that work, each once; manufacturer/category metadata remains in the database;
 - the [Arcade tab](#implemented-the-arcade-tab);
 - [box art](#implemented-box-art) from the `MAME` thumbnail set.
 
@@ -24,6 +24,10 @@ database it writes and the list it gives; the Arcade tab and a completed run of 
 art scraper. The later box-art matching audit is documented in [BOXART.md](BOXART.md); its
 checked-in miss list is from September 30, 2026, and does not include fetched/skipped/missing
 totals from the subsequent device run.
+
+The Arcade tab now opens the games directly in the configured standard Games view. Manufacturer
+and category entry points were removed. Version 0.6.3 also extends the boxart fade-in to Home;
+the 0.6.3 binary's behavior on the MiSTer had not yet been verified when that release was written.
 
 Not built: telling HDD/CHD-based games apart ([Requirement 4](#requirements)), Manage Cores /
 Manage MRAs, DIP-switch editing, and backgrounds for Arcade. See [Open questions](#open-questions)
@@ -441,24 +445,12 @@ Arcade-specific code in any of those screens.
 
 ### Implemented: the Arcade tab
 
-[Decision: a dedicated Arcade tab](#decision-a-dedicated-arcade-tab), built as specified, with the
-open question settled the pragmatic way:
-
-- `ArcadeScreen` (the tab), `ArcadeGroupsScreen` (the full Manufacturers / Categories list), and
-  `GamesScreen` unmodified behind both — reached with a copy of the Arcade system whose database
-  key is the group's list. It stays called `Arcade`, so a favourite or history entry made from
-  inside a group still files under Arcade; only the header says "Arcade > Manufacturers > Capcom"
-  (plain `>`, because the interface font is not known to carry a typographic chevron).
-- Each row's title is a stop of its own and the cursor starts there; Right steps onto the tiles;
-  Back from a tile returns to the title before it leaves the tab (`App` asks
-  `ArcadeScreen::wantsBack()`). Letter jump works in the Games row.
-- **Groups are plain text entries, not game tiles** — each shows the group name and game count;
-  the focused entry uses the same blue underline as the tabs. Manufacturer and category entries
-  are alphabetical in both the preview rows and full lists.
-- Settings -> Show Arcade menu item, on by default; the tab only appears when the library holds
-  Arcade games at all (`Library::arcadeSystem()`).
-- Rendered on the host with the real screens and a scratch library to check layout. The Arcade
-  tab has since been run on a real MiSTer.
+The Arcade tab now opens the same `GamesScreen` used by system game lists. It shows Arcade games
+directly in the configured standard view (grid by default), with the same search, navigation,
+launch and favorite actions as other game lists. The separate Manufacturers and Categories rows
+and their full list screens were removed to keep the tab focused on browsing games. Settings ->
+Show Arcade still controls whether the tab appears; it only appears when the library has Arcade
+games (`Library::arcadeSystem()`).
 
 ### Implemented: box art
 
@@ -732,7 +724,7 @@ The tab is not a duplicate of `Systems -> Arcade`; it exists because "every arca
 flat list" is only one of three useful ways into this library, and the other two —
 manufacturer, category — have no equivalent anywhere else in this GUI today.
 
-### Inside the tab: three rows, Home-style — plus one interaction Home does not have
+### Earlier proposal (superseded): inside the tab, three Home-style rows
 
 Three horizontally-scrolling preview rows, reusing `HomeScreen`'s own row rendering almost
 exactly (`Row`, `Metrics`, the focus-fade tile layout): **Games**, **Manufacturers**,

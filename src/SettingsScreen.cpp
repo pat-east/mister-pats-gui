@@ -2,15 +2,114 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <sstream>
 
 #include "Canvas.h"
+#include "ButtonLabels.h"
 #include "GamesScreen.h"
+
+namespace {
+
+std::string settingHelp(const std::string &label) {
+    if (label == "Build game list")
+        return "Search connected drives for games and save a list the menus can load quickly. Run this after adding or removing games.";
+    if (label == "Prepare box art")
+        return "Download missing covers and make copies sized for each view. Covers already on your drives are kept.";
+    if (label == "Reload saved game list")
+        return "Reload the saved game list. This does not search the drives or find newly added games.";
+    if (label == "Manage systems")
+        return "Choose which consoles appear in the Consoles and Games views.";
+    if (label == "Manage Arcade")
+        return "See which Arcade games are ready to launch and why others are unavailable.";
+    if (label == "Controllers")
+        return "Test connected controllers, change how far a stick must move, or set up button controls.";
+    if (label == "Face-button labels")
+        return "Choose the A, B, X and Y labels that match your controller. This changes labels only.";
+    if (label == "Show Games tab")
+        return "Show or hide the tab that lists games from every system.";
+    if (label == "Show Arcade tab")
+        return "Show or hide the tab that lists playable Arcade games.";
+    if (label == "Show Arcade in Consoles")
+        return "Add Arcade to the Consoles grid. The Arcade tab has its own list either way.";
+    if (label == "Tab display")
+        return "Choose whether the top navigation shows tab names, icons, or both.";
+    if (label == "Show box art")
+        return "Show or hide cover pictures while browsing games.";
+    if (label == "Start sound")
+        return "Play a sound after the GUI finishes starting.";
+    if (label == "Menu sounds")
+        return "Play sounds when moving through menus, changing tabs, or starting a game.";
+    if (label == "Game view")
+        return "Choose one view for every tab, or Individual to remember a separate view for Home, Favorites, Consoles and Games. Press Y while browsing to change that tab's view.";
+    if (label == "Space Grotesk font")
+        return "Use the Space Grotesk typeface. If its files are missing, choose this row to download them.";
+    if (label == "Font size")
+        return "Change text size across the interface. The new size takes effect immediately.";
+    if (label == "High contrast")
+        return "Use brighter text, darker backgrounds, and stronger focus outlines throughout the interface.";
+    if (label == "Time format")
+        return "Choose whether the clock uses 24-hour time or 12-hour time with AM and PM.";
+    if (label == "Time zone")
+        return "Choose the local time zone used by the clock and the MiSTer system.";
+    if (label == "Info")
+        return "View details about this MiSTer, its hardware, storage, network and software.";
+    if (label == "Download missing icons")
+        return "Download missing console and navigation icons. Existing icons are left alone.";
+    if (label == "Connect to Wi-Fi…")
+        return "Choose a wireless network and enter its password. The connection is tested before settings are saved.";
+    if (label == "Return to MiSTer menu")
+        return "Close this GUI and return to the standard MiSTer menu.";
+    if (label == "Reboot MiSTer")
+        return "Restart the whole MiSTer system. You will leave this GUI until it starts again.";
+    if (label == "Read full changelog")
+        return "Read the complete project change history from GitHub. An Internet connection is required.";
+    if (label == "Check for updates automatically")
+        return "When on, check GitHub for a newer GUI after startup once Internet is available.";
+    if (label == "Version running now")
+        return "The version currently open on MiSTer.";
+    if (label == "Version used on next start")
+        return "The version MiSTer will open after the next restart.";
+    if (label == "Newest installed version")
+        return "The newest GUI version already stored on this MiSTer.";
+    if (label == "Use newest installed version")
+        return "Remove the version pin so MiSTer uses the newest installed GUI next time.";
+    if (label == "Check for updates now")
+        return "Ask GitHub whether a newer GUI version is available.";
+    if (label.rfind("Install v", 0) == 0)
+        return "Download and verify this version. You can choose when to restart afterward.";
+    if (label == "Cancel update download")
+        return "Stop downloading this update. The currently installed version stays in place.";
+    if (label == "Update progress")
+        return "Shows how much of the update has downloaded or been installed.";
+    if (label == "Restart options")
+        return "Choose whether to restart now or keep using the current version for now.";
+    return {};
+}
+
+std::vector<std::string> wrapHelp(Font &font, const std::string &text, int size, int width) {
+    std::vector<std::string> lines;
+    std::istringstream words(text);
+    std::string line;
+    for (std::string word; words >> word;) {
+        const std::string candidate = line.empty() ? word : line + " " + word;
+        if (!line.empty() && font.measure(candidate, size) > width) {
+            lines.push_back(line);
+            line = word;
+        } else {
+            line = candidate;
+        }
+    }
+    if (!line.empty()) lines.push_back(line);
+    return lines;
+}
+
+} // namespace
 
 SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
                                std::function<void()> onBuildDatabase,
                                std::function<void()> onFetchArtwork,
-                               std::function<void()> onDownloadSystemIcons,
-                               std::function<std::string()> systemIconDownloadStatus,
+                               std::function<void()> onDownloadAssets,
+                               std::function<std::string()> assetDownloadStatus,
                                std::function<void()> onManageSystems,
                                std::function<void()> onManageControllers,
                                std::function<void()> onManageArcade,
@@ -29,12 +128,13 @@ SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
                                std::function<void(bool)> onRestartAfterUpdate,
                                std::function<std::string()> spaceGroteskStatus,
                                std::function<void()> onSpaceGrotesk,
+                               std::function<bool()> onShowChangelog,
                                std::function<void()> onReboot)
     : context_(context), onReload_(std::move(onReload)),
       onBuildDatabase_(std::move(onBuildDatabase)),
       onFetchArtwork_(std::move(onFetchArtwork)),
-      onDownloadSystemIcons_(std::move(onDownloadSystemIcons)),
-      systemIconDownloadStatus_(std::move(systemIconDownloadStatus)),
+      onDownloadAssets_(std::move(onDownloadAssets)),
+      assetDownloadStatus_(std::move(assetDownloadStatus)),
       onManageSystems_(std::move(onManageSystems)),
       onManageControllers_(std::move(onManageControllers)),
       onManageArcade_(std::move(onManageArcade)),
@@ -52,7 +152,8 @@ SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
       onRemovePinnedVersion_(std::move(onRemovePinnedVersion)),
       onRestartAfterUpdate_(std::move(onRestartAfterUpdate)),
       spaceGroteskStatus_(std::move(spaceGroteskStatus)),
-      onSpaceGrotesk_(std::move(onSpaceGrotesk)), onReboot_(std::move(onReboot)) {
+      onSpaceGrotesk_(std::move(onSpaceGrotesk)),
+      onShowChangelog_(std::move(onShowChangelog)), onReboot_(std::move(onReboot)) {
     buildRows();
 }
 
@@ -62,6 +163,7 @@ void SettingsScreen::buildRows() {
     categories_.push_back({"Library", {}});
     categories_.push_back({"Controllers", {}});
     categories_.push_back({"Interface", {}});
+    categories_.push_back({"Accessibility", {}});
     categories_.push_back({"Updates", {}});
     categories_.push_back({"System", {}});
     auto &library = categories_[0].rows;
@@ -70,24 +172,20 @@ void SettingsScreen::buildRows() {
     // together and in this order because that is the order they actually depend on each
     // other: a database has to exist before its art can be fetched/prepared or systems can be
     // hidden, and "Reload" only ever re-reads what the other two just produced.
-    library.push_back({"Build game database", [] { return std::string("A"); },
+    library.push_back({"Build game list", [] { return std::string("A"); },
                      [this] { onBuildDatabase_(); }});
 
     library.push_back({"Prepare box art", [] { return std::string("A"); },
                      [this] { onFetchArtwork_(); }});
 
-    library.push_back({"Download System-Icons",
-                     [this] { return systemIconDownloadStatus_(); },
-                     [this] { onDownloadSystemIcons_(); }});
-
-    library.push_back({"Reload library", [] { return std::string("A"); },
+    library.push_back({"Reload saved game list", [] { return std::string("A"); },
                      [this] {
                          // The only path that walks the game volume, and only on request.
-                         context_.notify("Scanning directories - this puts load on the drive", 6.0f);
+                         context_.notify("Reloading the saved game list…", 6.0f);
                          context_.library.setScanningAllowed(true);
                          onReload_();
                          context_.library.setScanningAllowed(false);
-                         context_.notify("Library reloaded");
+                         context_.notify("Saved game list loaded");
                      }});
 
     library.push_back({"Manage systems", [] { return std::string("A"); },
@@ -97,18 +195,57 @@ void SettingsScreen::buildRows() {
                      [this] { onManageArcade_(); }});
 
     // Hardware.
-    categories_[1].rows.push_back({"Controllers", [] { return std::string("A"); },
+    auto &controllers = categories_[1].rows;
+    controllers.push_back({"Controllers", [] { return std::string("A"); },
                      [this] { onManageControllers_(); }});
+    controllers.push_back({"Face-button labels",
+                     [this] {
+                         const std::string &style = context_.preferences.faceButtonStyle();
+                         if (style == "playstation") return std::string("PlayStation");
+                         if (style == "nintendo") return std::string("Nintendo");
+                         return std::string("XBOX");
+                     },
+                     [this] {
+                         const std::string &style = context_.preferences.faceButtonStyle();
+                         const std::string next = style == "xbox" ? "playstation"
+                             : style == "playstation" ? "nintendo" : "xbox";
+                         context_.preferences.setFaceButtonStyle(next);
+                         setFaceButtonStyle(next);
+                     }});
 
     // How the interface itself looks and navigates.
     auto &interface = categories_[2].rows;
-    interface.push_back({"Show Games menu item",
+    interface.push_back({"Show Games tab",
                      [this] { return std::string(context_.preferences.showGamesTab() ? "On" : "Off"); },
                      [this] { onToggleGamesTab_(); }});
 
-    interface.push_back({"Show Arcade menu item",
+    interface.push_back({"Show Arcade tab",
                      [this] { return std::string(context_.preferences.showArcadeTab() ? "On" : "Off"); },
                      [this] { onToggleArcadeTab_(); }});
+
+    interface.push_back({"Show Arcade in Consoles",
+                     [this] { return std::string(context_.preferences.showArcadeInConsoles()
+                                                     ? "On" : "Off"); },
+                     [this] {
+                         context_.preferences.setShowArcadeInConsoles(
+                             !context_.preferences.showArcadeInConsoles());
+                     }});
+
+    interface.push_back({"Tab display",
+                     [this] {
+                         switch (context_.preferences.tabDisplay()) {
+                         case TabDisplay::Icons: return std::string("Icons");
+                         case TabDisplay::Both: return std::string("Both");
+                         case TabDisplay::Names: return std::string("Names");
+                         }
+                         return std::string("Names");
+                     },
+                     [this] {
+                         const TabDisplay current = context_.preferences.tabDisplay();
+                         const TabDisplay next = current == TabDisplay::Names ? TabDisplay::Icons
+                             : current == TabDisplay::Icons ? TabDisplay::Both : TabDisplay::Names;
+                         context_.preferences.setTabDisplay(next);
+                     }});
 
     interface.push_back({"Show box art",
                      [this] { return std::string(context_.preferences.showBoxArt() ? "On" : "Off"); },
@@ -132,14 +269,48 @@ void SettingsScreen::buildRows() {
                              !context_.preferences.menuSoundsEnabled());
                      }});
 
-    interface.push_back({"Default view",
+    interface.push_back({"Game view",
                      [this] {
+                         const std::string &view = context_.preferences.defaultView();
+                         if (view == "individual") return std::string("Individual");
                          return std::string(
-                             displayNameForGameView(gameViewFromName(context_.preferences.defaultView())));
+                             displayNameForGameView(gameViewFromName(view)));
                      },
                      [this] { onCycleDefaultView_(); }});
 
-    interface.push_back({"Time format",
+    auto &accessibility = categories_[3].rows;
+    accessibility.push_back({"Space Grotesk font",
+                     [this] { return spaceGroteskStatus_(); },
+                     [this] { onSpaceGrotesk_(); }});
+
+    accessibility.push_back({"Font size",
+                     [this] {
+                         const int scale = context_.preferences.fontSizeScale();
+                         return scale == 130 ? std::string("Largest")
+                             : scale == 115 ? std::string("Larger") : std::string("Standard");
+                     },
+                     [this] {
+                         const int scale = context_.preferences.fontSizeScale();
+                         const int next = scale == 100 ? 115 : scale == 115 ? 130 : 100;
+                         context_.preferences.setFontSizeScale(next);
+                         context_.theme.setFontSizeScale(next);
+                         if (context_.onThemeChanged) context_.onThemeChanged();
+                     }});
+
+    accessibility.push_back({"High contrast",
+                     [this] { return std::string(context_.preferences.highContrast() ? "On" : "Off"); },
+                     [this] {
+                         const bool enabled = !context_.preferences.highContrast();
+                         context_.preferences.setHighContrast(enabled);
+                         context_.theme.setHighContrast(enabled);
+                         if (context_.onThemeChanged) context_.onThemeChanged();
+                     }});
+
+    // Time display is part of system configuration, next to the operating system actions.
+    auto &system = categories_[5].rows;
+    system.push_back({"Info", [] { return std::string("A"); },
+                     [this] { infoModalActive_ = true; }});
+    system.push_back({"Time format",
                      [this] { return std::string(context_.preferences.use24HourClock()
                                                    ? "24-hour" : "12-hour AM/PM"); },
                      [this] {
@@ -147,7 +318,7 @@ void SettingsScreen::buildRows() {
                              !context_.preferences.use24HourClock());
                      }});
 
-    interface.push_back({"Time zone",
+    system.push_back({"Time zone",
                      [this] {
                          return context_.preferences.timeZone().empty()
                              ? std::string("System default")
@@ -156,7 +327,7 @@ void SettingsScreen::buildRows() {
                      [this] {
                          timeZoneRegions_ = Preferences::timeZoneRegions();
                          if (timeZoneRegions_.empty()) {
-                             context_.notify("Cannot read /usr/share/zoneinfo/posix");
+                             context_.notify("Could not load the time-zone list from MiSTer.");
                              return;
                          }
                          timeZoneChooserActive_ = true;
@@ -171,40 +342,49 @@ void SettingsScreen::buildRows() {
                          }
                      }});
 
-    interface.push_back({"Space Grotesk font",
-                     [this] { return spaceGroteskStatus_(); },
-                     [this] { onSpaceGrotesk_(); }});
-
     // This project itself.
-    categories_[3].rows.push_back({"Check for updates on GitHub",
+    categories_[4].rows.push_back({"Check for updates automatically",
                      [this] { return std::string(context_.preferences.checkForUpdates() ? "On" : "Off"); },
                      [this] { onToggleAutomaticCheck_(); }});
     buildUpdateRows();
 
-    categories_[4].rows.push_back({"Connect to Wi-Fi…",
+    system.push_back({"Download missing icons",
+                     [this] { return assetDownloadStatus_(); },
+                     [this] { onDownloadAssets_(); }});
+    system.push_back({"Connect to Wi-Fi…",
                      [this] { return wifi_.available() ? std::string("A")
                                                        : std::string("No adapter"); },
                      [this] { startWifiSetup(); }, wifi_.refreshInterface()});
-    categories_[4].rows.push_back({"Start MiSTer Core", [] { return std::string("A"); },
+    system.push_back({"Return to MiSTer menu", [] { return std::string("A"); },
                      [this] { onStartMisterCore_(); }});
-    categories_[4].rows.push_back({"Reboot MiSTer", [] { return std::string("A"); },
+    system.push_back({"Reboot MiSTer", [] { return std::string("A"); },
                      [this] { rebootConfirmationActive_ = true; }});
+    system.push_back({"Read full changelog", [] { return std::string("A"); },
+                     [this] {
+                         if (onShowChangelog_ && onShowChangelog_()) {
+                             changelogActive_ = true;
+                             changelogScroll_ = 0;
+                             changelogMaxScroll_ = 0;
+                         } else {
+                             context_.notify("Another online task is running. Try again when it finishes.");
+                         }
+                     }});
 }
 
 void SettingsScreen::buildUpdateRows() {
-    auto &rows = categories_[3].rows;
+    auto &rows = categories_[4].rows;
     rows.resize(1);
-    rows.push_back({"Running GUI", [this] {
+    rows.push_back({"Version running now", [this] {
         return std::string("v") + updateSnapshot_.runningVersion;
     }, {}, false});
-    rows.push_back({"Startup selection", [this] {
+    rows.push_back({"Version used on next start", [this] {
         return updateSnapshot_.pinned
             ? std::string("Pinned v") + updateSnapshot_.selectedVersion
             : std::string("Newest v") + updateSnapshot_.selectedVersion;
     }, {}, false});
     if (updateSnapshot_.pinned &&
         updateSnapshot_.newestInstalledVersion != updateSnapshot_.selectedVersion)
-        rows.push_back({"Newest installed", [this] {
+        rows.push_back({"Newest installed version", [this] {
             return std::string("v") + updateSnapshot_.newestInstalledVersion;
         }, {}, false});
     const UpdatePhase phase = updateSnapshot_.phase;
@@ -212,33 +392,33 @@ void SettingsScreen::buildUpdateRows() {
         const bool enabled = phase == UpdatePhase::Idle || phase == UpdatePhase::Current ||
                              phase == UpdatePhase::Available || phase == UpdatePhase::Blocked ||
                              phase == UpdatePhase::Error || phase == UpdatePhase::RestartRequired;
-        rows.push_back({"Remove pinned version", [] { return std::string("A"); },
+        rows.push_back({"Use newest installed version", [] { return std::string("A"); },
                         [this] { onRemovePinnedVersion_(); }, enabled});
     }
     if (phase == UpdatePhase::WaitingForInternet || phase == UpdatePhase::Checking) {
         rows.push_back({updateSnapshot_.statusText, {}, {}, false});
     } else if (phase == UpdatePhase::Downloading || phase == UpdatePhase::Verifying ||
                phase == UpdatePhase::Installing) {
-        rows.push_back({"Update progress", [this] {
+            rows.push_back({"Update progress", [this] {
             const auto &s = updateSnapshot_;
-            if (s.phase == UpdatePhase::Verifying) return std::string("Verifying…");
-            if (s.phase == UpdatePhase::Installing) return std::string("Installing…");
+            if (s.phase == UpdatePhase::Verifying) return std::string("Checking downloaded files…");
+            if (s.phase == UpdatePhase::Installing) return std::string("Installing update…");
             if (s.bytesTotal) return std::to_string(s.bytesDone * 100 / s.bytesTotal) + "%";
-            return SystemInfo::formatBytes(s.bytesDone);
+            return std::string("Downloaded ") + SystemInfo::formatBytes(s.bytesDone);
         }, {}, false});
         if (phase != UpdatePhase::Installing)
-            rows.push_back({"B Cancel download", {}, {}, false});
+            rows.push_back({"Cancel update download", {}, {}, false});
     } else if (phase == UpdatePhase::RestartRequired) {
         rows.push_back({updateSnapshot_.statusText, {}, {}, false});
         if (!updateSnapshot_.successPromptVisible)
             rows.push_back({"Restart options", [] { return std::string("A"); },
                             [this] { onShowInstallSuccess_(); }});
     } else {
-        rows.push_back({"Check now", [] { return std::string("A"); },
+        rows.push_back({"Check for updates now", [] { return std::string("A"); },
                         [this] { onCheckUpdates_(); }});
     }
     if (phase == UpdatePhase::Available && updateSnapshot_.canInstall)
-        rows.push_back({"Update now — v" + updateSnapshot_.targetVersion + " available",
+        rows.push_back({"Install v" + updateSnapshot_.targetVersion + " update",
                         [] { return std::string("A"); },
                         [this] { onConfirmUpdate_(); }});
     if (phase == UpdatePhase::Blocked || phase == UpdatePhase::Error ||
@@ -252,6 +432,11 @@ void SettingsScreen::buildUpdateRows() {
 }
 
 void SettingsScreen::setUpdateSnapshot(const UpdateSnapshot &snapshot) {
+    if (snapshot.changelogGeneration != changelogGeneration_) {
+        changelogGeneration_ = snapshot.changelogGeneration;
+        changelogScroll_ = 0;
+        prepareChangelogLines(snapshot.changelog);
+    }
     const bool rebuild = snapshot.phase != updateSnapshot_.phase ||
                          snapshot.targetVersion != updateSnapshot_.targetVersion ||
                          snapshot.canInstall != updateSnapshot_.canInstall ||
@@ -264,10 +449,10 @@ void SettingsScreen::setUpdateSnapshot(const UpdateSnapshot &snapshot) {
                          snapshot.pinRemoved != updateSnapshot_.pinRemoved ||
                          snapshot.repairPaths != updateSnapshot_.repairPaths;
     updateSnapshot_ = snapshot;
-    if (!rebuild || categories_.size() < 4) return;
+    if (!rebuild || categories_.size() < 5) return;
     buildUpdateRows();
-    if (categoryCursor_ == 3) {
-        const int count = int(categories_[3].rows.size());
+    if (categoryCursor_ == 4) {
+        const int count = int(categories_[4].rows.size());
         if (!count) { optionCursor_ = 0; optionsFocused_ = false; }
         else optionCursor_ = std::max(0, std::min(optionCursor_, count - 1));
     }
@@ -335,7 +520,7 @@ std::vector<SettingsScreen::Fact> SettingsScreen::facts() const {
     out.push_back({"Favorites", std::to_string(context_.favorites.size())});
 
     const size_t indexed = context_.library.index().size();
-    if (indexed) out.push_back({"Console Mode index", std::to_string(indexed) + " games"});
+    if (indexed) out.push_back({"Imported game list", std::to_string(indexed) + " games"});
 
     out.push_back({"", ""});
     out.push_back({"Display", ""});
@@ -358,15 +543,19 @@ void SettingsScreen::update(float deltaSeconds) {
     system_.update(deltaSeconds);
     wifi_.update(deltaSeconds);
     wifi_.refreshInterface();
-    if (categories_.size() > 4 && !categories_[4].rows.empty())
-        categories_[4].rows[0].enabled = wifi_.available();
+    if (categories_.size() > 5) {
+        auto &systemRows = categories_[5].rows;
+        const auto wifiRow = std::find_if(systemRows.begin(), systemRows.end(),
+            [](const Row &row) { return row.label == "Connect to Wi-Fi…"; });
+        if (wifiRow != systemRows.end()) wifiRow->enabled = wifi_.available();
+    }
 
     if (wifiStep_ == WifiStep::Scanning && wifi_.scanComplete()) {
         std::string error;
         wifiNetworks_ = wifi_.scanResults(error);
         if (!error.empty()) wifiMessage_ = error;
-        else if (wifiNetworks_.empty()) wifiMessage_ = "No networks found. Try again or enter a hidden network.";
-        else wifiMessage_ = "Choose a network";
+        else if (wifiNetworks_.empty()) wifiMessage_ = "No Wi-Fi networks found. Scan again or enter a network name manually.";
+        else wifiMessage_ = "Choose the Wi-Fi network to join.";
         wifiCursor_ = 0;
         wifiScroll_ = 0;
         wifiStep_ = WifiStep::Networks;
@@ -378,6 +567,24 @@ void SettingsScreen::update(float deltaSeconds) {
 }
 
 void SettingsScreen::handle(Action action) {
+    if (infoModalActive_) {
+        if (action == Action::Back || action == Action::Confirm)
+            infoModalActive_ = false;
+        return;
+    }
+    if (changelogActive_) {
+        if (action == Action::Back) {
+            changelogActive_ = false;
+        } else if (action == Action::Up && changelogScroll_ > 0) {
+            --changelogScroll_;
+        } else if (action == Action::Down && changelogScroll_ < changelogMaxScroll_) {
+            ++changelogScroll_;
+        } else if (action == Action::Confirm && !updateSnapshot_.changelogError.empty()) {
+            if (onShowChangelog_ && onShowChangelog_()) changelogScroll_ = 0;
+            else context_.notify("Another online task is running. Try again when it finishes.");
+        }
+        return;
+    }
     if (wifiStep_ != WifiStep::None) {
         handleWifiFlow(action);
         return;
@@ -461,6 +668,165 @@ void SettingsScreen::handle(Action action) {
     }
 }
 
+void SettingsScreen::prepareChangelogLines(const std::string &text) {
+    changelogLines_.clear();
+    changelogMaxScroll_ = 0;
+    changelogScroll_ = 0;
+    Theme &theme = context_.theme;
+    const int maximumWidth = std::max(theme.px(120),
+        std::min(theme.screenWidth() - theme.px(100), theme.px(1100)) -
+        theme.px(88));
+    size_t start = 0;
+    while (start <= text.size()) {
+        const size_t end = text.find('\n', start);
+        std::string raw = text.substr(start, end == std::string::npos ? end : end - start);
+        if (!raw.empty() && raw.back() == '\r') raw.pop_back();
+        for (size_t markerPos = raw.find("**"); markerPos != std::string::npos;
+             markerPos = raw.find("**", markerPos))
+            raw.erase(markerPos, 2);
+        raw.erase(std::remove(raw.begin(), raw.end(), '`'), raw.end());
+        bool heading = false;
+        size_t marker = 0;
+        while (marker < raw.size() && raw[marker] == '#' && marker < 6) ++marker;
+        if (marker > 0 && marker < raw.size() && raw[marker] == ' ') {
+            heading = true;
+            raw.erase(0, marker + 1);
+        }
+        if (raw.empty()) {
+            changelogLines_.push_back({{}, false, true, theme.px(10)});
+        } else {
+            const int size = heading ? theme.sizeBody() : theme.sizeSmall();
+            Font &font = heading ? theme.bold() : theme.regular();
+            std::istringstream words(raw);
+            std::string word, line;
+            auto commitLine = [&] {
+                if (line.empty()) return;
+                changelogLines_.push_back({line, heading, false,
+                    font.lineHeight(size) + theme.px(4)});
+                line.clear();
+            };
+            while (words >> word) {
+                if (font.measure(word, size) > maximumWidth) {
+                    if (!line.empty()) commitLine();
+                    size_t offset = 0;
+                    while (offset < word.size()) {
+                        size_t end = offset;
+                        size_t accepted = offset;
+                        while (end < word.size()) {
+                            const unsigned char lead = static_cast<unsigned char>(word[end]);
+                            const size_t count = lead < 0x80 ? 1 : lead < 0xe0 ? 2 :
+                                                 lead < 0xf0 ? 3 : 4;
+                            if (font.measure(word.substr(offset, end + count - offset), size) >
+                                maximumWidth && accepted > offset) break;
+                            end += std::min(count, word.size() - end);
+                            accepted = end;
+                            if (font.measure(word.substr(offset, accepted - offset), size) >
+                                maximumWidth) break;
+                        }
+                        if (accepted == offset) accepted = std::min(word.size(), offset + 1);
+                        line = word.substr(offset, accepted - offset);
+                        offset = accepted;
+                        if (offset < word.size()) commitLine();
+                    }
+                    continue;
+                }
+                const std::string candidate = line.empty() ? word : line + " " + word;
+                if (!line.empty() && font.measure(candidate, size) > maximumWidth) {
+                    commitLine();
+                    line = word;
+                } else {
+                    line = candidate;
+                }
+            }
+            commitLine();
+        }
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+}
+
+void SettingsScreen::renderChangelog(Canvas &canvas, const Rect &area) {
+    Theme &theme = context_.theme;
+    canvas.fillRect(area, theme.shadow.withAlpha(215));
+    const int width = std::min(area.w - theme.px(40), theme.px(1100));
+    const int height = std::min(area.h - theme.px(40), theme.px(820));
+    const Rect panel{area.x + (area.w - width) / 2, area.y + (area.h - height) / 2,
+                     width, height};
+    canvas.dropShadow(panel, theme.radius(), theme.px(24), theme.shadow.withAlpha(150));
+    canvas.fillRoundedRect(panel, theme.radius(), theme.surfaceHi);
+    canvas.strokeRoundedRect(panel, theme.radius(), std::max(1, theme.px(2)), theme.focus);
+
+    const int margin = theme.px(30);
+    const int left = panel.x + margin;
+    const int right = panel.right() - margin;
+    int y = panel.y + margin;
+    theme.bold().draw(canvas, left, y, "Changelog", theme.sizeHeading(), theme.textPrimary);
+    y += theme.bold().lineHeight(theme.sizeHeading()) + theme.px(4);
+    theme.regular().draw(canvas, left, y, "Full project changelog · fetched from GitHub",
+                         theme.sizeSmall(), theme.textMuted);
+    y += theme.regular().lineHeight(theme.sizeSmall()) + theme.px(10);
+
+    const int footerSize = theme.sizeSmall();
+    const int footerHeight = theme.regular().lineHeight(footerSize) + theme.px(4);
+    const int footerY = panel.bottom() - margin - footerHeight;
+    const int bottom = footerY - theme.px(12);
+    if (updateSnapshot_.changelogLoading) {
+        theme.regular().draw(canvas, left, y, "Loading the full changelog from GitHub…",
+                             theme.sizeBody(), theme.textMuted);
+        theme.regular().draw(canvas, left, footerY, "B Close", footerSize, theme.accent);
+        return;
+    }
+    if (!updateSnapshot_.changelogError.empty()) {
+        const std::string message = theme.regular().elide(
+            "Could not load the changelog: " + updateSnapshot_.changelogError,
+            theme.sizeBody(), right - left);
+        theme.regular().draw(canvas, left, y, message, theme.sizeBody(), theme.warning);
+        theme.regular().draw(canvas, left, footerY, "A Try again   B Close", footerSize,
+                             theme.accent);
+        return;
+    }
+    if (changelogLines_.empty()) {
+        theme.regular().draw(canvas, left, y, "The changelog is empty.",
+                             theme.sizeBody(), theme.textMuted);
+        theme.regular().draw(canvas, left, footerY, "B Close", footerSize, theme.accent);
+        return;
+    }
+
+    int contentHeight = 0;
+    for (const ChangelogLine &line : changelogLines_) contentHeight += line.height;
+    const int availableHeight = std::max(0, bottom - y);
+    changelogMaxScroll_ = 0;
+    while (contentHeight > availableHeight &&
+           changelogMaxScroll_ < int(changelogLines_.size()))
+        contentHeight -= changelogLines_[size_t(changelogMaxScroll_++)].height;
+    changelogScroll_ = std::min(changelogScroll_, changelogMaxScroll_);
+
+    const int arrowWidth = theme.px(24);
+    const int textRight = right - arrowWidth - theme.px(8);
+    const Rect clip{left, y, textRight - left, availableHeight};
+    canvas.pushClip(clip);
+    for (int i = changelogScroll_; i < int(changelogLines_.size()); ++i) {
+        const ChangelogLine &line = changelogLines_[size_t(i)];
+        if (y + line.height > bottom) break;
+        if (!line.blank) {
+            Font &font = line.heading ? theme.bold() : theme.regular();
+            const int size = line.heading ? theme.sizeBody() : theme.sizeSmall();
+            font.draw(canvas, left, y, line.text, size, theme.textPrimary);
+        }
+        y += line.height;
+    }
+    canvas.popClip();
+
+    const Rect up{right - arrowWidth, clip.y, arrowWidth, theme.px(24)};
+    const Rect down{right - arrowWidth, bottom - theme.px(24), arrowWidth, theme.px(24)};
+    if (changelogScroll_ > 0)
+        theme.bold().drawCentered(canvas, up, "↑", theme.sizeSmall(), theme.focus);
+    if (changelogScroll_ < changelogMaxScroll_)
+        theme.bold().drawCentered(canvas, down, "↓", theme.sizeSmall(), theme.focus);
+    theme.regular().draw(canvas, left, footerY, "B Close   ↑/↓ Scroll",
+                         footerSize, theme.accent);
+}
+
 void SettingsScreen::startWifiSetup() {
     std::string error;
     if (!wifi_.startScan(error)) {
@@ -510,7 +876,7 @@ void SettingsScreen::handleWifiFlow(Action action) {
                 return;
             }
             if (wifi_.saveTestedNetwork(error)) {
-                context_.notify("Wi-Fi settings saved; restart MiSTer to load them automatically", 6.0f);
+                context_.notify("Wi-Fi saved. Restart MiSTer to connect automatically.", 6.0f);
                 cancelWifiFlow(false);
             } else {
                 wifiMessage_ = error;
@@ -616,7 +982,7 @@ void SettingsScreen::handleWifiFlow(Action action) {
     case WifiStep::TestReview:
         if (action == Action::Confirm) {
             if (wifi_.needsCountryCode()) {
-                wifiMessage_ = "No regulatory country code was found. Enter the country where MiSTer is used.";
+        wifiMessage_ = "MiSTer did not report your country. Enter its two-letter country code, for example US.";
                 wifiKeyboard_.clear();
                 wifiKeyboard_.setMasked(false);
                 wifiStep_ = WifiStep::CountryEntry;
@@ -624,7 +990,7 @@ void SettingsScreen::handleWifiFlow(Action action) {
             }
             std::string error;
             if (wifi_.saveTestedNetwork(error)) {
-                context_.notify("Wi-Fi settings saved; restart MiSTer to load them automatically", 6.0f);
+                context_.notify("Wi-Fi saved. Restart MiSTer to connect automatically.", 6.0f);
                 cancelWifiFlow(false);
             } else {
                 wifiMessage_ = error;
@@ -665,7 +1031,7 @@ void SettingsScreen::renderWifiFlow(Canvas &canvas, const Rect &area) {
     std::string title;
     switch (wifiStep_) {
     case WifiStep::Scanning: title = "Connect to Wi-Fi"; break;
-    case WifiStep::Networks: title = "Choose a network"; break;
+    case WifiStep::Networks: title = "Choose the Wi-Fi network to join"; break;
     case WifiStep::SsidEntry: title = "Hidden Wi-Fi network"; break;
     case WifiStep::PasswordEntry: title = "Wi-Fi password"; break;
     case WifiStep::CountryEntry: title = "Wi-Fi country"; break;
@@ -728,8 +1094,8 @@ void SettingsScreen::renderWifiFlow(Canvas &canvas, const Rect &area) {
         }
     } else if (wifiStep_ == WifiStep::SsidEntry || wifiStep_ == WifiStep::PasswordEntry ||
                wifiStep_ == WifiStep::CountryEntry) {
-        const std::string prompt = wifiStep_ == WifiStep::SsidEntry ? "Network name (SSID)" :
-            wifiStep_ == WifiStep::CountryEntry ? "Two-letter country code (ISO 3166-1 alpha-2)" :
+        const std::string prompt = wifiStep_ == WifiStep::SsidEntry ? "Wi-Fi network name" :
+            wifiStep_ == WifiStep::CountryEntry ? "Two-letter country code (for example, US)" :
             "Network: " + wifiSsid_ + "  —  enter password";
         theme.regular().draw(canvas, left, y, prompt, theme.sizeBody(), theme.textPrimary);
         y += theme.regular().lineHeight(theme.sizeBody()) + theme.px(10);
@@ -773,8 +1139,7 @@ void SettingsScreen::renderWifiFlow(Canvas &canvas, const Rect &area) {
         } else if (wifiStep_ == WifiStep::Testing) {
             lines = {wifiMessage_, "Waiting for the network and an IP address…"};
         } else if (wifiStep_ == WifiStep::TestReview) {
-            lines = {wifiMessage_, "Save this network to MiSTer?",
-                     "This writes /media/fat/linux/wpa_supplicant.conf."};
+            lines = {wifiMessage_, "Save this network so MiSTer reconnects after restart?"};
         } else {
             lines = {wifiMessage_};
         }
@@ -786,18 +1151,18 @@ void SettingsScreen::renderWifiFlow(Canvas &canvas, const Rect &area) {
     }
 
     std::string hint;
-    if (wifiStep_ == WifiStep::Networks) hint = "A Select   B Cancel   ↑/↓ Move";
+    if (wifiStep_ == WifiStep::Networks) hint = "A Join selected network   B Cancel   ↑/↓ Move";
     else if (wifiStep_ == WifiStep::SsidEntry || wifiStep_ == WifiStep::PasswordEntry ||
              wifiStep_ == WifiStep::CountryEntry)
         hint = wifiStep_ == WifiStep::PasswordEntry
-                   ? "D-pad Move   A Type   Start Confirm   Show/Hide key   B Back"
-                   : "D-pad Move   A Type   B Back   X Delete   Y Space";
-    else if (wifiStep_ == WifiStep::Testing) hint = "B Cancel and restore previous Wi-Fi";
+                   ? "D-pad Choose key   A Type   Start Done   Show/Hide   B Back"
+                   : "D-pad Choose key   A Type   B Back   X Delete   Y Space";
+    else if (wifiStep_ == WifiStep::Testing) hint = "B Cancel and restore the previous connection";
     else if (wifiStep_ == WifiStep::TestPrompt) hint = "A Test connection   B Cancel";
-    else if (wifiStep_ == WifiStep::TestReview) hint = "A Save Wi-Fi settings   B Restore previous Wi-Fi";
-    else if (wifiStep_ == WifiStep::TestFailed) hint = "A Retry   B Cancel";
-    else hint = "Scanning…   B Cancel";
-    theme.regular().draw(canvas, left, panel.bottom() - theme.px(34), hint,
+    else if (wifiStep_ == WifiStep::TestReview) hint = "A Save these settings   B Restore previous connection";
+    else if (wifiStep_ == WifiStep::TestFailed) hint = "A Try again   B Cancel";
+    else hint = "Searching for Wi-Fi networks…   B Cancel";
+    theme.regular().draw(canvas, left, panel.bottom() - theme.px(34), formatButtonLabels(hint),
                          theme.sizeSmall(), theme.accent);
 }
 
@@ -827,7 +1192,7 @@ void SettingsScreen::handleTimeZoneChooser(Action action) {
             timeZoneCities_ = Preferences::timeZonesIn(
                 timeZoneRegions_[size_t(timeZoneCursor_)]);
             if (timeZoneCities_.empty()) {
-                context_.notify("No time zones found in this region");
+                context_.notify("No cities found in this region. Choose another region.");
                 break;
             }
             choosingTimeZoneCity_ = true;
@@ -846,10 +1211,10 @@ void SettingsScreen::handleTimeZoneChooser(Action action) {
             const std::string zone = timeZoneRegions_[size_t(timeZoneRegionCursor_)] + "/" +
                                      timeZoneCities_[size_t(timeZoneCursor_)];
             if (context_.preferences.setTimeZone(zone)) {
-                context_.notify("Linux time zone set to " + zone);
+                context_.notify("Clock time zone set to " + zone);
                 timeZoneChooserActive_ = false;
             } else {
-                context_.notify("Could not set Linux time zone. Check write access to /media/fat/linux");
+                context_.notify("Could not save the time zone. Check that MiSTer can write its system settings.");
             }
         }
         break;
@@ -920,6 +1285,7 @@ void SettingsScreen::renderCategories(Canvas &canvas, const Rect &area) {
         if (active) {
             canvas.fillRoundedRect({frame.x, frame.y, theme.px(4), frame.h}, theme.px(2),
                                    theme.accent);
+            canvas.strokeRoundedRect(frame, theme.px(8), std::max(1, theme.px(2)), theme.focus);
         }
 
         const int textY = frame.y + (frame.h - theme.regular().lineHeight(theme.sizeBody())) / 2;
@@ -954,15 +1320,22 @@ void SettingsScreen::renderOptions(Canvas &canvas, const Rect &area) {
         if (active) {
             canvas.fillRoundedRect({frame.x, frame.y, theme.px(4), frame.h}, theme.px(2),
                                    theme.accent);
+            canvas.strokeRoundedRect(frame, theme.px(8), std::max(1, theme.px(2)), theme.focus);
         }
 
         const int textY = frame.y + (frame.h - theme.regular().lineHeight(theme.sizeBody())) / 2;
-        const std::string value = row.value ? row.value() : std::string();
+        const std::string value = row.value ? formatButtonLabels(row.value()) : std::string();
         const int left = frame.x + theme.px(18);
         const int right = frame.right() - theme.px(14);
-        const int valueWidth = value.empty() ? 0 : theme.regular().measure(value, theme.sizeBody());
+        const bool toggleValue = value == "On" || value == "Off";
+        const int valueWidth = value.empty() ? 0 : toggleValue
+            ? std::max(theme.regular().measure("On", theme.sizeBody()),
+                       theme.regular().measure("Off", theme.sizeBody()))
+            : theme.regular().measure(value, theme.sizeBody());
+        const int checkboxSize = toggleValue ? theme.px(20) : 0;
+        const int checkboxGap = toggleValue ? theme.px(10) : 0;
         const int labelWidth = std::max(0, right - left -
-                                             (value.empty() ? 0 : valueWidth + theme.px(10)));
+            (value.empty() ? 0 : valueWidth + theme.px(10) + checkboxSize + checkboxGap));
         const std::string label = theme.regular().elide(row.label, theme.sizeBody(), labelWidth);
         theme.regular().draw(canvas, left, textY, label, theme.sizeBody(),
                              row.enabled && (active || int(i) == optionCursor_)
@@ -972,6 +1345,58 @@ void SettingsScreen::renderOptions(Canvas &canvas, const Rect &area) {
             theme.regular().draw(canvas, right - valueWidth, textY, value,
                                  theme.sizeBody(), theme.accent);
         }
+        if (toggleValue) {
+            const int x = right - valueWidth - checkboxGap - checkboxSize;
+            const int y = frame.y + (frame.h - checkboxSize) / 2;
+            const Rect outer{x, y, checkboxSize, checkboxSize};
+            const int border = std::max(1, theme.px(2));
+            canvas.strokeRoundedRect(outer, checkboxSize / 2, border,
+                                     Color::rgb(0x17315F));
+            if (value == "On") {
+                const int inset = theme.px(5);
+                const Rect inner{x + inset, y + inset,
+                                 checkboxSize - 2 * inset, checkboxSize - 2 * inset};
+                canvas.fillRoundedRect(inner, inner.w / 2, Color::rgb(0xD6D8DE));
+            }
+        }
+    }
+
+}
+
+void SettingsScreen::renderSettingHelp(Canvas &canvas, const Rect &area) {
+    Theme &theme = context_.theme;
+    if (area.w <= 0 || area.h <= 0) return;
+
+    canvas.fillRoundedRect(area, theme.radius(), theme.surface.withAlpha(70));
+    const int inset = theme.px(28);
+    const int left = area.x + inset;
+    const int right = area.right() - inset;
+    int y = area.y + inset;
+
+    const auto &rows = categories_[size_t(categoryCursor_)].rows;
+    if (optionCursor_ < 0 || optionCursor_ >= int(rows.size())) return;
+    const Row &row = rows[size_t(optionCursor_)];
+    const int titleSize = theme.sizeHeading();
+    const std::vector<std::string> titleLines = wrapHelp(
+        theme.bold(), row.label, titleSize, std::max(0, right - left));
+    const int titleStep = theme.bold().lineHeight(titleSize) + theme.px(4);
+    for (const std::string &line : titleLines) {
+        if (y + titleStep > area.bottom() - inset) return;
+        theme.bold().draw(canvas, left, y, line, titleSize, theme.textPrimary);
+        y += titleStep;
+    }
+    y += theme.px(14);
+
+    const std::string help = settingHelp(row.label);
+    if (help.empty()) return;
+    const int helpSize = theme.sizeBody();
+    const int lineStep = theme.regular().lineHeight(helpSize) + theme.px(8);
+    const std::vector<std::string> lines = wrapHelp(
+        theme.regular(), help, helpSize, std::max(0, right - left));
+    for (const std::string &line : lines) {
+        if (y + lineStep > area.bottom() - inset) break;
+        theme.regular().draw(canvas, left, y, line, helpSize, theme.textPrimary);
+        y += lineStep;
     }
 }
 
@@ -1048,7 +1473,7 @@ void SettingsScreen::renderUpdateConfirmation(Canvas &canvas, const Rect &area) 
     y += theme.regular().lineHeight(theme.sizeBody()) + theme.px(8);
     if (updateSnapshot_.databaseRebuildHint) {
         theme.regular().draw(canvas, left, y,
-            theme.regular().elide("Game database format changed: rebuild it after restart.",
+            theme.regular().elide("The game list needs rebuilding after restart.",
                                   theme.sizeBody(), right - left),
             theme.sizeBody(), theme.accent);
         y += theme.regular().lineHeight(theme.sizeBody()) + theme.px(8);
@@ -1056,31 +1481,94 @@ void SettingsScreen::renderUpdateConfirmation(Canvas &canvas, const Rect &area) 
     y += theme.px(10);
     theme.bold().draw(canvas, left, y, "RELEASE NOTES", theme.sizeSmall(), theme.textMuted);
     y += theme.bold().lineHeight(theme.sizeSmall()) + theme.px(10);
-    const int lineHeight = theme.regular().lineHeight(theme.sizeBody()) + theme.px(3);
-    std::vector<std::string> lines;
-    std::string line;
+    const int notesTop = y;
+    const int noteTextRight = right - theme.px(28);
+    struct NoteRun { std::string text; bool bold = false; };
+    struct NoteLine { std::vector<NoteRun> runs; int size = 0; int height = 0; };
+    std::vector<NoteLine> lines;
     const std::string &notes = updateSnapshot_.releaseNotes;
-    for (size_t pos = 0; pos < notes.size();) {
-        const unsigned char first = (unsigned char)notes[pos];
-        const size_t count = first < 0x80 ? 1 : first < 0xe0 ? 2 : first < 0xf0 ? 3 : 4;
-        const std::string glyph = notes.substr(pos, count);
-        pos += count;
-        if (glyph == "\n") { lines.push_back(line); line.clear(); continue; }
-        std::string next = line + glyph;
-        if (!line.empty() && theme.regular().measure(next, theme.sizeBody()) > right - left) {
-            lines.push_back(line);
-            line = glyph;
-        } else line = next;
+    auto addLogicalLine = [&](const std::string &raw) {
+        size_t contentStart = 0;
+        int level = 0;
+        while (level < 6 && contentStart < raw.size() && raw[contentStart] == '#') {
+            ++level; ++contentStart;
+        }
+        if (level == 0 || contentStart >= raw.size() || raw[contentStart] != ' ') {
+            level = 0; contentStart = 0;
+        } else {
+            while (contentStart < raw.size() && raw[contentStart] == ' ') ++contentStart;
+        }
+        const int size = level == 1 ? theme.sizeBody()
+                       : level == 2 ? theme.sizeSmall() + theme.px(2)
+                       : theme.sizeSmall();
+        const bool heading = level != 0;
+        NoteLine current;
+        current.size = size;
+        current.height = (heading ? theme.bold() : theme.regular()).lineHeight(size) + theme.px(3);
+        int currentWidth = 0;
+        bool bold = heading;
+        auto appendGlyph = [&](const std::string &glyph) {
+            Font &font = bold ? theme.bold() : theme.regular();
+            const int glyphWidth = font.measure(glyph, size);
+            if (!current.runs.empty() && currentWidth + glyphWidth > noteTextRight - left) {
+                lines.push_back(std::move(current));
+                current = NoteLine{}; current.size = size; current.height =
+                    (heading ? theme.bold() : theme.regular()).lineHeight(size) + theme.px(3);
+                currentWidth = 0;
+            }
+            if (current.runs.empty() || current.runs.back().bold != bold)
+                current.runs.push_back({{}, bold});
+            current.runs.back().text += glyph;
+            currentWidth += glyphWidth;
+        };
+        for (size_t pos = contentStart; pos < raw.size();) {
+            if (raw.compare(pos, 2, "**") == 0) { bold = !bold; pos += 2; continue; }
+            const unsigned char first = static_cast<unsigned char>(raw[pos]);
+            const size_t count = first < 0x80 ? 1 : first < 0xe0 ? 2 : first < 0xf0 ? 3 : 4;
+            appendGlyph(raw.substr(pos, count));
+            pos += count;
+        }
+        lines.push_back(std::move(current));
+    };
+    size_t start = 0;
+    while (start <= notes.size()) {
+        const size_t end = notes.find('\n', start);
+        addLogicalLine(notes.substr(start, end == std::string::npos ? end : end - start));
+        if (end == std::string::npos) break;
+        start = end + 1;
     }
-    lines.push_back(line);
-    const int maxLines = std::max(0, (panel.bottom() - margin - theme.px(48) - y) / lineHeight);
-    notesScroll_ = std::min(notesScroll_, std::max(0, int(lines.size()) - maxLines));
-    for (int i = notesScroll_; i < int(lines.size()) && i < notesScroll_ + maxLines; ++i) {
-        theme.regular().draw(canvas, left, y, lines[size_t(i)], theme.sizeBody(), theme.textPrimary);
-        y += lineHeight;
+    int contentHeight = 0;
+    for (const auto &noteLine : lines) contentHeight += noteLine.height;
+    const int footerSize = theme.sizeSmall();
+    const int footerLineHeight = theme.regular().lineHeight(footerSize) + theme.px(3);
+    const int availableHeight = std::max(0, panel.bottom() - margin - footerLineHeight - theme.px(12) - y);
+    int maxScroll = 0;
+    int remainingHeight = contentHeight;
+    while (remainingHeight > availableHeight && maxScroll < int(lines.size()))
+        remainingHeight -= lines[size_t(maxScroll++)].height;
+    notesScroll_ = std::min(notesScroll_, maxScroll);
+    const int notesBottom = panel.bottom() - margin - footerLineHeight - theme.px(12);
+    for (int i = notesScroll_; i < int(lines.size()); ++i) {
+        const auto &noteLine = lines[size_t(i)];
+        if (y + noteLine.height > notesBottom) break;
+        int x = left;
+        for (const auto &run : noteLine.runs) {
+            Font &font = run.bold ? theme.bold() : theme.regular();
+            font.draw(canvas, x, y, run.text, noteLine.size, theme.textPrimary);
+            x += font.measure(run.text, noteLine.size);
+        }
+        y += noteLine.height;
     }
-    theme.regular().draw(canvas, left, panel.bottom() - margin - lineHeight,
-        "A Install   B Cancel   ↑/↓ Scroll", theme.sizeBody(), theme.accent);
+    const int arrowWidth = theme.px(22);
+    const Rect upArrow{right - arrowWidth, notesTop, arrowWidth, theme.px(24)};
+    const Rect downArrow{right - arrowWidth, notesBottom - theme.px(24),
+                         arrowWidth, theme.px(24)};
+    if (notesScroll_ > 0)
+        theme.bold().drawCentered(canvas, upArrow, "↑", theme.sizeSmall(), theme.focus);
+    if (notesScroll_ < maxScroll)
+        theme.bold().drawCentered(canvas, downArrow, "↓", theme.sizeSmall(), theme.focus);
+    theme.regular().draw(canvas, left, panel.bottom() - margin - footerLineHeight,
+        formatButtonLabels("A Install   B Cancel   ↑/↓ Scroll"), footerSize, theme.accent);
 }
 
 void SettingsScreen::renderUpdateSuccess(Canvas &canvas, const Rect &area) {
@@ -1115,7 +1603,8 @@ void SettingsScreen::renderUpdateSuccess(Canvas &canvas, const Rect &area) {
     const std::string startVersion = updateSnapshot_.selectedVersion;
     const std::string runningVersion = updateSnapshot_.runningVersion;
     const auto line = [&](const std::string &label, const std::string &detail) {
-        theme.bold().draw(canvas, left, y, label, theme.sizeBody(), theme.accent);
+        theme.bold().draw(canvas, left, y, formatButtonLabels(label), theme.sizeBody(),
+                          theme.accent);
         y += theme.bold().lineHeight(theme.sizeBody()) + theme.px(3);
         theme.regular().draw(canvas, left + theme.px(20), y,
                              theme.regular().elide(detail, theme.sizeBody(),
@@ -1155,7 +1644,7 @@ void SettingsScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*
                       theme.sizeSmall(), theme.textMuted);
     theme.bold().draw(canvas, options.x + theme.px(10), sectionTextY,
                       categories_[size_t(categoryCursor_)].label, theme.sizeSmall(), theme.textMuted);
-    theme.bold().draw(canvas, info.x + theme.px(24), sectionTextY, "SYSTEM",
+    theme.bold().draw(canvas, info.x + theme.px(24), sectionTextY, "WHAT THIS DOES",
                       theme.sizeSmall(), theme.textMuted);
 
     const Rect listArea{categories.x + theme.px(10), categories.y + sectionHeight,
@@ -1164,9 +1653,9 @@ void SettingsScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*
                           options.w - theme.px(20), options.h - sectionHeight};
     renderCategories(canvas, listArea);
     renderOptions(canvas, optionArea);
-    if (info.w > theme.px(200)) {
-        renderInfo(canvas, {info.x, info.y + sectionHeight, info.w, info.h - sectionHeight});
-    }
+    if (info.w > theme.px(200))
+        renderSettingHelp(canvas, {info.x, info.y + sectionHeight, info.w,
+                                  info.h - sectionHeight});
     if (updateSnapshot_.phase == UpdatePhase::Confirming)
         renderUpdateConfirmation(canvas, area);
     if (updateSnapshot_.phase == UpdatePhase::RestartRequired &&
@@ -1187,33 +1676,62 @@ void SettingsScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*
         theme.regular().draw(canvas, left, y, "The system will restart now.",
                              theme.sizeBody(), theme.textPrimary);
         theme.regular().draw(canvas, left, panel.bottom() - theme.px(42),
-                             "A Reboot   B Cancel", theme.sizeBody(), theme.accent);
+                             formatButtonLabels("A Reboot   B Cancel"), theme.sizeBody(),
+                             theme.accent);
     }
     if (wifiStep_ != WifiStep::None) renderWifiFlow(canvas, area);
+    if (changelogActive_) renderChangelog(canvas, area);
+    if (infoModalActive_) {
+        canvas.fillRect(area, theme.shadow.withAlpha(205));
+        const int width = std::min(area.w - theme.px(48), theme.px(960));
+        const int height = std::min(area.h - theme.px(48), theme.px(680));
+        const Rect panel{area.x + (area.w - width) / 2, area.y + (area.h - height) / 2,
+                         width, height};
+        canvas.fillRoundedRect(panel, theme.radius(), theme.surfaceHi);
+        const int margin = theme.px(28);
+        const int titleY = panel.y + margin;
+        theme.bold().draw(canvas, panel.x + margin, titleY, "System information",
+                          theme.sizeHeading(), theme.textPrimary);
+        const int footerHeight = theme.regular().lineHeight(theme.sizeSmall()) + theme.px(8);
+        const int factsTop = titleY + theme.bold().lineHeight(theme.sizeHeading()) + theme.px(18);
+        const Rect factsArea{panel.x + margin, factsTop, panel.w - margin * 2,
+                             panel.bottom() - margin - footerHeight - factsTop};
+        renderInfo(canvas, factsArea);
+        theme.regular().draw(canvas, panel.x + margin,
+                             panel.bottom() - margin - footerHeight,
+                             "B Close", theme.sizeSmall(), theme.accent);
+    }
 }
 
 std::string SettingsScreen::hints() const {
-    if (wifiStep_ == WifiStep::Networks) return "A Select   B Cancel   ↑/↓ Move";
+    if (infoModalActive_) return "B Close";
+    if (changelogActive_) {
+        if (!updateSnapshot_.changelogError.empty()) return "A Try again   B Close";
+        if (updateSnapshot_.changelogLoading) return "B Close";
+        return "B Close   ↑/↓ Read more";
+    }
+    if (wifiStep_ == WifiStep::Networks) return "A Join selected network   B Cancel   ↑/↓ Move";
     if (wifiStep_ == WifiStep::SsidEntry || wifiStep_ == WifiStep::PasswordEntry ||
         wifiStep_ == WifiStep::CountryEntry)
-        return "D-pad Move   A Type   B Back   X Delete   Y Space";
-    if (wifiStep_ == WifiStep::Testing) return "B Cancel and restore previous Wi-Fi";
+        return "D-pad Choose key   A Type   B Back   X Delete   Y Space";
+    if (wifiStep_ == WifiStep::Testing) return "B Cancel and restore the previous connection";
     if (wifiStep_ == WifiStep::TestPrompt) return "A Test connection   B Cancel";
-    if (wifiStep_ == WifiStep::TestReview) return "A Save Wi-Fi settings   B Restore previous Wi-Fi";
-    if (wifiStep_ == WifiStep::TestFailed) return "A Retry   B Cancel";
-    if (wifiStep_ == WifiStep::Scanning) return "Scanning…   B Cancel";
-    if (rebootConfirmationActive_) return "A Reboot   B Cancel";
+    if (wifiStep_ == WifiStep::TestReview) return "A Save these settings   B Restore previous connection";
+    if (wifiStep_ == WifiStep::TestFailed) return "A Try again   B Cancel";
+    if (wifiStep_ == WifiStep::Scanning) return "Searching for Wi-Fi networks…   B Cancel";
+    if (rebootConfirmationActive_) return "A Restart MiSTer   B Cancel";
     if (timeZoneChooserActive_)
-        return choosingTimeZoneCity_ ? "A Set timezone   B Regions" : "A Choose   B Cancel";
+        return choosingTimeZoneCity_ ? "A Set this time zone   B Back to regions"
+                                     : "A Choose a region   B Cancel";
     if (updateSnapshot_.phase == UpdatePhase::Confirming)
-        return "A Install   B Cancel   ↑/↓ Scroll";
+        return "A Install update   B Cancel   ↑/↓ Read release notes";
     if (updateSnapshot_.phase == UpdatePhase::RestartRequired &&
         updateSnapshot_.successPromptVisible)
         return updateSnapshot_.pinned
-            ? "A Restart   B Not now   X Remove pin + restart"
-            : "A Restart   B Not now";
+            ? "A Restart MiSTer   B Later   X Use newest version + restart"
+            : "A Restart MiSTer   B Later";
     if (updateSnapshot_.phase == UpdatePhase::Downloading ||
         updateSnapshot_.phase == UpdatePhase::Verifying)
-        return "B Cancel download   ←/→ Columns   LB/RB Tabs";
-    return "A Select   ←/→ Columns   B Back   LB/RB Tabs";
+        return "B Cancel download   ←/→ Change column   LB/RB Change tab";
+    return "↑/↓ Move   A Choose   ←/→ Change column   B Back   LB/RB Change tab";
 }

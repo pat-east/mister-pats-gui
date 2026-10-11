@@ -53,6 +53,20 @@ absent. The uncompressed variants can use up to about 1.7 MB per cover; keeping 
 supports older installations and covers without prepared variants. Background images remain
 JPEG/PNG. Arcade still fetches covers only, without background screenshots.
 
+## Boxart fade-in and cache
+
+Newly loaded covers in Home's recent/favorite rows and the Games grid use the existing three-phase
+pixel reveal. Unfocused covers show a fixed 50% pixel pattern first, wait 20 ms, reveal another
+25%, wait 20 ms, then reveal the final 25%. The patterns are predefined; runtime random pixel
+selection is not used. A focused cover appears immediately. This display effect does not change
+the stored image or artwork preparation formats.
+
+The image cache treats a successfully loaded fallback (for example, JPEG/PNG when the preferred
+view-sized BMP is missing) as a successful result. It does not periodically decode that fallback
+again while waiting for the preferred file to appear. Explicit artwork invalidation, such as
+after scraping new art for a game, still allows the image to be loaded again. This avoids
+replacing an already displayed image and restarting its reveal while the screen is idle.
+
 The scraper processes one game per frame. Stopping it leaves completed artwork in place;
 another run fills gaps. System files and BIOS entries are excluded. Unmatched titles are
 written to `/media/fat/mister-pat/scrape-misses.txt`.

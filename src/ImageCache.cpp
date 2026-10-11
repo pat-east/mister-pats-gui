@@ -7,6 +7,8 @@
 #include <utility>
 #include <unistd.h>
 
+#include "DebugLog.h"
+
 namespace {
 
 // How long a miss sticks before it is worth trying again. Long enough that scrolling past a
@@ -15,6 +17,10 @@ namespace {
 // the session. ~3 s at the app's ~30 fps frame pace.
 constexpr uint64_t kFailureRetryTicks = 90;
 constexpr size_t kMaxQueuedArtwork = 32;
+// Leave breathing room for the MiSTer's CPU and storage while a user scrolls through
+// artwork-heavy views. Decodes still happen off the render thread, but the worker won't
+// immediately start another image as soon as one finishes.
+constexpr useconds_t kArtworkWorkerPauseUs = 100000;
 
 int64_t monotonicMs() {
     timespec ts{};
@@ -80,7 +86,6 @@ void ImageCache::beginFrame(int budgetMs) {
         entry.failedAtTick = tick_;
         if (item.image && item.image->valid()) {
             entry.image = std::move(item.image);
-            entry.retryPreferred = !item.primaryLoaded;
         } else {
             entry.failed = true;
         }
@@ -97,6 +102,11 @@ void ImageCache::beginFrame(int budgetMs) {
 
 void ImageCache::evictIfNeeded() {
     while (entries_.size() > maxEntries_ || cachedBytes_ > maxBytes_) {
+        char message[128];
+        std::snprintf(message, sizeof(message),
+                      "image cache: evicting entry (size=%zu, bytes=%zu)",
+                      entries_.size(), cachedBytes_);
+        DebugLog::warn(message);
         auto oldest = entries_.begin();
         for (auto it = entries_.begin(); it != entries_.end(); ++it)
             if (it->second.lastUsed < oldest->second.lastUsed) oldest = it;
@@ -217,18 +227,15 @@ ImagePtr ImageCache::requestAsyncCandidates(const std::vector<std::string> &cand
     if (isBmp(candidates.front())) key += "@native";
     else key += "@" + std::to_string(width) + "x" + std::to_string(height);
     auto it = entries_.find(key);
-    ImagePtr cachedFallback;
     if (it != entries_.end()) {
-        const bool shouldRetry =
-            (it->second.failed || it->second.retryPreferred) &&
-            tick_ - it->second.failedAtTick >= kFailureRetryTicks;
+        // A successful fallback is a stable cache hit. Retrying the missing preferred file
+        // on a timer repeatedly decodes the same fallback and replaces its ImagePtr, which
+        // makes resting grid tiles repaint. Artwork updates already invalidate this key.
+        const bool shouldRetry = it->second.failed &&
+                                 tick_ - it->second.failedAtTick >= kFailureRetryTicks;
         if (!shouldRetry) {
             it->second.lastUsed = tick_;
             return it->second.failed ? nullptr : it->second.image;
-        }
-        if (it->second.retryPreferred) {
-            cachedFallback = it->second.image;
-            it->second.lastUsed = tick_;
         }
     }
 
@@ -288,12 +295,23 @@ ImagePtr ImageCache::requestAsyncCandidates(const std::vector<std::string> &cand
             }
         }
     }
-    return cachedFallback;
+    return nullptr;
     } catch (...) {
         // Requests are opportunistic. If queuing runs out of memory, leave this frame with a
         // placeholder and let a later frame retry instead of unwinding through the GUI loop.
         return nullptr;
     }
+}
+
+bool ImageCache::isPendingCandidates(const std::vector<std::string> &candidates, int width,
+                                     int height) const {
+    if (candidates.empty() || width <= 0 || height <= 0) return false;
+    std::string key = candidateKeyPrefix(candidates);
+    if (isBmp(candidates.front())) key += "@native";
+    else key += "@" + std::to_string(width) + "x" + std::to_string(height);
+
+    std::lock_guard<std::mutex> lock(workMutex_);
+    return pending_.find(key) != pending_.end();
 }
 
 void ImageCache::invalidateCandidates(const std::vector<std::string> &candidates) {
@@ -377,11 +395,9 @@ void ImageCache::workerLoop() {
         };
 
         ImagePtr image;
-        bool primaryLoaded = false;
         try {
             for (size_t i = 0; i < work.candidates.size() && !image; ++i) {
                 image = loadAndFit(work.candidates[i]);
-                if (i == 0) primaryLoaded = bool(image);
             }
         } catch (...) {
             // Allocation and decoder exceptions must not escape a std::thread entry point:
@@ -392,12 +408,13 @@ void ImageCache::workerLoop() {
         {
             std::lock_guard<std::mutex> lock(workMutex_);
             try {
-                completed_.push_back({work.key, std::move(image), primaryLoaded});
+                completed_.push_back({work.key, std::move(image)});
             } catch (...) {
                 // If even publishing the result runs out of memory, forget the request so a
                 // later visible frame can try again. Never let allocation failure kill the app.
                 pending_.erase(work.key);
             }
         }
+        usleep(kArtworkWorkerPauseUs);
     }
 }

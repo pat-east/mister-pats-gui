@@ -43,6 +43,7 @@ private:
     size_t scanned_ = 0;
     size_t total_ = 0;
     float settleDelay_ = 0.0f;
+    bool showArcadeInConsoles_ = false;
 
     // Asks the cache for every visible icon regardless of whether this frame is about to
     // repaint — see the note above the call site in render().

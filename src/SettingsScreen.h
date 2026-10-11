@@ -15,8 +15,8 @@ public:
     SettingsScreen(Context &context, std::function<void()> onReload,
                    std::function<void()> onBuildDatabase,
                    std::function<void()> onFetchArtwork,
-                   std::function<void()> onDownloadSystemIcons,
-                   std::function<std::string()> systemIconDownloadStatus,
+                   std::function<void()> onDownloadAssets,
+                   std::function<std::string()> assetDownloadStatus,
                    std::function<void()> onManageSystems,
                    std::function<void()> onManageControllers,
                    std::function<void()> onManageArcade,
@@ -35,13 +35,14 @@ public:
                    std::function<void(bool)> onRestartAfterUpdate,
                    std::function<std::string()> spaceGroteskStatus,
                    std::function<void()> onSpaceGrotesk,
+                   std::function<bool()> onShowChangelog,
                    std::function<void()> onReboot);
 
     void setFramebufferInfo(const std::string &info) { framebufferInfo_ = info; }
     void setUpdateSnapshot(const UpdateSnapshot &snapshot);
     bool wantsBack() const {
         return optionsFocused_ || wifiStep_ != WifiStep::None || timeZoneChooserActive_ ||
-               rebootConfirmationActive_;
+               rebootConfirmationActive_ || changelogActive_ || infoModalActive_;
     }
     bool wantsStartForWifiPassword() const { return wifiStep_ == WifiStep::PasswordEntry; }
 
@@ -68,10 +69,19 @@ private:
         std::string value;
     };
 
+    struct ChangelogLine {
+        std::string text;
+        bool heading = false;
+        bool blank = false;
+        int height = 0;
+    };
+
     void buildRows();
     void buildUpdateRows();
     void renderUpdateConfirmation(Canvas &canvas, const Rect &area);
     void renderUpdateSuccess(Canvas &canvas, const Rect &area);
+    void renderChangelog(Canvas &canvas, const Rect &area);
+    void prepareChangelogLines(const std::string &text);
     void renderTimeZoneChooser(Canvas &canvas, const Rect &area);
     void handleTimeZoneChooser(Action action);
     void startWifiSetup();
@@ -81,14 +91,15 @@ private:
     std::vector<Fact> facts() const;
     void renderCategories(Canvas &canvas, const Rect &area);
     void renderOptions(Canvas &canvas, const Rect &area);
+    void renderSettingHelp(Canvas &canvas, const Rect &area);
     void renderInfo(Canvas &canvas, const Rect &area);
 
     Context &context_;
     std::function<void()> onReload_;
     std::function<void()> onBuildDatabase_;
     std::function<void()> onFetchArtwork_;
-    std::function<void()> onDownloadSystemIcons_;
-    std::function<std::string()> systemIconDownloadStatus_;
+    std::function<void()> onDownloadAssets_;
+    std::function<std::string()> assetDownloadStatus_;
     std::function<void()> onManageSystems_;
     std::function<void()> onManageControllers_;
     std::function<void()> onManageArcade_;
@@ -107,8 +118,13 @@ private:
     std::function<void(bool)> onRestartAfterUpdate_;
     std::function<std::string()> spaceGroteskStatus_;
     std::function<void()> onSpaceGrotesk_;
+    std::function<bool()> onShowChangelog_;
     std::function<void()> onReboot_;
     UpdateSnapshot updateSnapshot_;
+    std::vector<ChangelogLine> changelogLines_;
+    uint32_t changelogGeneration_ = 0;
+    int changelogScroll_ = 0;
+    int changelogMaxScroll_ = 0;
     int notesScroll_ = 0;
     std::vector<Category> categories_;
     SystemInfo system_;
@@ -118,6 +134,8 @@ private:
     bool optionsFocused_ = false;
     bool timeZoneChooserActive_ = false;
     bool rebootConfirmationActive_ = false;
+    bool changelogActive_ = false;
+    bool infoModalActive_ = false;
     enum class WifiStep { None, Scanning, Networks, SsidEntry, PasswordEntry, CountryEntry,
                           TestPrompt, Testing, TestReview, TestFailed };
     Wifi wifi_;

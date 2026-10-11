@@ -16,6 +16,7 @@ public:
         std::string label;
         std::string sublabel;
         ImagePtr image;            // nullptr falls back to a typographic tile
+        int imageRevealPercent = 100;
         bool favorite = false;
         bool showLabel = true;
         bool coverArt = false;     // fit artwork inside instead of filling the tile

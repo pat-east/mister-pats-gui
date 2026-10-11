@@ -27,6 +27,7 @@ void SystemsScreen::refresh() {
     scrollRow_ = 0;
     scanned_ = 0;
     total_ = context_.library.systems().size();
+    showArcadeInConsoles_ = context_.preferences.showArcadeInConsoles();
     settleDelay_ = kSettleSeconds;
 
     // The database catalog already contains only systems with games, and the Console Mode
@@ -34,7 +35,8 @@ void SystemsScreen::refresh() {
     // shown. Keep the paced path only for an explicitly allowed live directory scan.
     if (context_.library.usingDatabase() || !context_.library.scanningAllowed()) {
         for (const GameSystem &system : context_.library.systems()) {
-            if (context_.library.hasGames(system) &&
+            if ((!system.isArcade || showArcadeInConsoles_) &&
+                context_.library.hasGames(system) &&
                 !context_.hiddenSystems.contains(system.name)) {
                 systems_.push_back(&system);
                 focus_.push_back(0.0f);
@@ -59,7 +61,8 @@ void SystemsScreen::scanStep(float deltaSeconds) {
     }
 
     const GameSystem &system = context_.library.systems()[scanned_++];
-    if (context_.library.hasGames(system) && !context_.hiddenSystems.contains(system.name)) {
+    if ((!system.isArcade || showArcadeInConsoles_) && context_.library.hasGames(system) &&
+        !context_.hiddenSystems.contains(system.name)) {
         systems_.push_back(&system);
         focus_.push_back(0.0f);
     }
@@ -80,6 +83,7 @@ const GameSystem *SystemsScreen::current() const {
 }
 
 void SystemsScreen::update(float deltaSeconds) {
+    if (showArcadeInConsoles_ != context_.preferences.showArcadeInConsoles()) refresh();
     scanStep(deltaSeconds);
 
     const float speed = std::min(1.0f, deltaSeconds * 9.0f);
@@ -126,11 +130,13 @@ void SystemsScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
                              area.y + area.h / 2 - theme.px(70), panelWidth, theme.px(200)};
             const float fraction = total_ ? float(scanned_) / float(total_) : 0.0f;
             char counts[64];
-            std::snprintf(counts, sizeof(counts), "%zu of %zu systems", scanned_, total_);
-            LoadingIndicator::draw(canvas, theme, panel, "Reading your library", fraction,
+            std::snprintf(counts, sizeof(counts), "%zu of %zu systems checked", scanned_, total_);
+            LoadingIndicator::draw(canvas, theme, panel, "Searching for games", fraction,
                                    std::string(), counts);
         } else {
-            bold.drawCentered(canvas, area, "No systems with games found", theme.sizeHeading(),
+            bold.drawCentered(canvas, area,
+                              "No games found yet. Build the game list in Settings → Library.",
+                              theme.sizeHeading(),
                               theme.textMuted);
         }
         return;
@@ -143,12 +149,12 @@ void SystemsScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
     scrollRow_ = grid_.clampScroll(cursor_, int(systems_.size()), scrollRow_);
 
     if (context_.background) canvas.restoreFrom(*context_.background, header);
-    bold.draw(canvas, header.x, header.y, "Systems", theme.sizeHeading(), theme.textPrimary);
+    bold.draw(canvas, header.x, header.y, "Consoles", theme.sizeHeading(), theme.textPrimary);
 
     const GameSystem *active = current();
     if (active) {
         char counter[96];
-        std::snprintf(counter, sizeof(counter), "%s  ·  %d systems", active->group.c_str(),
+        std::snprintf(counter, sizeof(counter), "%s  ·  %d consoles", active->group.c_str(),
                       int(systems_.size()));
         const int width = theme.regular().measure(counter, theme.sizeBody());
         theme.regular().draw(canvas, header.right() - width, header.y + theme.px(10), counter,
@@ -243,5 +249,5 @@ void SystemsScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
 }
 
 std::string SystemsScreen::hints() const {
-    return "A Open   Y View   LB/RB Tabs";
+    return "A Open console   {DPAD} Move   LB/RB Change tab";
 }

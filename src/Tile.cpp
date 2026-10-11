@@ -113,7 +113,12 @@ void Tile::draw(Canvas &canvas, Theme &theme, const Rect &frame, const Content &
         const uint8_t alpha = content.keepImageOpaque
                                   ? 255
                                   : uint8_t(215 + 40 * focus > 255 ? 255 : 215 + 40 * focus);
-        canvas.drawImage(*content.image, target, alpha, content.coverArt ? theme.px(4) : radius);
+        if (content.imageRevealPercent < 100)
+            canvas.drawImageReveal(*content.image, target, alpha,
+                                   content.coverArt ? theme.px(4) : radius,
+                                   content.imageRevealPercent);
+        else
+            canvas.drawImage(*content.image, target, alpha, content.coverArt ? theme.px(4) : radius);
     } else {
         canvas.fillRoundedRect(body, radius, theme.surface);
         drawPlaceholder(canvas, theme, body.inset(theme.px(2)), shown, focus);
@@ -121,7 +126,8 @@ void Tile::draw(Canvas &canvas, Theme &theme, const Rect &frame, const Content &
 
     if (focus > 0.01f) {
         canvas.strokeRoundedRect(body, radius, theme.px(3),
-                                 theme.accent.withAlpha(uint8_t(255 * focus)));
+                                 Color::lerp(theme.accent, theme.focus, 0.65f)
+                                     .withAlpha(uint8_t(255 * focus)));
     }
 
     if (content.favorite) {

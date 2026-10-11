@@ -127,5 +127,5 @@ void SystemVisibilityScreen::render(Canvas &canvas, const Rect &area, bool /*ful
 }
 
 std::string SystemVisibilityScreen::hints() const {
-    return "A Show/Hide   B Back";
+    return "A Show or hide this console   B Back";
 }

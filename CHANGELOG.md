@@ -5,6 +5,100 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-10-11
+
+### Added
+
+- **Per-tab game views** — Settings → Interface → Game view offers Grid, Boxart small, List
+  and Individual. Individual remembers the last view separately for Home search results,
+  Favorites, console game lists and Games, including after restarting the GUI.
+
+### Changed
+
+- **Game view setting** — replace the single shared default view choice with a setting that can
+  apply one view everywhere or remember each supported tab's last view.
+- **List view presentation** — center the selected cover without loading a background image;
+  show the game title when cover art is missing. Favorite rows display the system below each
+  title so the platform remains clear independently of its artwork.
+- **List redraws** — redraw only rows whose focus changed and refresh the selected game's detail
+  panel only when its content changes.
+- **Direction symbols** — render D-pad and arrow indicators with font-independent graphics so
+  they remain visible with the built-in fallback font.
+
+## [0.6.5] - 2026-10-11
+
+### Added
+
+- **Accessibility settings** — choose standard, larger or largest text and enable high contrast;
+  focused controls have clear indicators throughout the interface.
+- **Full GitHub changelog** — open the project changelog from Settings → System, with loading,
+  retry and scroll indicators.
+- **Fresh README screenshots** — the screenshot updater always captures a new set and includes
+  dedicated Accessibility and System settings views.
+
+### Changed
+
+- **Settings organization** — move font controls to Accessibility; place time format, time zone
+  and Changelog under System, directly below Interface in the category list.
+- **Plain-language guidance** — add explanations for settings, clarify controller and search
+  hints, and describe library scans, cover preparation and update progress in everyday terms.
+
+### Fixed
+
+- **Connect to Wi-Fi… activation** — update the Wi-Fi row's availability when the adapter state
+  changes, so the action remains launchable.
+
+## [0.6.4] - 2026-10-11
+
+### Added
+
+- **Toggle indicators** — round checkboxes appear beside On/Off values, with a fixed-width value
+  slot so rows stay aligned.
+- **Consoles tab** — rename Systems to Consoles and add **Show Arcade in Consoles**, off by default.
+- **Tab display options** — show tab names, selected Bootstrap Icons or both. The six chosen icons
+  are 26×26, opaque BMPs with a black background; their SVG sources, license and manifest are
+  included for future additions.
+- **Download Assets** in Settings → System — check and download missing console and tab icons.
+  GUI updates fill in missing system icons from the pinned icon set and tab icons from the
+  release's manifest.
+
+### Changed
+
+- **Tab underline transition** — fade the underline out and back in on tab changes instead of
+  sliding it between tabs.
+- **Game search** — remove the standalone Search tab and search within Home, Games, Favorites,
+  system game lists and Arcade.
+- **Arcade navigation** — show Arcade games directly in the configured game view, removing the
+  Manufacturers and Categories entry points.
+
+## [0.6.3] - 2026-10-11
+
+### Added
+
+- **Boxart fade-in animation** — the existing three-phase pixel reveal now runs on Home's
+  recent and favorite covers as well as the Games grid. Focused covers remain immediate.
+
+### Fixed
+
+- **Repeated fallback artwork reloads** — successful fallback covers no longer trigger timed
+  retries of a missing preferred image, which could replace the cached image and restart its
+  reveal animation while the interface was idle.
+
+## [0.6.2] - 2026-10-11
+
+### Changed
+
+- **Grid artwork reveal proof of concept** — newly loaded, unfocused covers appear in three
+  fixed pixel-reveal phases; the focused cover appears immediately.
+- **Cold-start framebuffer recovery** — replace recurring framebuffer polling with one Home
+  repaint two seconds after startup.
+
+## [0.6.1] - 2026-10-11
+
+### Added
+
+- **Face button style** — choose Xbox, PlayStation or Nintendo labels for face-button hints.
+
 ## [0.6.0] - 2026-10-11
 
 ### Added
@@ -49,10 +143,9 @@ Maintenance fix on the way to the next release; no separate GitHub release.
 ### Fixed
 
 - **Blank screen after a cold start** — after a cold boot the framebuffer content could be
-  overwritten with zeros after the first frame, leaving only the clock, title and footer
-  visible until the first button press. The GUI now compares a sparse sample of the
-  framebuffer with its canvas a few times a second and repaints everything on a mismatch;
-  the first occurrences are noted in `logs/debug.log`.
+  overwritten with zeros shortly after the splash, leaving only the clock, title and footer
+  visible until the first button press. Home now gets one full repaint two seconds after the
+  GUI starts, allowing the display to settle without periodic framebuffer polling.
 
 ### Developer
 

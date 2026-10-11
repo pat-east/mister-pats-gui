@@ -6,10 +6,16 @@
 #include <cstring>
 
 #include "Alphabet.h"
+#include "ButtonLabels.h"
 #include "Canvas.h"
 #include "Tile.h"
 
 namespace {
+
+GameView configuredHomeView(const Preferences &preferences) {
+    return gameViewFromName(preferences.defaultView() == "individual"
+                                ? preferences.homeView() : preferences.defaultView());
+}
 
 // Design pixels; everything else follows from the tile width.
 constexpr int kTileWidth = 190;
@@ -20,7 +26,79 @@ constexpr int kTileAspectH = 1;
 
 } // namespace
 
-HomeScreen::HomeScreen(Context &context) : context_(context) { refresh(); }
+HomeScreen::HomeScreen(Context &context) : context_(context), searchResults_(context) {
+    searchResults_.setView(configuredHomeView(context.preferences));
+    refresh();
+}
+
+void HomeScreen::invalidateSearchIndex() {
+    searchIndex_.clear();
+    searchBuildPaths_.clear();
+    searchBuildSystem_ = searchBuildPath_ = 0;
+    searchIndexReady_ = false;
+    searchResults_.showSearchResults({});
+    if (search_.hasQuery()) {
+        pendingSearchQuery_ = search_.query();
+        searchBuildPending_ = true;
+    } else {
+        pendingSearchQuery_.clear();
+        searchBuildPending_ = false;
+    }
+}
+
+void HomeScreen::beginSearch(const std::string &query) {
+    if (query.empty()) {
+        pendingSearchQuery_.clear();
+        searchBuildPending_ = false;
+        return;
+    }
+    pendingSearchQuery_ = query;
+    if (searchIndexReady_) showSearchResults();
+    else {
+        searchBuildSystem_ = searchBuildPath_ = 0;
+        searchBuildPaths_.clear();
+        searchIndex_.clear();
+        searchBuildPending_ = true;
+    }
+}
+
+void HomeScreen::showSearchResults() {
+    searchResults_.setView(configuredHomeView(context_.preferences));
+    std::vector<std::pair<const GameSystem *, Game>> matches;
+    for (const auto &entry : searchIndex_)
+        if (entry.first && GameSearch::matches(entry.second.name, entry.first->name,
+                                               pendingSearchQuery_, true))
+            matches.push_back(entry);
+    searchResults_.showSearchResults(matches);
+}
+
+void HomeScreen::buildSearchIndex() {
+    if (!searchBuildPending_) return;
+    constexpr size_t kBatchSize = 160;
+    size_t budget = kBatchSize;
+    const auto &systems = context_.library.systems();
+    while (budget && searchBuildSystem_ < systems.size()) {
+        const GameSystem &system = systems[searchBuildSystem_];
+        if (searchBuildPaths_.empty() && searchBuildPath_ == 0)
+            searchBuildPaths_ = context_.library.pathsOf(system);
+        while (budget && searchBuildPath_ < searchBuildPaths_.size()) {
+            const std::string &path = searchBuildPaths_[searchBuildPath_++];
+            --budget;
+            if (!Library::isSystemFile(system, path))
+                searchIndex_.emplace_back(&system, Library::makeStub(system, path));
+        }
+        if (searchBuildPath_ >= searchBuildPaths_.size()) {
+            searchBuildPaths_.clear();
+            searchBuildPath_ = 0;
+            ++searchBuildSystem_;
+        }
+    }
+    if (searchBuildSystem_ >= systems.size()) {
+        searchIndexReady_ = true;
+        searchBuildPending_ = false;
+        showSearchResults();
+    }
+}
 
 void HomeScreen::refresh() {
     rows_.clear();
@@ -34,7 +112,7 @@ void HomeScreen::refresh() {
                                        : context_.library.findSystem(entry.system);
         if (!system || Library::isSystemFile(*system, entry.path)) continue;
         recent.items.push_back({system, Library::makeGame(*system, entry.path,
-                                                         ArtworkVariant::Home)});
+                                                         ArtworkVariant::Home), {}});
     }
 
     Row favorites;
@@ -44,7 +122,7 @@ void HomeScreen::refresh() {
         const GameSystem *system = context_.library.findSystem(entry.system);
         if (!system || Library::isSystemFile(*system, entry.path)) continue;
         favorites.items.push_back({system, Library::makeGame(*system, entry.path,
-                                                            ArtworkVariant::Home)});
+                                                            ArtworkVariant::Home), {}});
     }
     // Unlike Recently played, where the order itself is the information, favourites carry
     // none — sorted alphabetically is what makes a specific one fast to find as the list
@@ -95,11 +173,13 @@ const HomeScreen::Item *HomeScreen::current() const {
 }
 
 std::string HomeScreen::favoritePath() const {
+    if (search_.hasQuery()) return searchResults_.favoritePath();
     const Item *item = current();
     return item ? item->game.path : std::string();
 }
 
 bool HomeScreen::selectedGame(const GameSystem *&system, Game &game) const {
+    if (search_.hasQuery()) return searchResults_.selectedGame(system, game);
     const Item *item = current();
     if (!item) return false;
     system = item->system;
@@ -137,7 +217,7 @@ void HomeScreen::toggleFavorite() {
         const GameSystem *system = context_.library.findSystem(entry.system);
         if (!system || Library::isSystemFile(*system, entry.path)) continue;
         favorites.items.push_back({system, Library::makeGame(*system, entry.path,
-                                                            ArtworkVariant::Home)});
+                                                            ArtworkVariant::Home), {}});
     }
     std::sort(favorites.items.begin(), favorites.items.end(), [](const Item &a, const Item &b) {
         return strcasecmp(a.game.name.c_str(), b.game.name.c_str()) < 0;
@@ -147,6 +227,14 @@ void HomeScreen::toggleFavorite() {
 }
 
 void HomeScreen::handle(Action action) {
+    if (search_.handle(action, search_.hasQuery() ? !searchResults_.canMoveUp()
+                                                   : activeRow_ == 0,
+                       [this](const std::string &query) { beginSearch(query); })) return;
+    if (search_.hasQuery()) {
+        searchResults_.handle(action);
+        if (action == Action::ToggleFavorite) refresh();
+        return;
+    }
     if (rows_.empty()) return;
     Row &row = rows_[size_t(activeRow_)];
 
@@ -207,10 +295,16 @@ void HomeScreen::jumpLetter(Row &row, int direction) {
     row.cursor = target;
 
     const char letter = Alphabet::initial(row.items[size_t(row.cursor)].game.name);
-    context_.notify(letter == '#' ? std::string("0–9") : std::string(1, letter), 1.2f);
+    context_.notify(std::string("Games starting with ") +
+                    (letter == '#' ? "0–9" : std::string(1, letter)), 1.2f);
 }
 
 void HomeScreen::update(float deltaSeconds) {
+    buildSearchIndex();
+    if (search_.hasQuery()) {
+        searchResults_.update(deltaSeconds);
+        return;
+    }
     const float speed = std::min(1.0f, deltaSeconds * 9.0f);
 
     for (size_t r = 0; r < rows_.size(); ++r) {
@@ -242,7 +336,8 @@ void HomeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool acti
     if (strip.empty()) return;
 
     if (row.items.empty()) {
-        theme.regular().draw(canvas, strip.x, strip.y + theme.px(10), row.emptyHint,
+        theme.regular().draw(canvas, strip.x, strip.y + theme.px(10),
+                             formatButtonLabels(row.emptyHint),
                              theme.sizeSmall(), theme.textMuted.withAlpha(110));
         return;
     }
@@ -283,7 +378,7 @@ void HomeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool acti
             const bool isCursor = active && i == row.cursor;
             if ((pass == 0) == isCursor) continue;
 
-            const Item &item = row.items[size_t(i)];
+            Item &item = row.items[size_t(i)];
             const Rect frame{lane.x + (i - row.scroll) * (tileWidth + gap), lane.y, tileWidth,
                              tileHeight + labelHeight};
 
@@ -295,16 +390,18 @@ void HomeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool acti
             if (context_.preferences.showBoxArt())
                 content.image = context_.images.requestAsyncCandidates(
                     item.game.boxartCandidates, tileWidth, tileHeight);
+            content.imageRevealPercent = item.boxartFadeIn.revealPercent();
 
             Tile::draw(canvas, theme, frame, content, row.focus[size_t(i)]);
+            item.boxartFadeIn.advance();
         }
     }
 
     canvas.popClip();
 }
 
-void HomeScreen::requestImages(Row &row, int laneWidth) {
-    if (!context_.preferences.showBoxArt() || row.items.empty()) return;
+bool HomeScreen::requestImages(Row &row, int laneWidth, bool active) {
+    if (!context_.preferences.showBoxArt() || row.items.empty()) return false;
 
     const Metrics m = metrics();
     const int gap = context_.theme.gap();
@@ -317,17 +414,22 @@ void HomeScreen::requestImages(Row &row, int laneWidth) {
                           std::max(0, int(row.items.size()) - perPage));
 
     const int last = std::min(int(row.items.size()), row.scroll + perPage + 1);
+    bool revealActive = false;
     for (int i = row.scroll; i < last; ++i) {
-        const Item &item = row.items[size_t(i)];
-        context_.images.requestAsyncCandidates(item.game.boxartCandidates, m.tileWidth,
-                                               m.tileHeight);
+        Item &item = row.items[size_t(i)];
+        const ImagePtr image = context_.images.requestAsyncCandidates(
+            item.game.boxartCandidates, m.tileWidth, m.tileHeight,
+            active && i == row.cursor);
+        item.boxartFadeIn.observe(image, active && i == row.cursor);
+        revealActive = revealActive || item.boxartFadeIn.active();
     }
+    return revealActive;
 }
 
-void HomeScreen::requestFavoriteImages(const Rect &body, int gridY, const Metrics &m) {
-    if (!context_.preferences.showBoxArt()) return;
+bool HomeScreen::requestFavoriteImages(const Rect &body, int gridY, const Metrics &m) {
+    if (!context_.preferences.showBoxArt()) return false;
     Row &favorites = rows_[1];
-    if (favorites.items.empty()) return;
+    if (favorites.items.empty()) return false;
 
     const int step = m.tileHeight + m.caption + context_.theme.gap();
     const int firstRow = std::max(0, (body.y - gridY) / step - 1);
@@ -336,17 +438,23 @@ void HomeScreen::requestFavoriteImages(const Rect &body, int gridY, const Metric
                                  (body.bottom() - gridY) / step + 2);
 
     // Put the selected cover ahead of nearby prefetches in the worker queue.
-    if (activeRow_ == 1) {
-        const Item &item = favorites.items[size_t(favorites.cursor)];
-        context_.images.requestAsyncCandidates(item.game.boxartCandidates, m.tileWidth,
+    if (activeRow_ == 1 && favorites.cursor >= firstRow * favoriteColumns_ &&
+        favorites.cursor < std::min(int(favorites.items.size()), lastRow * favoriteColumns_)) {
+        const Item &focused = favorites.items[size_t(favorites.cursor)];
+        context_.images.requestAsyncCandidates(focused.game.boxartCandidates, m.tileWidth,
                                                m.tileHeight, true);
     }
+    bool revealActive = false;
     for (int i = firstRow * favoriteColumns_;
          i < std::min(int(favorites.items.size()), lastRow * favoriteColumns_); ++i) {
-        const Item &item = favorites.items[size_t(i)];
-        context_.images.requestAsyncCandidates(item.game.boxartCandidates, m.tileWidth,
-                                               m.tileHeight);
+        Item &item = favorites.items[size_t(i)];
+        const bool focused = activeRow_ == 1 && i == favorites.cursor;
+        const ImagePtr image = context_.images.requestAsyncCandidates(
+            item.game.boxartCandidates, m.tileWidth, m.tileHeight, focused);
+        item.boxartFadeIn.observe(image, focused);
+        revealActive = revealActive || item.boxartFadeIn.active();
     }
+    return revealActive;
 }
 
 void HomeScreen::renderFavorites(Canvas &canvas, const Rect &body, int sectionY,
@@ -367,7 +475,7 @@ void HomeScreen::renderFavorites(Canvas &canvas, const Rect &body, int sectionY,
                              theme.sizeSmall(), theme.textMuted.withAlpha(120));
     } else {
         theme.regular().draw(canvas, body.x, sectionY + titleHeight + theme.px(10),
-                             favorites.emptyHint, theme.sizeSmall(),
+                             formatButtonLabels(favorites.emptyHint), theme.sizeSmall(),
                              theme.textMuted.withAlpha(110));
         return;
     }
@@ -384,7 +492,7 @@ void HomeScreen::renderFavorites(Canvas &canvas, const Rect &body, int sectionY,
             const bool isCursor = activeRow_ == 1 && i == favorites.cursor;
             if ((pass == 0) == isCursor) continue;
 
-            const Item &item = favorites.items[size_t(i)];
+            Item &item = favorites.items[size_t(i)];
             const Rect frame{body.x + m.growX + (i % favoriteColumns_) *
                                   (m.tileWidth + theme.gap()),
                              gridY + (i / favoriteColumns_) * step, m.tileWidth,
@@ -398,7 +506,9 @@ void HomeScreen::renderFavorites(Canvas &canvas, const Rect &body, int sectionY,
             if (context_.preferences.showBoxArt())
                 content.image = context_.images.requestAsyncCandidates(
                     item.game.boxartCandidates, m.tileWidth, m.tileHeight);
+            content.imageRevealPercent = item.boxartFadeIn.revealPercent();
             Tile::draw(canvas, theme, frame, content, favorites.focus[size_t(i)]);
+            item.boxartFadeIn.advance();
         }
     }
 }
@@ -418,11 +528,36 @@ void HomeScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
     Theme &theme = context_.theme;
 
     const int headerHeight = theme.px(58);
-    const Rect header{area.x, area.y, area.w, headerHeight};
-    if (context_.background) canvas.restoreFrom(*context_.background, header);
+    const int searchHeight = theme.px(54);
+    const int searchGap = theme.px(20);
+    const Rect searchField{area.x, area.y + headerHeight + theme.px(2), area.w,
+                           searchHeight - theme.px(4)};
+    const Rect body{area.x, searchField.bottom() + searchGap, area.w,
+                    area.bottom() - searchField.bottom() - searchGap};
+    if (context_.background)
+        canvas.restoreFrom(*context_.background,
+                           Rect{area.x, area.y, area.w, searchField.bottom() - area.y});
     theme.bold().draw(canvas, area.x, area.y, "Home", theme.sizeHeading(), theme.textPrimary);
+    search_.renderField(canvas, theme, searchField);
 
-    const Rect body{area.x, area.y + headerHeight, area.w, area.h - headerHeight};
+    if (search_.keyboardVisible()) {
+        search_.renderKeyboard(canvas, theme, body);
+        keyboardWasVisible_ = true;
+        return;
+    }
+    const bool keyboardClosed = keyboardWasVisible_;
+    if (keyboardClosed && context_.background) canvas.restoreFrom(*context_.background, body);
+    keyboardWasVisible_ = false;
+
+    if (search_.hasQuery()) {
+        if (searchBuildPending_ || !searchIndexReady_) {
+            theme.regular().draw(canvas, body.x + theme.px(18), body.y + theme.px(10),
+                                 "Preparing matching games…", theme.sizeSmall(), theme.textMuted);
+        } else {
+            searchResults_.renderBody(canvas, body, fullRedraw || keyboardClosed);
+        }
+        return;
+    }
 
     const Metrics m = metrics();
     const int recentHeight = rows_[0].items.empty() ? theme.px(66) : m.rowHeight;
@@ -455,9 +590,11 @@ void HomeScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
     // triggers) used to live inside renderRow(), which only ran when something had
     // already changed — so once the focus animation settled, nothing ever asked again,
     // and any picture that missed the decode budget by then stayed missing forever.
-    requestImages(rows_[0], body.w);
-    requestFavoriteImages(body, body.y + recentHeight - pageScroll_ + theme.px(40) + m.growY,
-                          m);
+    bool revealActive = requestImages(rows_[0], body.w, activeRow_ == 0);
+    revealActive = requestFavoriteImages(
+                       body,
+                       body.y + recentHeight - pageScroll_ + theme.px(40) + m.growY, m) ||
+                   revealActive;
 
     // Taken after that request, so a decode it just triggered still counts as a change
     // this frame rather than waiting until the next one.
@@ -466,7 +603,8 @@ void HomeScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
     // The caller may have already wiped the canvas this frame for a reason of its own — a
     // tab switch, returning from a detail view — in which case skipping our own repaint
     // because nothing *we* track has changed would leave that wipe on screen.
-    bool anyChange = needsPaint_ || fullRedraw || pageScroll_ != paintedPageScroll_ ||
+    bool anyChange = needsPaint_ || fullRedraw || keyboardClosed || revealActive ||
+                     pageScroll_ != paintedPageScroll_ ||
                      imagesBefore != paintedImages_;
     for (size_t r = 0; r < rows_.size() && !anyChange; ++r)
         anyChange = rowChanged(rows_[r], int(r) == activeRow_);
@@ -502,5 +640,8 @@ void HomeScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
 }
 
 std::string HomeScreen::hints() const {
-    return "A Start   Hold X 2s Favorite   L2/R2 Letter   D-pad Navigate";
+    std::string hints = "A Play game   Hold X 2s to favorite   L2/R2 Jump to letter   {DPAD} Move";
+    if (search_.hasQuery() && context_.preferences.defaultView() == "individual")
+        hints += "   Y Change view";
+    return search_.hints(hints);
 }

@@ -8,6 +8,7 @@
 #include <dirent.h>
 #include <fstream>
 #include <ifaddrs.h>
+#include <iterator>
 #include <net/if.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -20,6 +21,9 @@ namespace {
 
 constexpr const char *kApi =
     "https://api.github.com/repos/pat-east/mister-pats-gui/releases/latest";
+constexpr const char *kChangelog =
+    "https://raw.githubusercontent.com/pat-east/mister-pats-gui/main/CHANGELOG.md";
+constexpr size_t kMaximumChangelogBytes = 1024 * 1024;
 
 class CheckStaging {
 public:
@@ -127,14 +131,14 @@ std::string UpdateService::localBlockReason() const {
     const std::string root = UpdateFiles::kRoot;
     Version running;
     if (!parseVersion(kAppVersion, running))
-        return "Unknown running version — repair via SSH";
+        return "The running GUI version could not be identified. Reinstall the GUI to repair it.";
     UpdateFiles::LibrarySelection selection;
     std::string error;
     if (!UpdateFiles::librarySelection(selection, error))
-        return "GUI library needs repair: " + error;
+        return "The GUI files need repair. Reinstall the GUI to continue. (" + error + ")";
     if (!UpdateFiles::regularFile(root + "/mister-gui") ||
         !UpdateFiles::regularFile(root + "/MiSTer_gui"))
-        return "Loader or MiSTer main binary needs repair via SSH";
+        return "A required MiSTer startup file is missing. Reinstall the GUI to repair it.";
     return {};
 }
 
@@ -148,11 +152,26 @@ bool UpdateService::startCheck(bool automatic) {
           phase == UpdatePhase::Blocked)) return false;
     cancel_.store(false);
     snapshot_.phase = automatic ? UpdatePhase::WaitingForInternet : UpdatePhase::Checking;
-    snapshot_.statusText = automatic ? "Waiting for Internet…" : "Checking GitHub…";
+    snapshot_.statusText = automatic ? "Waiting for an Internet connection…" : "Checking GitHub for a newer version…";
     snapshot_.errorText.clear();
     snapshot_.canInstall = false;
     automaticCheckActive_ = automatic;
     pending_ = automatic ? Command::AutomaticCheck : Command::Check;
+    wake_.notify_one();
+    return true;
+}
+
+bool UpdateService::startChangelog() {
+    std::lock_guard<std::mutex> guard(mutex_);
+    if (stopping_) return false;
+    if (snapshot_.changelogLoading) return true;
+    if (pending_ == Command::Changelog || changelogQueued_) return false;
+    snapshot_.changelog.clear();
+    snapshot_.changelogError.clear();
+    snapshot_.changelogLoading = true;
+    ++snapshot_.changelogGeneration;
+    if (pending_ == Command::None) pending_ = Command::Changelog;
+    else changelogQueued_ = true;
     wake_.notify_one();
     return true;
 }
@@ -176,7 +195,7 @@ bool UpdateService::startInstall() {
         snapshot_.phase != UpdatePhase::Confirming || candidate_.tag.empty()) return false;
     cancel_.store(false);
     snapshot_.phase = UpdatePhase::Downloading;
-    snapshot_.statusText = "Downloading…";
+    snapshot_.statusText = "Downloading the update…";
     snapshot_.bytesDone = 0;
     snapshot_.bytesTotal = 0;
     snapshot_.canInstall = false;
@@ -322,10 +341,19 @@ void UpdateService::workerLoop() {
             if (command == Command::Check || command == Command::AutomaticCheck)
                 check(command == Command::AutomaticCheck);
             else if (command == Command::Install) install();
+            else if (command == Command::Changelog) fetchChangelog();
         } catch (const std::exception &error) {
-            publishError(error.what());
+            if (command == Command::Changelog) {
+                std::lock_guard<std::mutex> guard(mutex_);
+                snapshot_.changelogLoading = false;
+                snapshot_.changelogError = readableError(error.what());
+            } else publishError(error.what());
         } catch (...) {
-            publishError("unexpected update error");
+            if (command == Command::Changelog) {
+                std::lock_guard<std::mutex> guard(mutex_);
+                snapshot_.changelogLoading = false;
+                snapshot_.changelogError = "unexpected download error";
+            } else publishError("unexpected update error");
         }
         std::lock_guard<std::mutex> guard(mutex_);
         if (command == Command::AutomaticCheck) {
@@ -337,8 +365,53 @@ void UpdateService::workerLoop() {
                 snapshot_.canInstall = false;
             }
         }
+        if (!stopping_ && changelogQueued_ && pending_ == Command::None) {
+            pending_ = Command::Changelog;
+            changelogQueued_ = false;
+            wake_.notify_one();
+        }
         if (stopping_) return;
     }
+}
+
+void UpdateService::fetchChangelog() {
+    char path[] = "/tmp/mister-pat-changelog-XXXXXX";
+    const int fd = mkstemp(path);
+    std::string error;
+    std::string content;
+    if (fd < 0) {
+        error = "cannot create a temporary file";
+    } else {
+        close(fd);
+        if (!changelogDownloader_.fetch(kChangelog, path, 30)) {
+            error = changelogDownloader_.lastError();
+        } else {
+            std::ifstream in(path, std::ios::binary);
+            struct stat info {};
+            if (!in) error = "cannot read the downloaded changelog";
+            else if (stat(path, &info) != 0 || !S_ISREG(info.st_mode))
+                error = "cannot inspect the downloaded changelog";
+            else if (info.st_size <= 0) error = "GitHub returned an empty changelog";
+            else if (uint64_t(info.st_size) > kMaximumChangelogBytes)
+                error = "the changelog is unexpectedly large";
+            else {
+                content.assign(std::istreambuf_iterator<char>(in),
+                               std::istreambuf_iterator<char>());
+                if (content.find('\0') != std::string::npos)
+                    error = "the downloaded changelog is not valid text";
+                else if (content.find("<html") != std::string::npos ||
+                         content.find("<!DOCTYPE") != std::string::npos)
+                    error = "GitHub returned a web page instead of the changelog";
+            }
+        }
+        unlink(path);
+    }
+
+    std::lock_guard<std::mutex> guard(mutex_);
+    snapshot_.changelogLoading = false;
+    snapshot_.changelogError = error.empty() ? std::string() : readableError(error);
+    snapshot_.changelog = error.empty() ? std::move(content) : std::string();
+    ++snapshot_.changelogGeneration;
 }
 
 void UpdateService::check(bool automatic) {
@@ -378,7 +451,7 @@ void UpdateService::check(bool automatic) {
                 std::lock_guard<std::mutex> guard(mutex_);
                 if (cancel_.load()) return;
                 snapshot_.phase = UpdatePhase::Checking;
-                snapshot_.statusText = "Checking GitHub…";
+                snapshot_.statusText = "Checking GitHub for a newer version…";
                 break;
             }
             if (cancel_.load()) return;
@@ -408,7 +481,7 @@ void UpdateService::check(bool automatic) {
         std::lock_guard<std::mutex> guard(mutex_);
         snapshot_.phase = blocked.empty() ? UpdatePhase::Current : UpdatePhase::Blocked;
         snapshot_.targetVersion = versionText(tagVersion);
-        snapshot_.statusText = (blocked.empty() ? "No newer release" : blocked) +
+        snapshot_.statusText = (blocked.empty() ? "You are using the newest release" : blocked) +
                                " (GitHub: v" + snapshot_.targetVersion + ")";
         snapshot_.canInstall = false;
         return;
@@ -487,11 +560,11 @@ void UpdateService::check(bool automatic) {
         snapshot_.canInstall = false;
     } else if (compareVersions(candidate_.version, selection.selectedVersion) > 0) {
         snapshot_.phase = UpdatePhase::Available;
-        snapshot_.statusText = "v" + snapshot_.targetVersion + " available";
+        snapshot_.statusText = "New version available: v" + snapshot_.targetVersion;
         snapshot_.canInstall = true;
     } else {
         snapshot_.phase = UpdatePhase::Current;
-        snapshot_.statusText = "No newer release";
+        snapshot_.statusText = "You are using the newest release";
         snapshot_.canInstall = false;
     }
 }
@@ -510,9 +583,9 @@ void UpdateService::install() {
             snapshot_.phase = step == InstallStep::Downloading ? UpdatePhase::Downloading :
                               step == InstallStep::Verifying ? UpdatePhase::Verifying :
                                                                UpdatePhase::Installing;
-            snapshot_.statusText = step == InstallStep::Downloading ? "Downloading…" :
-                                   step == InstallStep::Verifying ? "Verifying…" :
-                                                                    "Installing…";
+            snapshot_.statusText = step == InstallStep::Downloading ? "Downloading the update…" :
+                                   step == InstallStep::Verifying ? "Checking downloaded files…" :
+                                                                    "Installing the update…";
             snapshot_.bytesDone = bytes;
         });
     std::lock_guard<std::mutex> guard(mutex_);
@@ -535,7 +608,7 @@ void UpdateService::install() {
         break;
     case InstallResult::Code::Cancelled:
         snapshot_.phase = UpdatePhase::Available;
-        snapshot_.statusText = "v" + snapshot_.targetVersion + " available";
+        snapshot_.statusText = "New version available: v" + snapshot_.targetVersion;
         snapshot_.canInstall = true;
         break;
     case InstallResult::Code::RepairRequired:

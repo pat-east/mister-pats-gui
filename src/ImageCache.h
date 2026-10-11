@@ -51,6 +51,8 @@ public:
     // and location fallbacks without probing the filesystem on the render thread.
     ImagePtr requestAsyncCandidates(const std::vector<std::string> &candidates, int width,
                                     int height, bool priority = false);
+    bool isPendingCandidates(const std::vector<std::string> &candidates, int width,
+                             int height) const;
 
     // Drops cached results for one candidate set so newly written artwork can be requested
     // immediately instead of waiting for a cached miss to expire.
@@ -68,7 +70,6 @@ private:
     struct Entry {
         ImagePtr image;
         bool failed = false;
-        bool retryPreferred = false;
         uint64_t lastUsed = 0;
         uint64_t failedAtTick = 0;
         size_t bytes = 0;
@@ -87,7 +88,6 @@ private:
     struct Completed {
         std::string key;
         ImagePtr image;
-        bool primaryLoaded;
     };
 
     std::unordered_map<std::string, Entry> entries_;
@@ -99,7 +99,7 @@ private:
     int budgetMs_ = 0;
     int64_t decodedMs_ = 0;
 
-    std::mutex workMutex_;
+    mutable std::mutex workMutex_;
     sem_t workReady_{};
     bool semaphoreReady_ = false;
     std::deque<Work> workQueue_;

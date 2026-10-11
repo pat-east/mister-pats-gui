@@ -25,7 +25,8 @@
 # frames), and Settings -> Manage Arcade -> Arcade Games reads every .mra and checks its ROMs
 # (about 4000, several minutes on the device).
 #
-# Settings has a category list on the left (Library, Controllers, Interface, Updates, System);
+# Settings has a category list on the left (Library, Controllers, Interface, Accessibility,
+# Updates, System);
 # "down" moves between categories until "right" or "confirm" moves into the rows.
 #
 # The controller input test needs the pad's row in the Controllers list. Count down from the
@@ -81,7 +82,7 @@ downs() {
 # arcade-games is not in the standard set: it takes several minutes on the device and the
 # README does not show it. Ask for it by name.
 STANDARD="home favorites systems snes snes-grid snes-small snes-list arcade games settings
-settings-interface settings-updates controller-test"
+settings-interface settings-accessibility settings-system settings-updates controller-test"
 
 shot_set() {
     wanted=${*:-$STANDARD}
@@ -100,10 +101,16 @@ shot_set() {
         settings)    render $name 60 "$SET_DIR" --no-grab --tab settings --press "right,wait:5" ;;
         settings-interface)
             render $name 60 "$SET_DIR" --no-grab --tab settings --press "down,down,right,wait:5" ;;
+        settings-accessibility)
+            render $name 60 "$SET_DIR" --no-grab --tab settings \
+                --press "down,down,down,right,down,down,wait:5" ;;
+        settings-system)
+            render $name 60 "$SET_DIR" --no-grab --tab settings \
+                --press "down,down,down,down,down,right,down,down,down,wait:5" ;;
         settings-updates)
             # Offline or not, the page shows the running and selected versions and the check
             # state; "wait" gives the update service time to settle.
-            render $name 90 "$SET_DIR" --no-grab --tab settings --press "down,down,down,right,wait:30" ;;
+            render $name 90 "$SET_DIR" --no-grab --tab settings --press "down,down,down,down,right,wait:30" ;;
         controller-test)
             # Needs the input devices, so no --no-grab. Controllers is the second category and
             # holds one row of the same name. The test hands the screen back after ten idle
@@ -124,7 +131,9 @@ shot_set() {
         esac
     done
 
-    python3 "$HERE/tools/update-readme-screenshots.py"
+    if [ "${MISTER_SCREENSHOTS_GALLERY_ONLY:-0}" != 1 ]; then
+        MISTER_SCREENSHOTS_GALLERY_ONLY=1 python3 "$HERE/tools/update-readme-screenshots.py"
+    fi
 }
 
 # ---------------------------------------------------------------------------------------

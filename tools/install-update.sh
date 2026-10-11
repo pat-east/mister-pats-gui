@@ -83,7 +83,7 @@ copy_checked() {
     [ "$(sha "$to")" = "$expected" ] || fail "hash differs after copy: $to"
 }
 acquire_lock
-mkdir -p "$ROOT/icons" "$ROOT/fonts" "$ROOT/gamesdb" "$ROOT/logs" "$ROOT/.update-staging" || fail 'cannot create installation folders'
+mkdir -p "$ROOT/icons" "$ROOT/tab-icons" "$ROOT/fonts" "$ROOT/gamesdb" "$ROOT/logs" "$ROOT/.update-staging" || fail 'cannot create installation folders'
 for dir in "$ROOT/.update-staging"; do
     [ -d "$dir" ] && [ ! -L "$dir" ] || fail "unsafe directory: $dir"
 done
@@ -384,6 +384,27 @@ if curl_https --proto '=https' --proto-redir '=https' --fail --location --silent
         else echo "warning: icon $name" >&2; fi
     done < "$STAGE/icons.txt"
 else echo 'warning: system icons unavailable' >&2; fi
+tabiconbase="https://raw.githubusercontent.com/pat-east/mister-pats-gui/v$VERSION/assets/tab-icons"
+tab_icon_valid() {
+    [ -s "$1" ] && [ "$(od -An -tx1 -N2 "$1" | tr -d ' \n')" = 424d ] && \
+        [ "$(od -An -tx1 -j18 -N4 "$1" | tr -d ' \n')" = 1a000000 ] && \
+        [ "$(od -An -tx1 -j22 -N4 "$1" | tr -d ' \n')" = 1a000000 ] && \
+        [ "$(od -An -tx1 -j28 -N2 "$1" | tr -d ' \n')" = 1800 ] && \
+        [ "$(od -An -tx1 -j30 -N4 "$1" | tr -d ' \n')" = 00000000 ]
+}
+if curl_https --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --connect-timeout 12 --max-time 15 --max-filesize 65536 \
+    "$tabiconbase/manifest.tsv" -o "$STAGE/tab-icons.tsv"; then
+    awk -F '\t' 'NF >= 2 && $1 ~ /^[a-z0-9-]+\.bmp$/ {print $1}' "$STAGE/tab-icons.tsv" > "$STAGE/tab-icons.txt"
+    while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        if tab_icon_valid "$ROOT/tab-icons/$name"; then continue; fi
+        if curl_https --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --connect-timeout 12 --max-time 15 --max-filesize 1048576 \
+            "$tabiconbase/$name" -o "$STAGE/$name" && \
+            tab_icon_valid "$STAGE/$name"; then
+            cp "$STAGE/$name" "$ROOT/tab-icons/$name.new-$$" && mv "$ROOT/tab-icons/$name.new-$$" "$ROOT/tab-icons/$name" || echo "warning: tab icon $name" >&2
+        else echo "warning: tab icon $name" >&2; fi
+    done < "$STAGE/tab-icons.txt"
+else echo 'warning: tab icon manifest unavailable' >&2; fi
 fontbase="https://raw.githubusercontent.com/floriankarsten/space-grotesk/$FONT_VERSION"
 for name in SpaceGrotesk-Bold.ttf SpaceGrotesk-Medium.ttf; do
     if curl_https --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --connect-timeout 12 --max-time 15 --max-filesize 10485760 \

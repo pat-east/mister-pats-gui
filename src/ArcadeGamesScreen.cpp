@@ -154,7 +154,8 @@ void ArcadeGamesScreen::jumpLetter(int direction) {
 
     cursor_ = target;
     const char letter = Alphabet::initial(sorted_[size_t(visible_[size_t(cursor_)])].name);
-    context_.notify(letter == '#' ? std::string("0–9") : std::string(1, letter), 1.2f);
+    context_.notify(std::string("Games starting with ") +
+                    (letter == '#' ? "0–9" : std::string(1, letter)), 1.2f);
 }
 
 void ArcadeGamesScreen::launch() {
@@ -239,7 +240,7 @@ void ArcadeGamesScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedr
     }
 
     if (sorted_.empty()) {
-        theme.regular().drawCentered(canvas, body, "No .mra files found under _Arcade",
+        theme.regular().drawCentered(canvas, body, "No Arcade game files found on connected drives",
                                      theme.sizeHeading(), theme.textMuted);
         return;
     }
@@ -301,6 +302,8 @@ void ArcadeGamesScreen::renderTable(Canvas &canvas, const Rect &area) {
                                        .withAlpha(uint8_t(220 * focus)));
             canvas.fillRoundedRect({rowArea.x, rowArea.y, theme.px(3), rowArea.h}, theme.px(1),
                                    theme.accent.withAlpha(uint8_t(255 * focus)));
+            canvas.strokeRoundedRect(rowArea, theme.px(6), std::max(1, theme.px(2)),
+                                     theme.focus.withAlpha(uint8_t(255 * focus)));
         } else if (row % 2 == 1) {
             canvas.fillRoundedRect(rowArea, theme.px(6), theme.surface.withAlpha(60));
         }
@@ -333,11 +336,11 @@ void ArcadeGamesScreen::renderTable(Canvas &canvas, const Rect &area) {
 }
 
 std::string ArcadeGamesScreen::hints() const {
-    if (!scan_.finished()) return "B Back";
+    if (!scan_.finished()) return "B Cancel scan and go back";
 
     char buffer[112];
     std::snprintf(buffer, sizeof(buffer),
-                 "A Start   Up/Down Row   L2/R2 Letter   Y Filter: %s   B Back",
+                 "A Play game   ↑/↓ Move   L2/R2 Jump to letter   Y Filter: %s   B Back",
                  filterLabel(filter_));
     return buffer;
 }

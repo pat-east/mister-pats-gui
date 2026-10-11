@@ -7,6 +7,7 @@
 #include <sstream>
 
 #include "Alphabet.h"
+#include "ButtonLabels.h"
 #include "Canvas.h"
 #include "DebugLog.h"
 #include "Tile.h"
@@ -41,6 +42,25 @@ ArtworkVariant artworkVariantFor(GameView view) {
     case GameView::Grid:
     default: return ArtworkVariant::Grid;
     }
+}
+
+std::vector<std::string> wrapText(Font &font, const std::string &text, int size, int maxWidth) {
+    std::istringstream words(text);
+    std::vector<std::string> lines;
+    std::string word;
+    std::string line;
+    while (words >> word) {
+        if (font.measure(word, size) > maxWidth) word = font.elide(word, size, maxWidth);
+        const std::string candidate = line.empty() ? word : line + " " + word;
+        if (!line.empty() && font.measure(candidate, size) > maxWidth) {
+            lines.push_back(line);
+            line = word;
+        } else {
+            line = candidate;
+        }
+    }
+    if (!line.empty()) lines.push_back(line);
+    return lines;
 }
 
 } // namespace
@@ -107,31 +127,11 @@ void GamesScreen::showSearchResults(
     entries_.clear();
     entries_.reserve(games.size());
     for (const auto &item : games)
-        if (item.first) entries_.push_back({item.first, item.second, false, ArtworkVariant::Full});
-    if (entries_.empty()) {
-        static const char *messages[] = {
-            "I've looked everywhere, but I cannot change the laws of physics - there's nothing here.",
-            "Reality is often disappointing.",
-            "No games found. Did you try turning it off and on again?",
-            "There is no result. Only Zuul.",
-            "Ah, ah, ah! You didn't say the magic word...",
-            "There was a result here. It's gone now.",
-            "Our apologies, but the games you are looking for are in another castle.",
-            "404: You must gather your party before searching for this term.",
-            "Snake? Snake?! SNAAAAKE?! ...The search query returned no response.",
-            "The search results are a lie.",
-            "It's dangerous to search alone! Try a different keyword.",
-            "War. War never changes. But search terms do... and this one found nothing.",
-            "Stay awhile and listen... because I have absolutely no results to show you.",
-            "No games found. These aren't the droids you're looking for.",
-            "No games found. The cake is a lie.",
-            "Our apologies, but the princess is in another castle.",
-            "No games found. One does not simply find games here.",
-            "No games found. You shall not pass... this empty result.",
-        };
-        searchEmptyMessage_ = messages[searchEmptyMessageIndex_ % (sizeof(messages) / sizeof(messages[0]))];
-        ++searchEmptyMessageIndex_;
-    }
+        if (item.first)
+            entries_.push_back({item.first, item.second, false, ArtworkVariant::Full, {}});
+    unfilteredEntries_ = entries_;
+    if (entries_.empty())
+        searchEmptyMessage_ = "No games match this search. Try a different title or a shorter search.";
     std::sort(entries_.begin(), entries_.end(), [](const Entry &a, const Entry &b) {
         return strcasecmp(a.game.name.c_str(), b.game.name.c_str()) < 0;
     });
@@ -163,17 +163,17 @@ void GamesScreen::reload() {
             const GameSystem *system = context_.library.findSystem(favorite.system);
             if (!system || Library::isSystemFile(*system, favorite.path)) continue;
             entries_.push_back({system, Library::makeStub(*system, favorite.path), false,
-                                ArtworkVariant::Full});
+                                ArtworkVariant::Full, {}});
         }
     } else if (allMode_) {
         for (const GameSystem &system : context_.library.systems())
             for (const std::string &path : context_.library.pathsOf(system))
                 entries_.push_back({&system, Library::makeStub(system, path), false,
-                                    ArtworkVariant::Full});
+                                    ArtworkVariant::Full, {}});
     } else if (system_) {
         for (const std::string &path : context_.library.pathsOf(*system_))
             entries_.push_back({system_, Library::makeStub(*system_, path), false,
-                                ArtworkVariant::Full});
+                                ArtworkVariant::Full, {}});
         preSorted = context_.library.pathsPreSorted(*system_);
     }
 
@@ -184,6 +184,9 @@ void GamesScreen::reload() {
             return strcasecmp(a.game.name.c_str(), b.game.name.c_str()) < 0;
         });
     }
+
+    unfilteredEntries_ = entries_;
+    if (search_.hasQuery()) applySearch(search_.query());
 
     focus_.assign(entries_.size(), 0.0f);
     paintedFocus_.clear();
@@ -196,6 +199,39 @@ void GamesScreen::reload() {
     std::snprintf(line, sizeof(line), "games: %zu entries for %s", entries_.size(),
                  title_.c_str());
     DebugLog::info(line);
+}
+
+void GamesScreen::applySearch(const std::string &query) {
+    entries_.clear();
+    if (query.empty()) {
+        entries_ = unfilteredEntries_;
+        searchResultsMode_ = false;
+    } else {
+        searchResultsMode_ = true;
+        for (const Entry &entry : unfilteredEntries_) {
+            if (entry.system && GameSearch::matches(entry.game.name, entry.system->name,
+                                                    query, allMode_ || favoritesMode_))
+                entries_.push_back(entry);
+        }
+        if (entries_.empty())
+            searchEmptyMessage_ = "No games match this search. Try a different title or a shorter search.";
+    }
+    std::sort(entries_.begin(), entries_.end(), [](const Entry &a, const Entry &b) {
+        return strcasecmp(a.game.name.c_str(), b.game.name.c_str()) < 0;
+    });
+    focus_.assign(entries_.size(), 0.0f);
+    cursor_ = 0;
+    scrollRow_ = 0;
+    paintedFocus_.clear();
+    paintedArtwork_.clear();
+    paintedScrollRow_ = -1;
+    paintedCount_ = size_t(-1);
+    needsPaint_ = true;
+}
+
+void GamesScreen::setSearchQuery(const std::string &query) {
+    search_.setQuery(query);
+    applySearch(query);
 }
 
 void GamesScreen::ensureArtwork(Entry &entry, ArtworkVariant variant) {
@@ -259,7 +295,8 @@ void GamesScreen::jumpLetter(int direction) {
                                            : cursor_ / std::max(1, grid_.columns());
 
     const char letter = Alphabet::initial(entries_[size_t(cursor_)].game.name);
-    context_.notify(letter == '#' ? std::string("0–9") : std::string(1, letter), 1.2f);
+    context_.notify(std::string("Games starting with ") +
+                    (letter == '#' ? "0–9" : std::string(1, letter)), 1.2f);
 }
 
 void GamesScreen::toggleFavorite() {
@@ -295,6 +332,9 @@ void GamesScreen::launch() {
 }
 
 void GamesScreen::handle(Action action) {
+    if (search_.handle(action, !canMoveUp(),
+                       [this](const std::string &query) { applySearch(query); })) return;
+
     switch (action) {
     case Action::Up:    moveCursor(0, -1); break;
     case Action::Down:  moveCursor(0, 1); break;
@@ -307,7 +347,8 @@ void GamesScreen::handle(Action action) {
     case Action::JumpNext: jumpLetter(1); break;
     case Action::CycleView:
         setView(static_cast<GameView>((int(view_) + 1) % int(GameView::kCount)));
-        context_.notify(std::string("View: ") + specFor(view_).name, 2.0f);
+        if (viewChanged_) viewChanged_(view_);
+        context_.notify(std::string("Game view: ") + specFor(view_).name, 2.0f);
         break;
     default:
         break;
@@ -353,76 +394,142 @@ void GamesScreen::renderHeader(Canvas &canvas, const Rect &area) {
                          theme.sizeBody(), theme.textMuted.withAlpha(160));
 }
 
-void GamesScreen::renderDetail(Canvas &canvas, const Rect &area, const Entry &entry) {
+void GamesScreen::renderDetail(Canvas &canvas, const Rect &area, const Entry &entry, bool force) {
     Theme &theme = context_.theme;
 
-    // Background artwork, heavily dimmed so the foreground stays readable.
-    if (context_.preferences.showBoxArt()) {
-        if (ImagePtr background = context_.images.requestAsyncCandidates(
-                entry.game.backgroundCandidates, area.w, area.h, true)) {
-            // Cover the panel instead of fitting into it: scale up until both sides are filled
-            // and let the clip crop the overhang, so no bars appear beside the artwork.
-            const long scaleW = long(area.w) * background->height();
-            const long scaleH = long(area.h) * background->width();
-            const int coverW = (scaleW > scaleH) ? area.w
-                                                 : int(long(background->width()) * area.h /
-                                                       background->height());
-            const int coverH = (scaleW > scaleH) ? int(long(background->height()) * area.w /
-                                                      background->width())
-                                                 : area.h;
-            const Rect cover{area.x + (area.w - coverW) / 2, area.y + (area.h - coverH) / 2,
-                             coverW, coverH};
+    const int pad = theme.px(24);
+    const int footerHeight = favoritesMode_ ? theme.px(112) : 0;
+    const Rect artArea{area.x + pad, area.y + pad,
+                       std::max(0, area.w - 2 * pad),
+                       std::max(0, area.h - 2 * pad - footerHeight)};
 
-            canvas.pushClip(area);
-            canvas.drawImage(*background, cover, uint8_t(90 * detailFade_), 0);
-            canvas.popClip();
-        }
-    }
-    canvas.fillRoundedRect(area, theme.radius(), theme.backgroundLo.withAlpha(150));
-
-    const int pad = theme.px(28);
-    const int textBlock = theme.px(110);
-    const Rect artArea{area.x + pad, area.y + pad, area.w - 2 * pad,
-                       area.h - 2 * pad - textBlock};
-
+    // Request only the selected game's cover. Detail backgrounds are reserved for a future
+    // dedicated game detail page, where they can be useful without slowing down this view.
     ImagePtr art;
     if (context_.preferences.showBoxArt())
         art = context_.images.requestAsyncCandidates(entry.game.boxartCandidates,
                                                      artArea.w, artArea.h, true);
+
+    const bool boxArtEnabled = context_.preferences.showBoxArt();
+    const bool loading = boxArtEnabled && context_.images.isPendingCandidates(
+                                               entry.game.boxartCandidates,
+                                               artArea.w, artArea.h);
+    const bool changed = force || !paintedDetail_ || paintedDetailPath_ != entry.game.path ||
+                         paintedDetailArt_ != art.get() || paintedDetailLoading_ != loading ||
+                         paintedDetailBoxArtEnabled_ != boxArtEnabled;
+    if (!changed) return;
+
+    if (context_.background) canvas.restoreFrom(*context_.background, area);
+
+    canvas.fillRoundedRect(area, theme.radius(), theme.backgroundLo.withAlpha(150));
+
     if (art) {
         const Rect target = artArea.fitAspect(art->width(), art->height());
+        canvas.pushClip(area);
         canvas.dropShadow(target, theme.px(6), theme.px(18), theme.shadow.withAlpha(170));
         canvas.drawImage(*art, target, 255, theme.px(6));
-    } else {
-        canvas.fillRoundedRect(artArea, theme.radius(), theme.surface.withAlpha(120));
-        const char *placeholder =
-            context_.preferences.showBoxArt() ? "No boxart" : "Box art off";
-        theme.regular().drawCentered(canvas, artArea, placeholder, theme.sizeBody(),
-                                     theme.textMuted.withAlpha(140));
+        canvas.popClip();
     }
 
-    const Rect titleArea{area.x + pad, artArea.bottom() + theme.px(14), area.w - 2 * pad,
-                         theme.px(44)};
-    const int titleSize = theme.sizeGameDetail();
-    const std::string name = theme.bold().elide(entry.game.name, titleSize, titleArea.w);
-    theme.bold().draw(canvas, titleArea.x, titleArea.y, name, titleSize,
-                      theme.textPrimary);
+    if (!art) {
+        canvas.fillRoundedRect(artArea, theme.radius(), theme.surface.withAlpha(120));
+        if (loading) {
+            theme.regular().drawCentered(canvas, artArea, "Loading cover art...",
+                                         theme.sizeBody(), theme.textMuted.withAlpha(180));
+        } else if (!favoritesMode_) {
+            const int titleSize = theme.sizeGameDetail();
+            const int maxWidth = std::max(theme.px(40), artArea.w - theme.px(32));
+            std::vector<std::string> lines = wrapText(theme.bold(), entry.game.name,
+                                                       titleSize, maxWidth);
+            const int lineHeight = theme.bold().lineHeight(titleSize);
+            const int maxLines = std::max(1, artArea.h / std::max(1, lineHeight));
+            if (int(lines.size()) > maxLines) {
+                lines.resize(size_t(maxLines));
+                lines.back() = theme.bold().elide(lines.back() + "...", titleSize, maxWidth);
+            }
+            const int blockHeight = int(lines.size()) * lineHeight;
+            int y = artArea.y + (artArea.h - blockHeight) / 2;
+            for (const std::string &line : lines) {
+                const int width = theme.bold().measure(line, titleSize);
+                theme.bold().draw(canvas, artArea.x + (artArea.w - width) / 2, y, line,
+                                  titleSize, theme.textPrimary);
+                y += lineHeight;
+            }
+        }
+    }
 
-    std::string meta = entry.system->name;
-    if (entry.game.isArchive()) meta += "  ·  Archive";
-    if (context_.favorites.contains(entry.game.path)) meta += "  ·  Favorite";
-    theme.regular().draw(canvas, titleArea.x, titleArea.bottom() + theme.px(2), meta,
-                         theme.sizeBody(), theme.textMuted);
+    if (favoritesMode_) {
+        const int titleSize = theme.sizeGameDetail();
+        const int lineHeight = theme.bold().lineHeight(titleSize);
+        const int systemSize = theme.sizeBody();
+        const int systemHeight = theme.regular().lineHeight(systemSize);
+        const int gap = theme.px(4);
+        const Rect footer{area.x + pad, artArea.bottom() + theme.px(4),
+                          std::max(0, area.w - 2 * pad), footerHeight - theme.px(4)};
+        const Rect titleArea{footer.x, footer.y, footer.w,
+                             std::max(0, footer.h - systemHeight - gap)};
+        const int maxWidth = std::max(theme.px(40), titleArea.w - theme.px(16));
+        std::vector<std::string> lines = wrapText(theme.bold(), entry.game.name,
+                                                   titleSize, maxWidth);
+        const int maxLines = std::max(1, titleArea.h / std::max(1, lineHeight));
+        if (int(lines.size()) > maxLines) {
+            lines.resize(size_t(maxLines));
+            lines.back() = theme.bold().elide(lines.back() + "...", titleSize, maxWidth);
+        }
+        const int blockHeight = int(lines.size()) * lineHeight;
+        int y = titleArea.y + (titleArea.h - blockHeight) / 2;
+        for (const std::string &line : lines) {
+            const int width = theme.bold().measure(line, titleSize);
+            theme.bold().draw(canvas, titleArea.x + (titleArea.w - width) / 2, y, line,
+                              titleSize, theme.textPrimary);
+            y += lineHeight;
+        }
+        const Rect systemArea{footer.x, footer.bottom() - systemHeight, footer.w, systemHeight};
+        const std::string system = theme.regular().elide(entry.system->name, systemSize,
+                                                         footer.w - theme.px(16));
+        theme.regular().drawCentered(canvas, systemArea, system, systemSize,
+                                     theme.textMuted.withAlpha(190));
+    }
+
+    paintedDetailPath_ = entry.game.path;
+    paintedDetailArt_ = art.get();
+    paintedDetailLoading_ = loading;
+    paintedDetailBoxArtEnabled_ = boxArtEnabled;
+    paintedDetail_ = true;
 }
 
-void GamesScreen::renderList(Canvas &canvas, const Rect &area) {
+void GamesScreen::renderDetailBackground(Canvas &canvas, const Rect &area, const Entry &entry) {
+    Theme &theme = context_.theme;
+    if (!context_.preferences.showBoxArt()) return;
+
+    if (ImagePtr background = context_.images.requestAsyncCandidates(
+            entry.game.backgroundCandidates, area.w, area.h, false)) {
+        // Fill and crop the panel so no bars appear beside the artwork.
+        const long scaleW = long(area.w) * background->height();
+        const long scaleH = long(area.h) * background->width();
+        const int coverW = (scaleW > scaleH) ? area.w
+                                             : int(long(background->width()) * area.h /
+                                                   background->height());
+        const int coverH = (scaleW > scaleH) ? int(long(background->height()) * area.w /
+                                                   background->width())
+                                             : area.h;
+        const Rect cover{area.x + (area.w - coverW) / 2,
+                         area.y + (area.h - coverH) / 2, coverW, coverH};
+
+        canvas.pushClip(area);
+        canvas.drawImage(*background, cover, uint8_t(72 * detailFade_), 0);
+        canvas.popClip();
+    }
+}
+
+void GamesScreen::renderList(Canvas &canvas, const Rect &area, bool fullRedraw) {
     Theme &theme = context_.theme;
 
-    const int detailWidth = area.w * 42 / 100;
-    const Rect listArea{area.x, area.y, area.w - detailWidth - theme.gap(), area.h};
+    const int detailWidth = std::max(0, (area.w - theme.gap()) / 2);
+    const Rect listArea{area.x, area.y, detailWidth, area.h};
     const Rect detailArea{listArea.right() + theme.gap(), area.y, detailWidth, area.h};
 
-    const int rowHeight = theme.px(52);
+    const int rowHeight = theme.px(favoritesMode_ ? 68 : 52);
     const int visible = std::max(1, listArea.h / rowHeight);
 
     if (cursor_ < scrollRow_) scrollRow_ = cursor_;
@@ -430,12 +537,28 @@ void GamesScreen::renderList(Canvas &canvas, const Rect &area) {
     const int maxScroll = std::max(0, int(entries_.size()) - visible);
     scrollRow_ = std::min(std::max(0, scrollRow_), maxScroll);
 
+    const bool layoutChanged = fullRedraw || needsPaint_ ||
+                               scrollRow_ != paintedListScrollRow_ ||
+                               entries_.size() != paintedListCount_ ||
+                               paintedListFocus_.size() != focus_.size();
+    if (paintedListFocus_.size() != focus_.size())
+        paintedListFocus_.resize(focus_.size(), -1.0f);
     canvas.pushClip(listArea);
     for (int i = scrollRow_; i < std::min(int(entries_.size()), scrollRow_ + visible); ++i) {
         const Entry &entry = entries_[size_t(i)];
         const Rect row{listArea.x, listArea.y + (i - scrollRow_) * rowHeight, listArea.w,
                        rowHeight - theme.px(6)};
         const float focus = focus_[size_t(i)];
+        const float paintedFocus = paintedListFocus_[size_t(i)];
+        const bool focusChanged = std::fabs(focus - paintedFocus) >= 0.002f ||
+                                  ((focus > 0.01f) != (paintedFocus > 0.01f));
+        if (!layoutChanged && !focusChanged) continue;
+        if (!fullRedraw && context_.background) {
+            const int borderBleed = std::max(1, theme.px(3));
+            const Rect repaint{row.x - borderBleed, row.y - borderBleed,
+                               row.w + 2 * borderBleed, row.h + 2 * borderBleed};
+            canvas.restoreFrom(*context_.background, repaint);
+        }
 
         if (focus > 0.01f) {
             canvas.fillRoundedRect(row, theme.px(8),
@@ -443,6 +566,8 @@ void GamesScreen::renderList(Canvas &canvas, const Rect &area) {
                                        .withAlpha(uint8_t(220 * focus)));
             canvas.fillRoundedRect({row.x, row.y, theme.px(4), row.h}, theme.px(2),
                                    theme.accent.withAlpha(uint8_t(255 * focus)));
+            canvas.strokeRoundedRect(row, theme.px(8), std::max(1, theme.px(2)),
+                                     theme.focus.withAlpha(uint8_t(255 * focus)));
         }
 
         const bool isFavorite = context_.favorites.contains(entry.game.path);
@@ -450,20 +575,40 @@ void GamesScreen::renderList(Canvas &canvas, const Rect &area) {
         const int textW = row.w - theme.px(40) - (isFavorite ? theme.px(28) : 0);
 
         const int nameSize = theme.sizeGameLabel();
+        const int nameHeight = theme.regular().lineHeight(nameSize);
         const std::string name = theme.regular().elide(entry.game.name, nameSize, textW);
-        theme.regular().draw(canvas, textX, row.y + (row.h - theme.regular().lineHeight(nameSize)) / 2,
-                             name, nameSize,
-                             Color::lerp(theme.textMuted, theme.textPrimary, focus));
+        if (favoritesMode_) {
+            const int systemSize = theme.sizeBody();
+            const int systemHeight = theme.regular().lineHeight(systemSize);
+            const int gap = theme.px(2);
+            const int blockHeight = nameHeight + gap + systemHeight;
+            const int textY = row.y + (row.h - blockHeight) / 2;
+            theme.regular().draw(canvas, textX, textY, name, nameSize,
+                                 Color::lerp(theme.textMuted, theme.textPrimary, focus));
+            const std::string system = theme.regular().elide(entry.system->name, systemSize,
+                                                              textW);
+            theme.regular().draw(canvas, textX, textY + nameHeight + gap, system, systemSize,
+                                 theme.textMuted.withAlpha(190));
+        } else {
+            theme.regular().draw(canvas, textX,
+                                 row.y + (row.h - nameHeight) / 2, name, nameSize,
+                                 Color::lerp(theme.textMuted, theme.textPrimary, focus));
+        }
 
         if (isFavorite) {
             theme.bold().draw(canvas, row.right() - theme.px(26),
                               row.y + (row.h - theme.bold().lineHeight(theme.sizeBody())) / 2,
                               "*", theme.sizeBody(), theme.favorite);
         }
+        paintedListFocus_[size_t(i)] = focus;
     }
     canvas.popClip();
 
-    if (const Entry *entry = current()) renderDetail(canvas, detailArea, *entry);
+    if (const Entry *entry = current()) renderDetail(canvas, detailArea, *entry,
+                                                      fullRedraw || needsPaint_);
+    paintedListScrollRow_ = scrollRow_;
+    paintedListCount_ = entries_.size();
+    needsPaint_ = false;
 }
 
 void GamesScreen::renderGrid(Canvas &canvas, const Rect &area, bool fullRedraw) {
@@ -525,6 +670,24 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area, bool fullRedraw) 
         }
     }
 
+    bool revealActive = false;
+    for (int i = first; i < last; ++i) {
+        Entry &entry = entries_[size_t(i)];
+        const ImagePtr &art = visibleArtwork[size_t(i - first)];
+        const Image *previousArt = entry.boxartFadeIn.image();
+        if (entry.boxartFadeIn.observe(art, i == cursor_)) {
+            if (art || previousArt) {
+                char message[128];
+                std::snprintf(message, sizeof(message),
+                              "games grid: cover cache identity changed at entry %d (%s -> %s)",
+                              i, previousArt ? "image" : "empty",
+                              art ? "image" : "empty");
+                DebugLog::info(message);
+            }
+        }
+        revealActive = revealActive || entry.boxartFadeIn.active();
+    }
+
     const bool layoutChanged = fullRedraw || needsPaint_ || scrollRow_ != paintedScrollRow_ ||
                                entries_.size() != paintedCount_ ||
                                paintedFocus_.size() != focus_.size() ||
@@ -540,7 +703,9 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area, bool fullRedraw) 
                 std::fabs(focus_[size_t(i)] - paintedFocus_[size_t(i)]) >= 0.002f;
             const bool artworkChanged =
                 paintedArtwork_[size_t(i)] != visibleArtwork[size_t(i - first)].get();
-            if (!focusChanged && !artworkChanged) continue;
+            const bool revealChanged = i != cursor_ &&
+                                       entries_[size_t(i)].boxartFadeIn.active();
+            if (!focusChanged && !artworkChanged && !revealChanged) continue;
             const Rect footprint = Tile::footprint(theme, grid_.cellFrame(i, scrollRow_));
             const int x = std::min(repaint.x, footprint.x);
             const int y = std::min(repaint.y, footprint.y);
@@ -573,7 +738,7 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area, bool fullRedraw) 
             const bool isCursor = (i == cursor_);
             if ((pass == 0) == isCursor) continue;
 
-            const Entry &entry = entries_[size_t(i)];
+            Entry &entry = entries_[size_t(i)];
             const Rect frame = grid_.cellFrame(i, scrollRow_);
             if (!layoutChanged && Tile::footprint(theme, frame).intersect(repaint).empty())
                 continue;
@@ -584,8 +749,10 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area, bool fullRedraw) 
             content.coverArt = spec.coverArt;
             content.favorite = context_.favorites.contains(entry.game.path);
             content.image = visibleArtwork[size_t(i - first)];
+            content.imageRevealPercent = entry.boxartFadeIn.revealPercent();
 
             Tile::draw(canvas, theme, frame, content, focus_[size_t(i)]);
+            entry.boxartFadeIn.advance();
         }
     }
     canvas.popClip();
@@ -607,13 +774,36 @@ void GamesScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
 
     const int headerHeight = theme.px(58);
     const Rect header{area.x, area.y, area.w, headerHeight};
-    const Rect body{area.x, area.y + headerHeight, area.w, area.h - headerHeight};
+    const int searchHeight = theme.px(54);
+    const int searchGap = theme.px(20);
+    const Rect searchField{area.x, area.y + headerHeight + theme.px(2), area.w,
+                           searchHeight - theme.px(4)};
+    const Rect body{area.x, searchField.bottom() + searchGap, area.w,
+                    area.bottom() - searchField.bottom() - searchGap};
 
     // Incremental grid mode leaves the static screen area in place, so restore its header
     // before drawing text with antialiased edges again.
-    if (incremental() && context_.background) canvas.restoreFrom(*context_.background, header);
+    if (incremental() && context_.background)
+        canvas.restoreFrom(*context_.background,
+                           Rect{area.x, area.y, area.w, searchField.bottom() - area.y});
     renderHeader(canvas, header);
+    search_.renderField(canvas, theme, searchField);
 
+    if (search_.keyboardVisible()) {
+        search_.renderKeyboard(canvas, theme, body);
+        keyboardWasVisible_ = true;
+        return;
+    }
+
+    const bool keyboardClosed = keyboardWasVisible_;
+    if ((keyboardClosed || needsPaint_) && context_.background)
+        canvas.restoreFrom(*context_.background, body);
+    keyboardWasVisible_ = false;
+    renderBody(canvas, body, fullRedraw || keyboardClosed);
+}
+
+void GamesScreen::renderBody(Canvas &canvas, const Rect &body, bool fullRedraw) {
+    Theme &theme = context_.theme;
     if (entries_.empty()) {
         if (searchResultsMode_) {
             const int maxWidth = std::max(theme.px(80), body.w - theme.px(100));
@@ -641,19 +831,21 @@ void GamesScreen::render(Canvas &canvas, const Rect &area, bool fullRedraw) {
             }
             return;
         }
-        const char *text = favoritesMode_
-                               ? "No favorites yet - hold X for 2s on a game to mark it"
-                           : allMode_
-                               ? "No games yet - build the game database in the settings"
-                               : "No games in this directory";
+        const std::string text = favoritesMode_
+                                     ? formatButtonLabels("No favorites yet. Hold X for 2 seconds "
+                                                          "on a game to add it here.")
+                                 : allMode_
+                                     ? "No games are indexed yet. Open Settings → Library and "
+                                       "choose Build game list."
+                                     : "No games were found for this system.";
         theme.regular().drawCentered(canvas, body, text, theme.sizeHeading(), theme.textMuted);
         return;
     }
 
-    if (view_ == GameView::List) renderList(canvas, body);
+    if (view_ == GameView::List) renderList(canvas, body, fullRedraw);
     else renderGrid(canvas, body, fullRedraw);
 }
 
 std::string GamesScreen::hints() const {
-    return "A Start   B Back   Hold X 2s Favorite   Y View   L2/R2 Letter";
+    return search_.hints("A Play game   Hold X 2s to favorite   Y Change game view   L2/R2 Jump to letter   {DPAD} Move");
 }

@@ -1,5 +1,6 @@
 #include "Canvas.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 
@@ -297,6 +298,58 @@ void Canvas::drawImage(const Image &img, const Rect &dst, uint8_t alpha, int rad
 
             const Color c{uint8_t((p >> 16) & 0xFF), uint8_t((p >> 8) & 0xFF), uint8_t(p & 0xFF), 255};
             out[i] = blend(out[i], c, a);
+        }
+    }
+}
+
+void Canvas::drawImageReveal(const Image &img, const Rect &dst, uint8_t alpha, int radius,
+                             int percent) {
+    if (percent >= 100) {
+        drawImage(img, dst, alpha, radius);
+        return;
+    }
+    if (!img.valid() || dst.empty() || alpha == 0 || percent <= 0) return;
+    static constexpr uint8_t rank[8][8] = {
+        { 3,51,17,42, 9,60,25,35}, {45,12,56, 1,32,20,48, 6},
+        {23,39, 7,29,54,14,43,18}, {62,27,47,10,36, 4,58,31},
+        {15,53,33, 2,50,24,40,11}, {41, 8,61,21, 5,46,16,55},
+        {30,19,44,57,13,37, 0,49}, {52,26,34,22,59,38,28,63}
+    };
+    const Rect t = dst.intersect(clip());
+    if (t.empty()) return;
+    markDamage(t);
+    const int threshold = std::max(0, std::min(64, percent * 64 / 100));
+    const int rad = std::max(0, std::min(radius, std::min(dst.w, dst.h) / 2));
+    const bool sourceOpaque = img.opaque();
+    for (int y = t.y; y < t.bottom(); ++y) {
+        const int sy = int(long(y - dst.y) * img.height() / dst.h);
+        const uint32_t *src = img.row(std::min(sy, img.height() - 1));
+        uint32_t *out = &pixels_[size_t(y) * width_ + t.x];
+        for (int i = 0; i < t.w; ++i) {
+            const int x = t.x + i;
+            if (rank[(y - dst.y) & 7][(x - dst.x) & 7] >= threshold) continue;
+            const int sx = int(long(x - dst.x) * img.width() / dst.w);
+            const uint32_t p = src[std::min(sx, img.width() - 1)];
+            uint32_t a = sourceOpaque ? alpha : ((p >> 24) & 255) * alpha / 255;
+            if (!a) continue;
+            if (rad > 0) {
+                const int lx = x - dst.x, ly = y - dst.y;
+                const int cx = lx < rad ? rad : (lx >= dst.w - rad ? dst.w - rad - 1 : lx);
+                const int cy = ly < rad ? rad : (ly >= dst.h - rad ? dst.h - rad - 1 : ly);
+                if (cx != lx || cy != ly) {
+                    const float d = std::sqrt(float((lx - cx) * (lx - cx) + (ly - cy) * (ly - cy)));
+                    const float cov = float(rad) + 0.5f - d;
+                    if (cov <= 0) continue;
+                    if (cov < 1.0f) a = uint32_t(a * cov);
+                }
+            }
+            if (a >= 255) {
+                out[i] = p | 0xFF000000u;
+            } else {
+                const Color c{uint8_t((p >> 16) & 255), uint8_t((p >> 8) & 255),
+                              uint8_t(p & 255), 255};
+                out[i] = blend(out[i], c, a);
+            }
         }
     }
 }
