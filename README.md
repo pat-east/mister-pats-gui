@@ -18,7 +18,7 @@ asks the MiSTer to load it, the same way the stock menu does.
 | --- | --- |
 | ![Systems](screenshots/systems.png) | ![Arcade](screenshots/arcade.png) |
 
-Every system's games in the presentation you prefer — Y cycles through them. Settings can use one shared view or remember a different view for each area. Here, SNES in Grid, Boxart small and List:
+Every system's games in the presentation you prefer — Y cycles through them. Here, SNES in Grid, Boxart small and List:
 
 | Grid | Boxart small |
 | --- | --- |
