@@ -1,12 +1,16 @@
 #include "SystemInfo.h"
 
 #include <arpa/inet.h>
+#include <algorithm>
+#include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <sys/statvfs.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include "GameDatabase.h"
 
@@ -25,12 +29,71 @@ uint64_t readMemoryValue(const std::string &line) {
     return uint64_t(std::strtoull(line.c_str() + colon + 1, nullptr, 10)) * 1024;   // kB
 }
 
-void readNetworkAddresses(std::string &ethernet, std::string &wifi) {
+std::string readSupplicantSsid(const char *interfaceName) {
+    int outputPipe[2];
+    if (pipe(outputPipe) != 0) return {};
+
+    const pid_t child = fork();
+    if (child < 0) {
+        close(outputPipe[0]);
+        close(outputPipe[1]);
+        return {};
+    }
+    if (child == 0) {
+        dup2(outputPipe[1], STDOUT_FILENO);
+        close(outputPipe[0]);
+        close(outputPipe[1]);
+        execlp("wpa_cli", "wpa_cli", "-i", interfaceName, "status", (char *)nullptr);
+        _exit(127);
+    }
+
+    close(outputPipe[1]);
+    std::string output;
+    char buffer[256];
+    ssize_t count;
+    while ((count = read(outputPipe[0], buffer, sizeof(buffer))) > 0) {
+        if (output.size() < 4096) output.append(buffer, std::min<size_t>(
+            size_t(count), 4096 - output.size()));
+    }
+    close(outputPipe[0]);
+
+    int status = 0;
+    while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) return {};
+
+    size_t line = 0;
+    while (line < output.size()) {
+        const size_t end = output.find('\n', line);
+        const size_t length = (end == std::string::npos ? output.size() : end) - line;
+        if (output.compare(line, 5, "ssid=") == 0 && length > 5) {
+            std::string ssid = output.substr(line + 5, length - 5);
+            if (!ssid.empty() && ssid.back() == '\r') ssid.pop_back();
+            for (char &c : ssid)
+                if (static_cast<unsigned char>(c) < 0x20 || c == 0x7f) c = '?';
+            return ssid;
+        }
+        if (end == std::string::npos) break;
+        line = end + 1;
+    }
+    return {};
+}
+
+void readNetworkAddresses(std::string &ethernet, std::string &wifi, std::string &wifiNetwork) {
     ethernet = "Offline";
     wifi = "Offline";
+    wifiNetwork = "No Wi-Fi adapter";
 
     ifaddrs *list = nullptr;
     if (getifaddrs(&list) != 0) return;
+
+    std::vector<std::string> wifiInterfaces;
+    for (ifaddrs *it = list; it; it = it->ifa_next) {
+        if (!it->ifa_name || std::strncmp(it->ifa_name, "wl", 2) != 0) continue;
+        const std::string name(it->ifa_name);
+        if (std::find(wifiInterfaces.begin(), wifiInterfaces.end(), name) == wifiInterfaces.end())
+            wifiInterfaces.push_back(name);
+    }
+    if (!wifiInterfaces.empty()) wifiNetwork = "Not connected";
 
     for (ifaddrs *it = list; it; it = it->ifa_next) {
         if (!it->ifa_addr || it->ifa_addr->sa_family != AF_INET ||
@@ -46,6 +109,13 @@ void readNetworkAddresses(std::string &ethernet, std::string &wifi) {
         if (slot == "Offline") slot = address;
     }
 
+    for (const std::string &interfaceName : wifiInterfaces) {
+        const std::string ssid = readSupplicantSsid(interfaceName.c_str());
+        if (!ssid.empty()) {
+            wifiNetwork = ssid;
+            break;
+        }
+    }
     freeifaddrs(list);
 }
 
@@ -142,7 +212,7 @@ void SystemInfo::readOnce() {
         uptime_ = long(seconds);
     }
 
-    readNetworkAddresses(ethernetAddress_, wifiAddress_);
+    readNetworkAddresses(ethernetAddress_, wifiAddress_, wifiNetwork_);
 
     volumes_.clear();
     for (const std::string &mount : GameDatabase::mountPoints()) {

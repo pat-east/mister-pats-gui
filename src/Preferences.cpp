@@ -77,6 +77,8 @@ bool Preferences::load(const std::string &file) {
     showGamesTab_ = true;
     showArcadeTab_ = true;
     showBoxArt_ = true;
+    startSoundEnabled_ = true;
+    menuSoundsEnabled_ = true;
     useSpaceGrotesk_ = true;
     defaultView_ = "grid";
     checkForUpdates_ = false;
@@ -96,6 +98,8 @@ bool Preferences::load(const std::string &file) {
         if (line == "showGamesTab=0") showGamesTab_ = false;
         else if (line == "showArcadeTab=0") showArcadeTab_ = false;
         else if (line == "showBoxArt=0") showBoxArt_ = false;
+        else if (line == "startSound=0") startSoundEnabled_ = false;
+        else if (line == "menuSounds=0") menuSoundsEnabled_ = false;
         else if (line == "useSpaceGrotesk=0") useSpaceGrotesk_ = false;
         else if (line == "checkForUpdates=1") checkForUpdates_ = true;
         else if (line == "use24HourClock=0") use24HourClock_ = false;
@@ -128,6 +132,16 @@ void Preferences::setShowArcadeTab(bool show) {
 
 void Preferences::setShowBoxArt(bool show) {
     showBoxArt_ = show;
+    save();
+}
+
+void Preferences::setStartSoundEnabled(bool enabled) {
+    startSoundEnabled_ = enabled;
+    save();
+}
+
+void Preferences::setMenuSoundsEnabled(bool enabled) {
+    menuSoundsEnabled_ = enabled;
     save();
 }
 
@@ -192,6 +206,8 @@ bool Preferences::save() const {
     if (!showGamesTab_) out << "showGamesTab=0\n";
     if (!showArcadeTab_) out << "showArcadeTab=0\n";
     if (!showBoxArt_) out << "showBoxArt=0\n";
+    if (!startSoundEnabled_) out << "startSound=0\n";
+    if (!menuSoundsEnabled_) out << "menuSounds=0\n";
     if (!useSpaceGrotesk_) out << "useSpaceGrotesk=0\n";
     if (defaultView_ != "grid") out << "defaultView=" << defaultView_ << "\n";
     if (checkForUpdates_) out << "checkForUpdates=1\n";

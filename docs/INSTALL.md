@@ -19,7 +19,7 @@ version, follow [Building from source](#building-from-source).
 | Install directory | `/media/fat/mister-pat` |
 | INI section | `[MiSTer]` in `/media/fat/MiSTer.ini` |
 | Stock binary | left in place |
-| Typeface | Space Grotesk, downloaded by setup or Settings → System; built-in fallback available |
+| Typeface | Space Grotesk, downloaded by setup or Settings → Interface; built-in fallback available |
 | Choose an older GUI | Pin its versioned `.so` with `mister-pats-gui.so`, then restart |
 
 ## Requirements
@@ -203,7 +203,8 @@ after restarting. Updating never silently deletes or rebuilds the database.
 The 0.5.0 loader and versioned GUI library have been exercised on a MiSTer: installation from a
 local package, repeat installation as a no-op, startup, Settings and a manual update check,
 legacy migration, and a broken active library link falling back to the valid installed library
-were checked. The
+were checked. The 0.6.0 Wi-Fi setup flow and interface sound playback were also exercised on
+MiSTer hardware. The
 published-release download path and the GUI install/cancel path still need end-to-end testing
 against a suitable newer GitHub release. Hash failures, interrupted commits, first install
 without a prior version, and the loader's text fallback also remain explicit validation cases.
@@ -265,7 +266,7 @@ The device then boots exactly as it did before. Nothing else was modified.
 | No box art | The scraper has not run yet, or has not reached that system. Settings → Prepare box art. Existing JPEG/PNG covers remain usable without BMP variants. |
 | No Arcade tab, or an Arcade tab with few games | The tab only appears when at least one Arcade game passes the check, and only games that pass are listed: core installed, ROM zip found, every CRC right. Settings → Manage Arcade → Arcade Games shows why each one fails. Then rebuild the database. |
 | Systems show plain tiles instead of console pictures | Choose Settings → Download System-Icons or rerun the setup script in step 2. Existing PNGs work as a fallback. |
-| Text looks like a blocky, all-caps placeholder font | Space Grotesk could not be loaded, so the built-in fallback typeface is drawing. Choose Settings → System → Space Grotesk to download the font files, or rerun the setup script with network access. |
+| Text looks like a blocky, all-caps placeholder font | Space Grotesk could not be loaded, so the built-in fallback typeface is drawing. Choose Settings → Interface → Space Grotesk to download the font files, or rerun the setup script with network access. |
 | Games on a CD-based core do not start | The core expects a different loader slot. See the table in [POC.md](POC.md) and `assets/systems.conf.example`. |
 
 A reboot is always the safe way back, and removing the two INI lines always returns the
@@ -280,7 +281,7 @@ All four things the GUI needs are covered without it:
 | System catalogue | **built here**, `/media/fat/mister-pat/gamesdb/catalog.tsv` |
 | Game index | **built here**, one `<System>.tsv` per system |
 | Box art and backgrounds | **prepared/fetched here** — Settings → Prepare box art |
-| Fonts | Space Grotesk and its license are downloaded by the setup/update script or from Settings → System; the built-in fallback remains available |
+| Fonts | Space Grotesk and its license are downloaded by the setup/update script or from Settings → Interface; the built-in fallback remains available |
 
 Console Mode itself never runs once this GUI is installed: `main=` sends the boot path to the
 patched binary instead. The GUI uses its own Space Grotesk files, installed alongside it.

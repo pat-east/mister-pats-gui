@@ -35,7 +35,12 @@ std::vector<OnScreenKeyboard::Key> OnScreenKeyboard::keys() const {
     out.push_back({Kind::Space, 0, "Space", 4, 2, 3});
     out.push_back({Kind::Backspace, 0, "Delete", 4, 5, 2});
     out.push_back({Kind::Clear, 0, "Clear", 4, 7, 2});
-    out.push_back({Kind::Done, 0, "Done", 4, 9, 3});
+    if (revealEnabled_) {
+        out.push_back({Kind::Reveal, 0, masked_ ? "Show" : "Hide", 4, 9, 2});
+        out.push_back({Kind::Done, 0, "Done", 4, 11, 2});
+    } else {
+        out.push_back({Kind::Done, 0, "Done", 4, 9, 3});
+    }
 
     const char *pad[] = {"789", "456", "123", ".0-"};
     for (int row = 0; row < 4; ++row)
@@ -96,6 +101,7 @@ OnScreenKeyboard::Result OnScreenKeyboard::handle(Action action) {
     else if (action == Action::Right) moveCursor(1, 0);
     else if (action == Action::FaceXPress) {
         if (value_.empty()) return Result::None;
+        if (masked_) value_.back() = '\0';
         value_.pop_back();
         return Result::Changed;
     }
@@ -124,17 +130,26 @@ OnScreenKeyboard::Result OnScreenKeyboard::handle(Action action) {
             return Result::Changed;
         case Kind::Backspace:
             if (value_.empty()) return Result::None;
+            if (masked_) value_.back() = '\0';
             value_.pop_back();
             return Result::Changed;
         case Kind::Clear:
             if (value_.empty()) return Result::None;
-            value_.clear();
+            clear();
             return Result::Changed;
+        case Kind::Reveal: masked_ = !masked_; return Result::None;
         case Kind::Done: return Result::Submitted;
         }
     }
     return Result::None;
 }
+
+void OnScreenKeyboard::clear() {
+    std::fill(value_.begin(), value_.end(), '\0');
+    value_.clear();
+}
+
+OnScreenKeyboard::~OnScreenKeyboard() { clear(); }
 
 Rect OnScreenKeyboard::bounds(Theme &theme, const Rect &available) const {
     if (available.empty()) return {};
@@ -165,7 +180,8 @@ void OnScreenKeyboard::render(Canvas &canvas, Theme &theme, const Rect &area) co
         const Rect rect{x, y, width, keyHeight};
         const bool focused = int(i) == cursor_;
         const bool active = (key.kind == Kind::Shift && uppercase_) ||
-                            (key.kind == Kind::Symbols && symbols_);
+                            (key.kind == Kind::Symbols && symbols_) ||
+                            (key.kind == Kind::Reveal && !masked_);
         canvas.fillRoundedRect(rect, theme.px(6),
                                focused || active ? theme.accent.withAlpha(focused ? 100 : 55)
                                                  : theme.surface.withAlpha(180));

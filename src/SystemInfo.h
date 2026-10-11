@@ -35,6 +35,7 @@ public:
     const std::vector<Volume> &volumes() const { return volumes_; }
     const std::string &ethernetAddress() const { return ethernetAddress_; }
     const std::string &wifiAddress() const { return wifiAddress_; }
+    const std::string &wifiNetwork() const { return wifiNetwork_; }
 
     // "1.4 GB", "93 MB" — one decimal only where it carries information.
     static std::string formatBytes(uint64_t bytes);
@@ -57,6 +58,7 @@ private:
     std::vector<Volume> volumes_;
     std::string ethernetAddress_ = "Offline";
     std::string wifiAddress_ = "Offline";
+    std::string wifiNetwork_ = "Not connected";
 
     unsigned long long lastBusy_ = 0;
     unsigned long long lastTotal_ = 0;

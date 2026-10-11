@@ -24,6 +24,12 @@ public:
     bool showBoxArt() const { return showBoxArt_; }
     void setShowBoxArt(bool show);
 
+    bool startSoundEnabled() const { return startSoundEnabled_; }
+    void setStartSoundEnabled(bool enabled);
+
+    bool menuSoundsEnabled() const { return menuSoundsEnabled_; }
+    void setMenuSoundsEnabled(bool enabled);
+
     bool useSpaceGrotesk() const { return useSpaceGrotesk_; }
     void setUseSpaceGrotesk(bool use);
 
@@ -56,6 +62,8 @@ private:
     bool showGamesTab_ = true;
     bool showArcadeTab_ = true;
     bool showBoxArt_ = true;
+    bool startSoundEnabled_ = true;
+    bool menuSoundsEnabled_ = true;
     bool useSpaceGrotesk_ = true;
     std::string defaultView_ = "grid";
     bool checkForUpdates_ = false;

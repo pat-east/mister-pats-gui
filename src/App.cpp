@@ -36,8 +36,11 @@ bool App::initialize(const Options &options) {
     // Listing icon filenames is cheap; their PNG data is decoded only after the initial splash
     // wait, and is cached at the Systems tile size before the screen can be opened.
     icons_.load();
-    if (options_.splashMs > 0)
+    preferences_.load();
+    if (options_.splashMs > 0) {
         Splash::show(framebuffer_, *theme_, options_.splashMs, icons_, images_);
+        if (preferences_.startSoundEnabled()) UiSounds::play();
+    }
 
     systemIconDownload_ = std::make_unique<SystemIconDownload>(icons_);
 
@@ -47,7 +50,6 @@ bool App::initialize(const Options &options) {
     favorites_.load();
     history_.load();
     hiddenSystems_.load();
-    preferences_.load();
     theme_->setSpaceGroteskEnabled(preferences_.useSpaceGrotesk());
     updateService_.initializeLocalState();
     updateSnapshot_ = updateService_.snapshot();
@@ -101,7 +103,7 @@ bool App::initialize(const Options &options) {
         [this] { removePinnedVersion(); },
         [this](bool removePin) { restartMisterAfterUpdate(removePin); },
         [this] { return spaceGroteskStatus(); }, [this] { activateSpaceGrotesk(); },
-        [this] { rebootMister(); }, [this] { shutdownMister(); });
+        [this] { rebootMister(); });
     settingsScreen_->setFramebufferInfo(framebuffer_.describe());
     settingsScreen_->setUpdateSnapshot(updateSnapshot_);
 
@@ -139,6 +141,7 @@ bool App::initialize(const Options &options) {
     if (wanted) gamesScreen_->showSystem(*wanted);
 
     selectTab(options_.tab);
+    tabSoundsReady_ = true;
 
     // --system together with the games tab means "show that system's list".
     if (options_.tab == Tab::Games && !options_.system.empty()) detailActive_ = true;
@@ -401,13 +404,6 @@ void App::rebootMister() {
         context_->showError("Cannot restart MiSTer", std::strerror(errno));
 }
 
-void App::shutdownMister() {
-    if (updateService_.commitRunning()) return;
-    ::sync();
-    if (::reboot(RB_POWER_OFF) != 0)
-        context_->showError("Cannot shut down MiSTer", std::strerror(errno));
-}
-
 void App::restartMisterAfterUpdate(bool removePin) {
     std::string error;
     if (!updateService_.prepareRestart(removePin, error)) {
@@ -447,6 +443,7 @@ Screen *App::activeScreen() {
 }
 
 void App::selectTab(Tab tab) {
+    const bool changed = tab_ != tab;
     detailActive_ = false;
     arcadeGroupsActive_ = false;
     needsFullRedraw_ = true;
@@ -459,6 +456,8 @@ void App::selectTab(Tab tab) {
     // to avoid restarting here.
     if (tab == Tab::Games && allGamesScreen_->empty()) allGamesScreen_->showAllGames();
     tab_ = tab;
+    if (changed && tabSoundsReady_ && preferences_.menuSoundsEnabled())
+        UiSounds::playTabChange();
 }
 
 void App::runScript() {
@@ -579,9 +578,18 @@ void App::refreshGameActionArtwork() {
 }
 
 void App::dispatch(Action action) {
+    switch (action) {
+    case Action::Up: case Action::Down: case Action::Left: case Action::Right:
+    case Action::JumpPrev: case Action::JumpNext:
+        if (preferences_.menuSoundsEnabled()) UiSounds::playNavigation();
+        break;
+    default:
+        break;
+    }
     // Start used to share Confirm's action for every screen. Search reserves it for
     // submitting the query; elsewhere keep its established confirm behavior.
     if (action == Action::Start &&
+        !(tab_ == Tab::Settings && settingsScreen_->wantsStartForWifiPassword()) &&
         (tab_ != Tab::Search || gameActionsActive_ || detailActive_ || scanActive_ ||
          visibilityActive_ || controllersActive_ || arcadeGamesActive_ || arcadeSettingsActive_))
         action = Action::Confirm;
@@ -900,6 +908,7 @@ int App::run() {
 
         // A core was started: hand the devices and the console straight back.
         if (context_->standDown) {
+            if (preferences_.menuSoundsEnabled()) UiSounds::playGameLaunch();
             input_.releaseAll();
             console_.release();
             DebugLog::info("run: handed control to a core");

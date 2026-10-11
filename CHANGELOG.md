@@ -5,13 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.5.2] - Unreleased
+## [0.6.0] - 2026-10-11
 
 ### Added
 
+- **Wi-Fi setup** — scan and select networks, connect to open or WPA-PSK access points, enter
+  hidden network details, test the connection with rollback on failure, and save the profile to
+  MiSTer's configuration. Password entry includes Show/Hide and Start-to-confirm. Setup is
+  unavailable without a Wi-Fi adapter; the complete flow was tested on MiSTer hardware.
+- **Wi-Fi network status** — Settings → System shows the connected SSID alongside the Wi-Fi IP
+  address when the supplicant reports it.
 - **Clock settings** — choose a 12-hour AM/PM or 24-hour display and set Linux's time zone
   from the MiSTer zoneinfo database.
-- **Space Grotesk control** — enable or disable the interface font in System settings, or
+- **Space Grotesk control** — enable or disable the interface font in Interface settings, or
   download both font weights and the SIL Open Font License when they are missing.
 - **Game search** — a Search tab beside Games with a reusable controller-operated keyboard,
   dedicated numeric keypad, and matching games in the regular grid after pressing Start.
@@ -19,7 +25,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   runs the existing scraper for only the selected game and shows progress and completion.
 - **Immediate artwork refresh** — after a per-game scrape writes artwork, the GUI invalidates
   that game's cached images and redraws the current screen so the new cover appears at once.
-- **System power controls** — Settings → System offers confirmed Reboot and Shutdown actions.
+- **Reboot action** — Settings → System offers a confirmed MiSTer restart.
+- **Interface sounds** — a startup sound after the splash, plus sounds for navigation, tab
+  changes, and successful game launches. Settings → Interface has separate switches for the
+  startup sound and all menu sounds. Both default to on; menu sounds include the game-launch
+  cue.
+
+### Changed
+
+- **Menu sound levels** — reduced the tab-change and navigation cues. Startup and game-launch
+  sounds retain their original levels.
 
 ### Fixed
 

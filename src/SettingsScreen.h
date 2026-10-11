@@ -7,6 +7,8 @@
 #include "Screen.h"
 #include "SystemInfo.h"
 #include "UpdateService.h"
+#include "OnScreenKeyboard.h"
+#include "Wifi.h"
 
 class SettingsScreen : public Screen {
 public:
@@ -33,12 +35,15 @@ public:
                    std::function<void(bool)> onRestartAfterUpdate,
                    std::function<std::string()> spaceGroteskStatus,
                    std::function<void()> onSpaceGrotesk,
-                   std::function<void()> onReboot,
-                   std::function<void()> onShutdown);
+                   std::function<void()> onReboot);
 
     void setFramebufferInfo(const std::string &info) { framebufferInfo_ = info; }
     void setUpdateSnapshot(const UpdateSnapshot &snapshot);
-    bool wantsBack() const { return optionsFocused_; }
+    bool wantsBack() const {
+        return optionsFocused_ || wifiStep_ != WifiStep::None || timeZoneChooserActive_ ||
+               rebootConfirmationActive_;
+    }
+    bool wantsStartForWifiPassword() const { return wifiStep_ == WifiStep::PasswordEntry; }
 
     void update(float deltaSeconds) override;
     void render(Canvas &canvas, const Rect &area, bool fullRedraw) override;
@@ -69,6 +74,10 @@ private:
     void renderUpdateSuccess(Canvas &canvas, const Rect &area);
     void renderTimeZoneChooser(Canvas &canvas, const Rect &area);
     void handleTimeZoneChooser(Action action);
+    void startWifiSetup();
+    void handleWifiFlow(Action action);
+    void renderWifiFlow(Canvas &canvas, const Rect &area);
+    void cancelWifiFlow(bool restoreConnection);
     std::vector<Fact> facts() const;
     void renderCategories(Canvas &canvas, const Rect &area);
     void renderOptions(Canvas &canvas, const Rect &area);
@@ -99,7 +108,6 @@ private:
     std::function<std::string()> spaceGroteskStatus_;
     std::function<void()> onSpaceGrotesk_;
     std::function<void()> onReboot_;
-    std::function<void()> onShutdown_;
     UpdateSnapshot updateSnapshot_;
     int notesScroll_ = 0;
     std::vector<Category> categories_;
@@ -110,7 +118,19 @@ private:
     bool optionsFocused_ = false;
     bool timeZoneChooserActive_ = false;
     bool rebootConfirmationActive_ = false;
-    bool shutdownConfirmationActive_ = false;
+    enum class WifiStep { None, Scanning, Networks, SsidEntry, PasswordEntry, CountryEntry,
+                          TestPrompt, Testing, TestReview, TestFailed };
+    Wifi wifi_;
+    OnScreenKeyboard wifiKeyboard_{64};
+    WifiStep wifiStep_ = WifiStep::None;
+    std::vector<Wifi::Network> wifiNetworks_;
+    int wifiCursor_ = 0;
+    int wifiScroll_ = 0;
+    std::string wifiSsid_;
+    std::string wifiPassword_;
+    std::string wifiMessage_;
+    bool wifiOpen_ = false;
+    bool wifiHidden_ = false;
     bool choosingTimeZoneCity_ = false;
     std::vector<std::string> timeZoneRegions_;
     std::vector<std::string> timeZoneCities_;

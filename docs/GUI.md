@@ -134,7 +134,11 @@ font files do not prevent startup. Akrobat is no longer loaded by the GUI.
 ### Network and time
 
 Straight from the running Linux system: the time via `localtime()`, interface and IP via
-`getifaddrs()`, Wi-Fi detection from the interface name (`wlan*` vs. `eth*`).
+`getifaddrs()`, Wi-Fi detection from the interface name (`wlan*` vs. `eth*`), and the connected
+SSID via `wpa_cli status` when the supplicant control interface is available. Settings → System
+shows the SSID and Wi-Fi IP address; without a wireless interface it reports “No Wi-Fi adapter”.
+When a Wi-Fi interface is present, **Connect to Wi-Fi…** scans and tests a candidate network
+before saving it to MiSTer's Wi-Fi configuration.
 
 ## 4. Global Layout
 
@@ -291,14 +295,21 @@ Settings uses three columns: categories on the left, the selected category's act
 options in the middle, and live system facts on the right. Use up/down to move within the
 focused column and left/right to switch between categories and options. The categories are
 Library, Controllers, Interface, Updates, and System. Interface settings include the default
-game view, a 12-hour or 24-hour clock, and a Linux time zone. System settings show whether
-Space Grotesk is active; if its files are missing, selecting the row downloads the font and
-license, otherwise it toggles the font on or off. The time-zone picker lists the
+game view, a 12-hour or 24-hour clock, a Linux time zone, the Space Grotesk font switch or
+download action, and separate **Start sound** and **Menu sounds** switches. Both sound options
+default to on. The start sound plays after the splash screen; menu sounds cover navigation,
+tab changes, and successful game launches. The menu-sounds switch controls those three cues
+together. The time-zone picker lists the
 continent/region folders and city files in `/usr/share/zoneinfo/posix`; choosing one copies its
 zoneinfo file to `/media/fat/linux/timezone`, following MiSTer's `Scripts/timezone.sh` method.
-System also includes **Start MiSTer Core**, **Reboot MiSTer**, and **Shutdown MiSTer**. Reboot
-and shutdown each require a separate confirmation; both sync pending writes before requesting
-the Linux system action.
+System shows Ethernet and Wi-Fi details under **Networking**, with the Wi-Fi IP and network name
+adjacent. It also includes **Connect to Wi-Fi…**, **Start MiSTer Core**, and **Reboot MiSTer**.
+Reboot requires a separate confirmation and syncs pending writes before requesting the Linux
+system action. Wi-Fi setup scans when an adapter is present; it supports open and WPA-PSK
+networks, hidden SSIDs, a password keyboard with Show/Hide and Start-to-confirm, a temporary
+connection test, rollback on failure or cancellation, and a final save to MiSTer's
+`wpa_supplicant.conf`. Without a Wi-Fi interface, setup is disabled. Restart MiSTer to load saved
+settings automatically.
 See [README.md](../README.md) for the
 user-facing feature list.
 

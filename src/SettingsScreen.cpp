@@ -29,8 +29,7 @@ SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
                                std::function<void(bool)> onRestartAfterUpdate,
                                std::function<std::string()> spaceGroteskStatus,
                                std::function<void()> onSpaceGrotesk,
-                               std::function<void()> onReboot,
-                               std::function<void()> onShutdown)
+                               std::function<void()> onReboot)
     : context_(context), onReload_(std::move(onReload)),
       onBuildDatabase_(std::move(onBuildDatabase)),
       onFetchArtwork_(std::move(onFetchArtwork)),
@@ -53,8 +52,7 @@ SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
       onRemovePinnedVersion_(std::move(onRemovePinnedVersion)),
       onRestartAfterUpdate_(std::move(onRestartAfterUpdate)),
       spaceGroteskStatus_(std::move(spaceGroteskStatus)),
-      onSpaceGrotesk_(std::move(onSpaceGrotesk)), onReboot_(std::move(onReboot)),
-      onShutdown_(std::move(onShutdown)) {
+      onSpaceGrotesk_(std::move(onSpaceGrotesk)), onReboot_(std::move(onReboot)) {
     buildRows();
 }
 
@@ -118,6 +116,22 @@ void SettingsScreen::buildRows() {
                          context_.preferences.setShowBoxArt(!context_.preferences.showBoxArt());
                      }});
 
+    interface.push_back({"Start sound",
+                     [this] { return std::string(context_.preferences.startSoundEnabled()
+                                                     ? "On" : "Off"); },
+                     [this] {
+                         context_.preferences.setStartSoundEnabled(
+                             !context_.preferences.startSoundEnabled());
+                     }});
+
+    interface.push_back({"Menu sounds",
+                     [this] { return std::string(context_.preferences.menuSoundsEnabled()
+                                                     ? "On" : "Off"); },
+                     [this] {
+                         context_.preferences.setMenuSoundsEnabled(
+                             !context_.preferences.menuSoundsEnabled());
+                     }});
+
     interface.push_back({"Default view",
                      [this] {
                          return std::string(
@@ -157,21 +171,24 @@ void SettingsScreen::buildRows() {
                          }
                      }});
 
+    interface.push_back({"Space Grotesk font",
+                     [this] { return spaceGroteskStatus_(); },
+                     [this] { onSpaceGrotesk_(); }});
+
     // This project itself.
     categories_[3].rows.push_back({"Check for updates on GitHub",
                      [this] { return std::string(context_.preferences.checkForUpdates() ? "On" : "Off"); },
                      [this] { onToggleAutomaticCheck_(); }});
     buildUpdateRows();
 
+    categories_[4].rows.push_back({"Connect to Wi-Fi…",
+                     [this] { return wifi_.available() ? std::string("A")
+                                                       : std::string("No adapter"); },
+                     [this] { startWifiSetup(); }, wifi_.refreshInterface()});
     categories_[4].rows.push_back({"Start MiSTer Core", [] { return std::string("A"); },
                      [this] { onStartMisterCore_(); }});
     categories_[4].rows.push_back({"Reboot MiSTer", [] { return std::string("A"); },
                      [this] { rebootConfirmationActive_ = true; }});
-    categories_[4].rows.push_back({"Shutdown MiSTer", [] { return std::string("A"); },
-                     [this] { shutdownConfirmationActive_ = true; }});
-    categories_[4].rows.push_back({"Space Grotesk font",
-                     [this] { return spaceGroteskStatus_(); },
-                     [this] { onSpaceGrotesk_(); }});
 }
 
 void SettingsScreen::buildUpdateRows() {
@@ -286,6 +303,7 @@ std::vector<SettingsScreen::Fact> SettingsScreen::facts() const {
     out.push_back({"Networking", ""});
     out.push_back({"Ethernet", system_.ethernetAddress()});
     out.push_back({"Wi-Fi", system_.wifiAddress()});
+    out.push_back({"Wi-Fi network", system_.wifiNetwork()});
 
     out.push_back({"", ""});
     out.push_back({"Storage", ""});
@@ -338,19 +356,38 @@ std::vector<SettingsScreen::Fact> SettingsScreen::facts() const {
 
 void SettingsScreen::update(float deltaSeconds) {
     system_.update(deltaSeconds);
+    wifi_.update(deltaSeconds);
+    wifi_.refreshInterface();
+    if (categories_.size() > 4 && !categories_[4].rows.empty())
+        categories_[4].rows[0].enabled = wifi_.available();
+
+    if (wifiStep_ == WifiStep::Scanning && wifi_.scanComplete()) {
+        std::string error;
+        wifiNetworks_ = wifi_.scanResults(error);
+        if (!error.empty()) wifiMessage_ = error;
+        else if (wifiNetworks_.empty()) wifiMessage_ = "No networks found. Try again or enter a hidden network.";
+        else wifiMessage_ = "Choose a network";
+        wifiCursor_ = 0;
+        wifiScroll_ = 0;
+        wifiStep_ = WifiStep::Networks;
+    } else if (wifiStep_ == WifiStep::Testing) {
+        const Wifi::TestResult result = wifi_.pollTest(deltaSeconds, wifiMessage_);
+        if (result == Wifi::TestResult::Connected) wifiStep_ = WifiStep::TestReview;
+        else if (result == Wifi::TestResult::Failed) wifiStep_ = WifiStep::TestFailed;
+    }
 }
 
 void SettingsScreen::handle(Action action) {
-    if (rebootConfirmationActive_ || shutdownConfirmationActive_) {
+    if (wifiStep_ != WifiStep::None) {
+        handleWifiFlow(action);
+        return;
+    }
+    if (rebootConfirmationActive_) {
         if (action == Action::Confirm) {
-            const bool shutdown = shutdownConfirmationActive_;
             rebootConfirmationActive_ = false;
-            shutdownConfirmationActive_ = false;
-            if (shutdown) onShutdown_();
-            else onReboot_();
+            onReboot_();
         } else if (action == Action::Back) {
             rebootConfirmationActive_ = false;
-            shutdownConfirmationActive_ = false;
         }
         return;
     }
@@ -422,6 +459,346 @@ void SettingsScreen::handle(Action action) {
     default:
         break;
     }
+}
+
+void SettingsScreen::startWifiSetup() {
+    std::string error;
+    if (!wifi_.startScan(error)) {
+        context_.notify(error);
+        return;
+    }
+    wifiNetworks_.clear();
+    wifiMessage_ = "Scanning for networks…";
+    wifiCursor_ = 0;
+    wifiScroll_ = 0;
+    wifiStep_ = WifiStep::Scanning;
+}
+
+void SettingsScreen::cancelWifiFlow(bool restoreConnection) {
+    if (restoreConnection && wifi_.testing()) wifi_.rollback();
+    std::fill(wifiPassword_.begin(), wifiPassword_.end(), '\0');
+    wifiPassword_.clear();
+    wifiSsid_.clear();
+    wifiMessage_.clear();
+    wifiNetworks_.clear();
+    wifiKeyboard_.clear();
+    wifiKeyboard_.setMasked(false);
+    wifiStep_ = WifiStep::None;
+}
+
+void SettingsScreen::handleWifiFlow(Action action) {
+    if (wifiStep_ == WifiStep::SsidEntry || wifiStep_ == WifiStep::PasswordEntry ||
+        wifiStep_ == WifiStep::CountryEntry) {
+        const bool enteringSsid = wifiStep_ == WifiStep::SsidEntry;
+        const bool enteringCountry = wifiStep_ == WifiStep::CountryEntry;
+        if (action == Action::Back) {
+            wifiKeyboard_.clear();
+            wifiKeyboard_.setMasked(false);
+            wifiStep_ = enteringCountry ? WifiStep::TestReview : WifiStep::Networks;
+            return;
+        }
+        const OnScreenKeyboard::Result result =
+            action == Action::Start && wifiStep_ == WifiStep::PasswordEntry
+                ? OnScreenKeyboard::Result::Submitted : wifiKeyboard_.handle(action);
+        if (result != OnScreenKeyboard::Result::Submitted) return;
+        if (enteringCountry) {
+            const std::string country = wifiKeyboard_.value();
+            wifiKeyboard_.clear();
+            std::string error;
+            if (!wifi_.setCountryCode(country, error)) {
+                wifiMessage_ = error;
+                return;
+            }
+            if (wifi_.saveTestedNetwork(error)) {
+                context_.notify("Wi-Fi settings saved; restart MiSTer to load them automatically", 6.0f);
+                cancelWifiFlow(false);
+            } else {
+                wifiMessage_ = error;
+                wifiStep_ = WifiStep::TestReview;
+            }
+        } else if (enteringSsid) {
+            wifiSsid_ = wifiKeyboard_.value();
+            if (wifiSsid_.empty() || wifiSsid_.size() > 32) {
+                wifiMessage_ = "Enter a network name with 1 to 32 characters";
+                return;
+            }
+            wifiKeyboard_.clear();
+            wifiKeyboard_.setMasked(true);
+            wifiMessage_ = "Enter the password for " + wifiSsid_;
+            wifiStep_ = WifiStep::PasswordEntry;
+        } else {
+            wifiPassword_ = wifiKeyboard_.value();
+            wifiKeyboard_.clear();
+            wifiKeyboard_.setMasked(false);
+            if (wifiPassword_.size() < 8 || wifiPassword_.size() > 63) {
+                std::fill(wifiPassword_.begin(), wifiPassword_.end(), '\0');
+                wifiPassword_.clear();
+                wifiKeyboard_.clear();
+                wifiMessage_ = "Password must be 8 to 63 characters";
+                wifiStep_ = WifiStep::PasswordEntry;
+                return;
+            }
+            wifiStep_ = WifiStep::TestPrompt;
+        }
+        return;
+    }
+
+    if (action == Action::Back) {
+        if (wifiStep_ == WifiStep::Testing) {
+            cancelWifiFlow(true);
+        } else if (wifiStep_ == WifiStep::TestReview) {
+            cancelWifiFlow(true);
+        } else if (wifiStep_ == WifiStep::PasswordEntry) {
+            wifiStep_ = WifiStep::Networks;
+        } else {
+            cancelWifiFlow(false);
+        }
+        return;
+    }
+
+    switch (wifiStep_) {
+    case WifiStep::Scanning:
+        break;
+    case WifiStep::Networks: {
+        const int hiddenRow = int(wifiNetworks_.size());
+        const int rescanRow = hiddenRow + 1;
+        if (action == Action::Up && wifiCursor_ > 0) --wifiCursor_;
+        else if (action == Action::Down && wifiCursor_ < rescanRow) ++wifiCursor_;
+        else if (action == Action::Confirm) {
+            if (wifiCursor_ == hiddenRow) {
+                wifiHidden_ = true;
+                wifiOpen_ = false;
+                wifiSsid_.clear();
+                wifiMessage_ = "Enter the hidden network name";
+                wifiKeyboard_.clear();
+                wifiKeyboard_.setMasked(false);
+                wifiStep_ = WifiStep::SsidEntry;
+            } else if (wifiCursor_ == rescanRow) {
+                startWifiSetup();
+            } else if (wifiCursor_ >= 0 && wifiCursor_ < hiddenRow) {
+                const Wifi::Network &network = wifiNetworks_[size_t(wifiCursor_)];
+                if (!network.supported) {
+                    wifiMessage_ = "This network uses an authentication type not supported here";
+                    return;
+                }
+                wifiSsid_ = network.ssid;
+                wifiOpen_ = network.open;
+                wifiHidden_ = false;
+                if (wifiOpen_) wifiStep_ = WifiStep::TestPrompt;
+                else {
+                    wifiKeyboard_.clear();
+                    wifiKeyboard_.setMasked(true);
+                    wifiMessage_ = "Enter the password for " + wifiSsid_;
+                    wifiStep_ = WifiStep::PasswordEntry;
+                }
+            }
+        }
+        break;
+    }
+    case WifiStep::TestPrompt:
+        if (action == Action::Confirm) {
+            std::string error;
+            if (!wifi_.beginTest(wifiSsid_, wifiPassword_, wifiOpen_, wifiHidden_, error)) {
+                wifiMessage_ = error;
+                std::fill(wifiPassword_.begin(), wifiPassword_.end(), '\0');
+                wifiPassword_.clear();
+                wifiStep_ = WifiStep::TestFailed;
+            } else {
+                std::fill(wifiPassword_.begin(), wifiPassword_.end(), '\0');
+                wifiPassword_.clear();
+                wifiMessage_ = "Joining " + wifiSsid_ + "…";
+                wifiStep_ = WifiStep::Testing;
+            }
+        }
+        break;
+    case WifiStep::Testing:
+        break;
+    case WifiStep::TestReview:
+        if (action == Action::Confirm) {
+            if (wifi_.needsCountryCode()) {
+                wifiMessage_ = "No regulatory country code was found. Enter the country where MiSTer is used.";
+                wifiKeyboard_.clear();
+                wifiKeyboard_.setMasked(false);
+                wifiStep_ = WifiStep::CountryEntry;
+                break;
+            }
+            std::string error;
+            if (wifi_.saveTestedNetwork(error)) {
+                context_.notify("Wi-Fi settings saved; restart MiSTer to load them automatically", 6.0f);
+                cancelWifiFlow(false);
+            } else {
+                wifiMessage_ = error;
+                wifiStep_ = WifiStep::TestReview;
+            }
+        }
+        break;
+    case WifiStep::TestFailed:
+        if (action == Action::Confirm) {
+            if (wifiOpen_) wifiStep_ = WifiStep::TestPrompt;
+            else {
+                wifiKeyboard_.clear();
+                wifiKeyboard_.setMasked(true);
+                wifiStep_ = WifiStep::PasswordEntry;
+            }
+        }
+        break;
+    case WifiStep::SsidEntry:
+    case WifiStep::PasswordEntry:
+    case WifiStep::CountryEntry:
+    case WifiStep::None:
+        break;
+    }
+}
+
+void SettingsScreen::renderWifiFlow(Canvas &canvas, const Rect &area) {
+    Theme &theme = context_.theme;
+    canvas.fillRect(area, theme.shadow.withAlpha(215));
+    const int width = std::min(area.w - theme.px(40), theme.px(1000));
+    const int height = std::min(area.h - theme.px(40), theme.px(760));
+    const Rect panel{area.x + (area.w - width) / 2, area.y + (area.h - height) / 2,
+                     width, height};
+    canvas.fillRoundedRect(panel, theme.radius(), theme.surfaceHi);
+    const int left = panel.x + theme.px(28);
+    const int right = panel.right() - theme.px(28);
+    int y = panel.y + theme.px(24);
+
+    std::string title;
+    switch (wifiStep_) {
+    case WifiStep::Scanning: title = "Connect to Wi-Fi"; break;
+    case WifiStep::Networks: title = "Choose a network"; break;
+    case WifiStep::SsidEntry: title = "Hidden Wi-Fi network"; break;
+    case WifiStep::PasswordEntry: title = "Wi-Fi password"; break;
+    case WifiStep::CountryEntry: title = "Wi-Fi country"; break;
+    case WifiStep::TestPrompt: title = "Test connection"; break;
+    case WifiStep::Testing: title = "Connecting…"; break;
+    case WifiStep::TestReview: title = "Connection test successful"; break;
+    case WifiStep::TestFailed: title = "Connection test failed"; break;
+    case WifiStep::None: return;
+    }
+    theme.bold().draw(canvas, left, y, title, theme.sizeHeading(), theme.textPrimary);
+    y += theme.bold().lineHeight(theme.sizeHeading()) + theme.px(12);
+
+    if (wifiStep_ == WifiStep::Scanning) {
+        theme.regular().draw(canvas, left, y, wifiMessage_, theme.sizeBody(), theme.textMuted);
+    } else if (wifiStep_ == WifiStep::Networks) {
+        theme.regular().draw(canvas, left, y, wifiMessage_, theme.sizeBody(), theme.textMuted);
+        y += theme.regular().lineHeight(theme.sizeBody()) + theme.px(14);
+        const int rowHeight = std::min(theme.px(64),
+                                       std::max(theme.px(48), (panel.h - theme.px(150)) / 7));
+        const int visible = std::max(1, (panel.bottom() - y - theme.px(55)) / rowHeight);
+        const int rows = int(wifiNetworks_.size()) + 2;
+        if (wifiCursor_ < wifiScroll_) wifiScroll_ = wifiCursor_;
+        if (wifiCursor_ >= wifiScroll_ + visible) wifiScroll_ = wifiCursor_ - visible + 1;
+        wifiScroll_ = std::min(std::max(0, wifiScroll_), std::max(0, rows - visible));
+        const int end = std::min(rows, wifiScroll_ + visible);
+        for (int i = wifiScroll_; i < end; ++i) {
+            const Rect row{left, y + (i - wifiScroll_) * rowHeight, right - left,
+                           rowHeight - theme.px(8)};
+            const bool selected = i == wifiCursor_;
+            canvas.fillRoundedRect(row, theme.px(8),
+                                   selected ? theme.surface
+                                            : theme.surface.withAlpha(110));
+            if (selected)
+                canvas.fillRoundedRect({row.x, row.y, theme.px(4), row.h}, theme.px(2),
+                                       theme.accent);
+            if (i < int(wifiNetworks_.size())) {
+                const Wifi::Network &network = wifiNetworks_[size_t(i)];
+                const int textY = row.y + (row.h - theme.regular().lineHeight(theme.sizeBody())) / 2;
+                const int leftText = row.x + theme.px(18);
+                const int rightText = row.right() - theme.px(14);
+                const std::string details = (network.open ? "Open" :
+                    network.supported ? "Secured" : "Unsupported") +
+                    std::string("   ") + std::to_string(network.signalDbm) + " dBm";
+                const int detailsWidth = theme.regular().measure(details, theme.sizeSmall());
+                const int detailsX = std::max(leftText, rightText - detailsWidth);
+                theme.regular().draw(canvas, leftText, textY,
+                    theme.regular().elide(network.ssid, theme.sizeBody(),
+                                          detailsX - leftText - theme.px(12)),
+                    theme.sizeBody(), selected ? theme.textPrimary : theme.textMuted);
+                theme.regular().draw(canvas, detailsX, textY,
+                    theme.regular().elide(details, theme.sizeSmall(), rightText - detailsX),
+                    theme.sizeSmall(), selected ? theme.textPrimary : theme.textMuted);
+            } else {
+                const int textY = row.y + (row.h - theme.regular().lineHeight(theme.sizeBody())) / 2;
+                theme.regular().draw(canvas, row.x + theme.px(18), textY,
+                    i == int(wifiNetworks_.size()) ? "Connect to hidden Wi-Fi access point"
+                                                   : "Scan again",
+                    theme.sizeBody(), selected ? theme.textPrimary : theme.textMuted);
+            }
+        }
+    } else if (wifiStep_ == WifiStep::SsidEntry || wifiStep_ == WifiStep::PasswordEntry ||
+               wifiStep_ == WifiStep::CountryEntry) {
+        const std::string prompt = wifiStep_ == WifiStep::SsidEntry ? "Network name (SSID)" :
+            wifiStep_ == WifiStep::CountryEntry ? "Two-letter country code (ISO 3166-1 alpha-2)" :
+            "Network: " + wifiSsid_ + "  —  enter password";
+        theme.regular().draw(canvas, left, y, prompt, theme.sizeBody(), theme.textPrimary);
+        y += theme.regular().lineHeight(theme.sizeBody()) + theme.px(10);
+        const Rect field{left, y, right - left, theme.px(54)};
+        canvas.fillRoundedRect(field, theme.radius(), theme.surface);
+        canvas.strokeRoundedRect(field, theme.radius(), theme.px(2), theme.accent);
+        const std::string entered = wifiKeyboard_.value();
+        const std::string display = wifiKeyboard_.masked()
+                                        ? std::string(entered.size(), '*') : entered;
+        const std::string placeholder = wifiStep_ == WifiStep::PasswordEntry
+                                            ? "Enter password…" : "Enter text…";
+        const std::string fieldText = display.empty() ? placeholder : display + "_";
+        theme.regular().draw(canvas, field.x + theme.px(16),
+            field.y + (field.h - theme.regular().lineHeight(theme.sizeBody())) / 2,
+            theme.regular().elide(fieldText, theme.sizeBody(), field.w - theme.px(32)),
+            theme.sizeBody(), display.empty() ? theme.textMuted : theme.textPrimary);
+        y += field.h + theme.px(12);
+        if (!wifiMessage_.empty()) {
+            theme.regular().draw(canvas, left, y, wifiMessage_, theme.sizeSmall(), theme.textMuted);
+            y += theme.px(10);
+        }
+        const int keyboardPadding = theme.px(12);
+        const Rect keyboardArea{left + keyboardPadding, y + keyboardPadding,
+                                right - left - keyboardPadding * 2,
+                                panel.bottom() - y - theme.px(48) - keyboardPadding * 2};
+        const Rect keys = wifiKeyboard_.bounds(theme, keyboardArea);
+        const Rect keyboardPanel{keys.x - keyboardPadding, keys.y - keyboardPadding,
+                                 keys.w + keyboardPadding * 2,
+                                 keys.h + keyboardPadding * 2};
+        canvas.fillRoundedRect(keyboardPanel, theme.radius(), theme.surface.withAlpha(235));
+        wifiKeyboard_.render(canvas, theme, keyboardArea);
+    } else {
+        theme.regular().draw(canvas, left, y, "Network: " + wifiSsid_,
+                             theme.sizeBody(), theme.textPrimary);
+        y += theme.regular().lineHeight(theme.sizeBody()) + theme.px(16);
+        const int bodyWidth = right - left;
+        std::vector<std::string> lines;
+        if (wifiStep_ == WifiStep::TestPrompt) {
+            lines = {"The test temporarily switches the Wi-Fi connection.",
+                     "If it fails or you cancel, the previous connection will be restored."};
+        } else if (wifiStep_ == WifiStep::Testing) {
+            lines = {wifiMessage_, "Waiting for the network and an IP address…"};
+        } else if (wifiStep_ == WifiStep::TestReview) {
+            lines = {wifiMessage_, "Save this network to MiSTer?",
+                     "This writes /media/fat/linux/wpa_supplicant.conf."};
+        } else {
+            lines = {wifiMessage_};
+        }
+        for (const std::string &line : lines) {
+            theme.regular().draw(canvas, left, y, theme.regular().elide(
+                line, theme.sizeBody(), bodyWidth), theme.sizeBody(), theme.textPrimary);
+            y += theme.regular().lineHeight(theme.sizeBody()) + theme.px(9);
+        }
+    }
+
+    std::string hint;
+    if (wifiStep_ == WifiStep::Networks) hint = "A Select   B Cancel   ↑/↓ Move";
+    else if (wifiStep_ == WifiStep::SsidEntry || wifiStep_ == WifiStep::PasswordEntry ||
+             wifiStep_ == WifiStep::CountryEntry)
+        hint = wifiStep_ == WifiStep::PasswordEntry
+                   ? "D-pad Move   A Type   Start Confirm   Show/Hide key   B Back"
+                   : "D-pad Move   A Type   B Back   X Delete   Y Space";
+    else if (wifiStep_ == WifiStep::Testing) hint = "B Cancel and restore previous Wi-Fi";
+    else if (wifiStep_ == WifiStep::TestPrompt) hint = "A Test connection   B Cancel";
+    else if (wifiStep_ == WifiStep::TestReview) hint = "A Save Wi-Fi settings   B Restore previous Wi-Fi";
+    else if (wifiStep_ == WifiStep::TestFailed) hint = "A Retry   B Cancel";
+    else hint = "Scanning…   B Cancel";
+    theme.regular().draw(canvas, left, panel.bottom() - theme.px(34), hint,
+                         theme.sizeSmall(), theme.accent);
 }
 
 void SettingsScreen::handleTimeZoneChooser(Action action) {
@@ -796,8 +1173,7 @@ void SettingsScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*
         updateSnapshot_.successPromptVisible)
         renderUpdateSuccess(canvas, area);
     if (timeZoneChooserActive_) renderTimeZoneChooser(canvas, area);
-    if (rebootConfirmationActive_ || shutdownConfirmationActive_) {
-        const bool shutdown = shutdownConfirmationActive_;
+    if (rebootConfirmationActive_) {
         canvas.fillRect(area, theme.shadow.withAlpha(205));
         const int width = std::min(area.w - theme.px(40), theme.px(560));
         const int height = theme.px(190);
@@ -806,22 +1182,27 @@ void SettingsScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*
         canvas.fillRoundedRect(panel, theme.radius(), theme.surfaceHi);
         const int left = panel.x + theme.px(28);
         int y = panel.y + theme.px(28);
-        theme.bold().draw(canvas, left, y, shutdown ? "Shut down MiSTer?" : "Reboot MiSTer?",
-                          theme.sizeHeading(), theme.textPrimary);
+        theme.bold().draw(canvas, left, y, "Reboot MiSTer?", theme.sizeHeading(), theme.textPrimary);
         y += theme.bold().lineHeight(theme.sizeHeading()) + theme.px(12);
-        theme.regular().draw(canvas, left, y,
-                             shutdown ? "The system will power off now."
-                                      : "The system will restart now.",
+        theme.regular().draw(canvas, left, y, "The system will restart now.",
                              theme.sizeBody(), theme.textPrimary);
         theme.regular().draw(canvas, left, panel.bottom() - theme.px(42),
-                             shutdown ? "A Shut down   B Cancel" : "A Reboot   B Cancel",
-                             theme.sizeBody(), theme.accent);
+                             "A Reboot   B Cancel", theme.sizeBody(), theme.accent);
     }
+    if (wifiStep_ != WifiStep::None) renderWifiFlow(canvas, area);
 }
 
 std::string SettingsScreen::hints() const {
+    if (wifiStep_ == WifiStep::Networks) return "A Select   B Cancel   ↑/↓ Move";
+    if (wifiStep_ == WifiStep::SsidEntry || wifiStep_ == WifiStep::PasswordEntry ||
+        wifiStep_ == WifiStep::CountryEntry)
+        return "D-pad Move   A Type   B Back   X Delete   Y Space";
+    if (wifiStep_ == WifiStep::Testing) return "B Cancel and restore previous Wi-Fi";
+    if (wifiStep_ == WifiStep::TestPrompt) return "A Test connection   B Cancel";
+    if (wifiStep_ == WifiStep::TestReview) return "A Save Wi-Fi settings   B Restore previous Wi-Fi";
+    if (wifiStep_ == WifiStep::TestFailed) return "A Retry   B Cancel";
+    if (wifiStep_ == WifiStep::Scanning) return "Scanning…   B Cancel";
     if (rebootConfirmationActive_) return "A Reboot   B Cancel";
-    if (shutdownConfirmationActive_) return "A Shut down   B Cancel";
     if (timeZoneChooserActive_)
         return choosingTimeZoneCity_ ? "A Set timezone   B Regions" : "A Choose   B Cancel";
     if (updateSnapshot_.phase == UpdatePhase::Confirming)

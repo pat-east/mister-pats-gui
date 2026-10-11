@@ -119,8 +119,13 @@ In practice that means:
   applies everywhere from then on.
 - **Clock settings**, in Settings → Interface — choose a 12-hour AM/PM or 24-hour clock and
   set Linux's time zone using the MiSTer zoneinfo file.
-- **System power controls**, in Settings → System — confirm before rebooting or shutting down
-  the MiSTer.
+- **Interface sounds**, in Settings → Interface — control the splash startup sound separately
+  from menu sounds for navigation, tab changes, and successful game launches.
+- **Wi-Fi setup**, in Settings → System — scan for networks, connect to open or WPA-PSK
+  networks (including hidden SSIDs), test the connection, and save the profile for future boots.
+  Passwords start masked and can be shown temporarily. Setup is disabled without a Wi-Fi
+  interface; the complete flow was tested on MiSTer hardware.
+- **Reboot MiSTer**, in Settings → System — confirm before restarting the system.
 - **A box art switch**, in Settings — hide cover and background artwork while browsing, useful
   for comparing menu responsiveness with image loading out of the way.
 - **Multiple game drives**, resolved live rather than assumed — a drive can come back at a
@@ -158,10 +163,10 @@ a dependency for any of that:
 | The catalogue of systems | **built by this GUI** |
 | The index of games | **built by this GUI** |
 | Box art and background images | **prepared and fetched by this GUI** — Settings → *Prepare box art* |
-| Fonts | Space Grotesk and its license are downloaded by the install/update script or from Settings → System; the built-in fallback remains available |
+| Fonts | Space Grotesk and its license are downloaded by the install/update script or from Settings → Interface; the built-in fallback remains available |
 
 The setup script downloads Space Grotesk from its upstream project under the SIL Open Font
-License, along with the license text. If those files are missing, Settings → System can fetch
+License, along with the license text. If those files are missing, Settings → Interface can fetch
 them directly. Space Grotesk is enabled by default when available; the same setting can disable
 it to check the fallback typeface. Routine GUI updates only add a new `.so`.
 
@@ -256,7 +261,7 @@ the controller-management feature this is building towards.
 | `/media/fat/mister-pat/favorites.txt` | Favourites, one per line |
 | `/media/fat/mister-pat/history.txt` | Recently played |
 | `/media/fat/mister-pat/hidden-systems.txt` | Systems hidden from the Systems tab, one per line — see *Manage systems* in Settings |
-| `/media/fat/mister-pat/preferences.txt` | Interface toggles, such as whether the Games and Arcade tabs are shown |
+| `/media/fat/mister-pat/preferences.txt` | Interface toggles, including sound, tab visibility, box art and time settings |
 | `/media/fat/mister-pat/systems.conf` | Per-system loader slot overrides, see [the example](assets/systems.conf.example) |
 | `/media/fat/mister-pat/icons/` | Console icons |
 | `/media/fat/mister-pat/gamesdb/` | The game database: `catalog.tsv`, `roots.tsv` and one `<System>.tsv` per system |
@@ -305,7 +310,7 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 | [GUI.md](docs/GUI.md) | The interface design: layout, tiles, navigation, typography |
 | [PERFORMANCE.md](docs/PERFORMANCE.md) | What was measured, what it cost, and what made it fast |
 | [BOXART.md](docs/BOXART.md) | Artwork preparation, formats and scraper matching audit |
-| [WIFI.md](docs/WIFI.md) | MiSTer Wi-Fi configuration notes for a later Settings feature |
+| [WIFI.md](docs/WIFI.md) | Wi-Fi setup behavior and MiSTer configuration notes |
 | [POC.md](docs/POC.md) | How the MiSTer boots, where a frontend hooks in, and what was proven on hardware |
 | [CONTROLLER.md](docs/CONTROLLER.md) | Controller-first setup — listing pads, an input test, deadzone, button mapping and Bluetooth pairing: the design, and what real hardware testing found along the way |
 | [ARCADE.md](docs/ARCADE.md) | Arcade support — the analysis, the design and what was built from it. The MRA format, a ROM-storage-priority bug found on real hardware, how the library, the tab and the box art work, and what is still open |
@@ -314,9 +319,10 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 
 Working: booting into the GUI, browsing every system, box art, favourites, history, letter
 navigation, launching games, returning from a game with a long press on the menu button, and
-hiding systems or the Games tab from Settings for a large library. Version 0.5.2 adds controller-
-operated search, clock and time-zone settings, Space Grotesk control, per-game artwork actions,
-and confirmed reboot/shutdown controls. See [CHANGELOG.md](CHANGELOG.md) and [BOXART.md](docs/BOXART.md).
+hiding systems or the Games tab from Settings for a large library. Version 0.6.0 adds controller-
+operated search, clock and time-zone settings, Wi-Fi setup, interface sound controls, per-game
+artwork actions, and a confirmed system reboot action. See [CHANGELOG.md](CHANGELOG.md) and
+[BOXART.md](docs/BOXART.md).
 
 ## Roadmap
 
@@ -366,32 +372,56 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.3.0 change list.
 
 See [CHANGELOG.md](CHANGELOG.md) for the complete 0.5.0 change list.
 
-#### 0.5.2 — Search and settings
+#### 0.6.0 — Wi-Fi, sound and settings
 
+- [x] **Wi-Fi setup from Settings**, including network selection and credentials. Settings →
+      System groups the connected network name beside its Wi-Fi address. The complete flow was
+      tested on MiSTer hardware; setup notes are in [WIFI.md](docs/WIFI.md).
 - [x] **Search** — search games with the shared on-screen keyboard, then browse, start, and
       favorite matches in the regular grid.
-- [x] **Clock settings** — choose 12-hour or 24-hour display and set Linux's time zone.
-- [x] **Space Grotesk control** — enable or disable the font, or download it with its license.
-- [x] **Per-game artwork actions** — load box art for one selected game and refresh it immediately.
-- [x] **System power controls** — confirm and reboot or shut down MiSTer from Settings.
+- [x] **Settings** — clock format and time zone, Space Grotesk control, per-game artwork actions,
+      and a confirmed system reboot.
+- [x] **Interface sounds** after the splash screen, while moving through the GUI, when
+      switching tabs and when starting a game. Settings → Interface can disable the startup
+      sound and menu sounds independently; menu sounds include navigation, tab changes, and game
+      launches.
 
-#### 0.6.0 — Wi-Fi and sound
-
-- [ ] **More settings**, such as Wi-Fi, and whatever else turns out to be useful to reach from
-      the couch. MiSTer-specific Wi-Fi notes are in [WIFI.md](docs/WIFI.md).
-- [ ] **Menu sounds.**
-
-#### 0.7.0 — Usability
+#### 0.7.0 — Usability & Accessibility
 
 - [ ] **Improve usability across the Arcade tab**, especially its entry points and the
       presentation and interaction of individual games.
+- [ ] **Font-size and contrast options** for improved readability and accessibility, with clear
+      focus indicators throughout the interface.
+- [ ] **Improve help and status text** with clearer explanations for settings and updated hints
+      in views, including library loading and box-art scraping.
+- [ ] **Show a checkbox alongside “On” or “Off”** for toggle settings.
+- [ ] **Add tab icons** with options to show tab names, tab icons or both.
+- [ ] **Fade in tab content when switching tabs** instead of sliding it into view.
+- [ ] **Rename the Systems tab to Consoles** and add a “Show Arcade in Consoles” option.
+- [ ] **Add a search bar to relevant tabs** and search within the current context: all games in
+      Home and Games, favorites in Favorites, the selected system in its game list, and Arcade
+      games in Arcade. Remove the Search tab; Settings has no search.
+- [ ] **Ordering the systems** in the Consoles tab. Hiding the ones you do not use already works.
+- [ ] **A separately remembered view per tab** — Home, Favorites, Consoles and Games — instead
+      of the one default view for all of them.
+
+#### 0.8.0 — Game variants
+
 - [ ] **Group language and revision variants of one game.** Show one entry for titles such as
       Pokémon Sapphire even when the library has separate Europe, Japan and USA ROMs or
       multiple revisions; let the player choose a specific version when needed. Keep the ROMs
       and their language/revision details intact.
 
-#### Not scheduled yet, but coming
+#### Not scheduled yet
 
+- [ ] **Boxart scraping using TheGamesDB**, with a list of titles that have no match and the
+      option to retry artwork lookup for one title or all unmatched titles.
+- [ ] **Use `update_all.sh` from the GUI**, showing the installed version, what will be updated
+      and whether a restart is needed.
+- [ ] **Back up and restore settings.** Export favorites, hidden systems, per-tab views and GUI
+      settings, and restore them after a reinstall.
+- [ ] **Localisation.** Everything is English today, with the strings still inline; extracting
+      them is the prerequisite.
 - [ ] **Loader slots for the remaining CD-based cores** (CD-i, Jaguar CD).
 - [ ] **Telling two identical controllers apart**, with separate mappings for each (MiSTer's own
       `controller_unique_mapping`). Left out of the first pass of controller management on
@@ -406,19 +436,12 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.5.0 change list.
       being listed as a feature.
 - [ ] **Testing more controllers.** See [Tested controllers](#tested-controllers) for what has
       been confirmed so far and what is still to try.
-- [ ] **Ordering the systems** in the Systems tab. Hiding the ones you do not use already works.
 - [ ] **Telling HDD/CHD-based Arcade games apart** — boards such as Killer Instinct — from those
       that start unattended. Nothing found can automate the one-time manual step itself; see
       [ARCADE.md](docs/ARCADE.md#hddchd-based-games-no-automated-mount-found).
-- [ ] **A separately remembered view per tab** — Home, Favorites, Systems and Games — instead
-      of the one default view for all of them.
-- [ ] **Localisation.** Everything is English today, with the strings still inline; extracting
-      them is the prerequisite.
 
 ### Ideas, not committed
 
-- [x] **Space Grotesk control.** Enable or disable it in Settings → System, or download it
-      there with its license if it is missing.
 - [ ] **A web interface for managing the library** from a computer or phone, rather than with
       a game pad: everything under *Library management* above, plus a better search, uploading
       new games to the MiSTer, deleting and renaming them, managing box art, and editing

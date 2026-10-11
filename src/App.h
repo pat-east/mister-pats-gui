@@ -19,6 +19,7 @@
 #include "HomeScreen.h"
 #include "Input.h"
 #include "LibraryScan.h"
+#include "UiSounds.h"
 #include "MediaScraper.h"
 #include "Preferences.h"
 #include "ScanScreen.h"
@@ -110,7 +111,6 @@ private:
     void cycleDefaultView();
     void startMisterCore();
     void rebootMister();
-    void shutdownMister();
     void removePinnedVersion();
     void restartMisterAfterUpdate(bool removePin);
     void writeCanvas(const std::string &path);
@@ -191,6 +191,7 @@ private:
 
     Options options_;
     bool running_ = false;
+    bool tabSoundsReady_ = false;
     volatile sig_atomic_t signalStopRequested_ = 0;
     volatile sig_atomic_t screenshotRequested_ = 0;
 
