@@ -43,7 +43,7 @@ public:
                         : system == DiscDriveService::System::Saturn
                             ? saturnMglCompatible && saturnMglVerified && saturnCoreInstalled : false);
         }
-        bool hasAnyCore() const { return psxMglInstalled || saturnMglInstalled; }
+        bool hasAnyCompatibleMgl() const { return psxMglCompatible || saturnMglCompatible; }
     };
 
     DiscCoreManager();

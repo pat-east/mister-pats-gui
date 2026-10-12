@@ -456,7 +456,7 @@ std::vector<Tab> App::visibleTabs() const {
     const auto &cores = discCoreStatus_;
     return TopBar::visibleTabs(preferences_.showGamesTab(), arcadeTabShown(),
                                hasDrive && cores.alternateMainInstalled &&
-                               cores.scopedMainConfigured && cores.hasAnyCore());
+                               cores.scopedMainConfigured && cores.hasAnyCompatibleMgl());
 }
 
 void App::toggleArcadeTab() {
@@ -1254,7 +1254,7 @@ int App::run() {
         const auto &cores = discCoreStatus_;
         const bool showDisc = drive.state != DiscDriveService::MediaState::NoDrive &&
                               cores.alternateMainInstalled && cores.scopedMainConfigured &&
-                              cores.hasAnyCore();
+                              cores.hasAnyCompatibleMgl();
         topBar_.render(*canvas_, theme, top, tab_, preferences_.showGamesTab(), arcadeTabShown(),
                        showDisc, tabNavigationAvailable(), preferences_.tabDisplay(), tabIcons_);
         renderBottomBar(bottom);
