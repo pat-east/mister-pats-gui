@@ -196,8 +196,12 @@ std::string simpleTitle(const std::string &title, DiscDriveService::System syste
 
 std::string titleKey(const std::string &title) {
     std::string out;
-    for (unsigned char ch : title)
-        if (std::isalnum(ch)) out.push_back(char(std::tolower(ch)));
+    for (unsigned char ch : title) {
+        // Keep UTF-8 bytes intact. Dropping them would make distinct titles such as
+        // accented and unaccented spellings compare equal and could select wrong artwork.
+        if (ch >= 0x80) out.push_back(char(ch));
+        else if (std::isalnum(ch)) out.push_back(char(std::tolower(ch)));
+    }
     return out;
 }
 
