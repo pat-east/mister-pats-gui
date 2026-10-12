@@ -216,8 +216,11 @@ bool Launcher::launchPhysicalDisc(const std::string &mglPath) {
         return false;
     }
     for (unsigned char ch : mglPath) {
-        if (std::isspace(ch)) {
-            error_ = "physical-disc MGL path contains whitespace";
+        const bool safe = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                          (ch >= '0' && ch <= '9') || ch == '/' || ch == '_' ||
+                          ch == '-' || ch == '.';
+        if (!safe) {
+            error_ = "physical-disc MGL path contains unsupported characters";
             return false;
         }
     }
