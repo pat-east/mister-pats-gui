@@ -348,62 +348,86 @@ bool writeTextAtomically(const std::string &path, const std::string &text) {
 }
 
 struct CacheDirectory {
-    std::string path;
+    std::string name;
     time_t modified = 0;
     uint64_t bytes = 0;
+    dev_t device = 0;
+    ino_t inode = 0;
 };
 
 void pruneDiscCache(const std::string &root, const std::string &keep) {
-    struct stat rootInfo {};
-    if (lstat(root.c_str(), &rootInfo) != 0 || !S_ISDIR(rootInfo.st_mode) ||
-        S_ISLNK(rootInfo.st_mode)) return;
-    DIR *directory = opendir(root.c_str());
-    if (!directory) return;
+    const int rootFd = open(root.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+    if (rootFd < 0) return;
+    DIR *directory = fdopendir(rootFd);
+    if (!directory) { close(rootFd); return; }
+    const int rootHandle = dirfd(directory);
     std::vector<CacheDirectory> games;
     uint64_t total = 0;
     while (dirent *entry = readdir(directory)) {
         const std::string name = entry->d_name;
         if (name == "." || name == ".." || name == "index") continue;
+        const int childFd = openat(rootHandle, name.c_str(),
+                                   O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+        if (childFd < 0) continue;
         CacheDirectory item;
-        item.path = root + "/" + name;
         struct stat info {};
-        if (lstat(item.path.c_str(), &info) != 0 || !S_ISDIR(info.st_mode)) continue;
+        if (fstat(childFd, &info) != 0 || !S_ISDIR(info.st_mode)) {
+            close(childFd);
+            continue;
+        }
+        item.name = name;
         item.modified = info.st_mtime;
-        DIR *files = opendir(item.path.c_str());
-        if (!files) continue;
+        item.device = info.st_dev;
+        item.inode = info.st_ino;
+        DIR *files = fdopendir(childFd);
+        if (!files) { close(childFd); continue; }
         while (dirent *file = readdir(files)) {
             if (!std::strcmp(file->d_name, ".") || !std::strcmp(file->d_name, "..")) continue;
             struct stat fileInfo {};
-            const std::string path = item.path + "/" + file->d_name;
-            if (lstat(path.c_str(), &fileInfo) == 0 && S_ISREG(fileInfo.st_mode))
+            if (fstatat(dirfd(files), file->d_name, &fileInfo, AT_SYMLINK_NOFOLLOW) == 0 &&
+                S_ISREG(fileInfo.st_mode))
                 item.bytes += uint64_t(fileInfo.st_size);
         }
         closedir(files);
         total += item.bytes;
         games.push_back(item);
     }
-    closedir(directory);
     std::sort(games.begin(), games.end(), [](const CacheDirectory &a, const CacheDirectory &b) {
         return a.modified < b.modified;
     });
     // Keep the on-device artwork cache bounded. The active disc's files are never pruned.
     size_t count = games.size();
     for (const CacheDirectory &item : games) {
-        if ((total <= 128ULL * 1024 * 1024 && count <= 80) || item.path == keep) continue;
-        DIR *files = opendir(item.path.c_str());
-        if (!files) continue;
+        if ((total <= 128ULL * 1024 * 1024 && count <= 80) ||
+            root + "/" + item.name == keep) continue;
+        const int childFd = openat(rootHandle, item.name.c_str(),
+                                   O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+        if (childFd < 0) continue;
+        struct stat childInfo {};
+        if (fstat(childFd, &childInfo) != 0 || childInfo.st_dev != item.device ||
+            childInfo.st_ino != item.inode) {
+            close(childFd);
+            continue;
+        }
+        DIR *files = fdopendir(childFd);
+        if (!files) { close(childFd); continue; }
         while (dirent *file = readdir(files)) {
             if (!std::strcmp(file->d_name, ".") || !std::strcmp(file->d_name, "..")) continue;
-            const std::string path = item.path + "/" + file->d_name;
             struct stat info {};
-            if (lstat(path.c_str(), &info) == 0 && S_ISREG(info.st_mode)) unlink(path.c_str());
+            if (fstatat(dirfd(files), file->d_name, &info, AT_SYMLINK_NOFOLLOW) == 0 &&
+                S_ISREG(info.st_mode)) unlinkat(dirfd(files), file->d_name, 0);
         }
         closedir(files);
-        if (rmdir(item.path.c_str()) == 0) {
+        struct stat currentInfo {};
+        if (fstatat(rootHandle, item.name.c_str(), &currentInfo, AT_SYMLINK_NOFOLLOW) == 0 &&
+            S_ISDIR(currentInfo.st_mode) && currentInfo.st_dev == item.device &&
+            currentInfo.st_ino == item.inode &&
+            unlinkat(rootHandle, item.name.c_str(), AT_REMOVEDIR) == 0) {
             total -= item.bytes;
             --count;
         }
     }
+    closedir(directory);
 }
 
 
