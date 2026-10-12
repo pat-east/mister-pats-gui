@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cctype>
+#include <cstdint>
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
@@ -36,15 +37,35 @@ bool ensureDirectory(const std::string &path) {
 
 std::string safeKey(const DiscDriveService::Snapshot &disc) {
     const std::string prefix = disc.system == DiscDriveService::System::PlayStation ? "psx-" : "saturn-";
+    const bool hasIdentifier = !disc.identifier.empty();
+    const std::string identity = hasIdentifier ? disc.identifier : disc.title;
     const std::string stable = disc.identifier.empty() ? LibretroIndex::normalise(disc.title)
                                                        : disc.identifier;
     std::string out = prefix;
+    std::string slug;
+    bool lossy = !hasIdentifier;
     for (unsigned char ch : stable) {
-        if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-            (ch >= '0' && ch <= '9') || ch == '-' || ch == '_') out.push_back(char(ch));
-        else if (out.back() != '_') out.push_back('_');
+        const bool allowed = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                             (ch >= '0' && ch <= '9') || ch == '-' || ch == '_';
+        if (allowed && slug.size() < 96) slug.push_back(char(ch));
+        else {
+            if (!allowed || slug.size() >= 96) lossy = true;
+            if (slug.size() < 96 && (slug.empty() || slug.back() != '_')) slug.push_back('_');
+        }
     }
-    while (!out.empty() && out.back() == '_') out.pop_back();
+    while (!slug.empty() && slug.back() == '_') slug.pop_back();
+    if (lossy && !identity.empty()) {
+        uint64_t hash = 14695981039346656037ull;
+        for (unsigned char ch : identity) {
+            hash ^= ch;
+            hash *= 1099511628211ull;
+        }
+        char suffix[18];
+        std::snprintf(suffix, sizeof(suffix), "-%016llx",
+                      static_cast<unsigned long long>(hash));
+        slug += suffix;
+    }
+    out += slug;
     return out;
 }
 
@@ -465,17 +486,11 @@ void DiscArtworkService::workerLoop() {
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (stopping_) return;
-            const std::string key = request.system == DiscDriveService::System::PlayStation ? "psx-" : "saturn-";
-            std::string safe;
-            const std::string stable = request.identifier.empty() ? LibretroIndex::normalise(request.title)
-                                                                  : request.identifier;
-            for (unsigned char ch : stable) {
-                if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
-                    (ch >= '0' && ch <= '9') || ch == '-' || ch == '_') safe.push_back(char(ch));
-                else if (!safe.empty() && safe.back() != '_') safe.push_back('_');
-            }
-            std::string expected = key + safe;
-            while (!expected.empty() && expected.back() == '_') expected.pop_back();
+            DiscDriveService::Snapshot disc;
+            disc.system = request.system;
+            disc.identifier = request.identifier;
+            disc.title = request.title;
+            const std::string expected = safeKey(disc);
             if (!cancelCurrent_.load() && snapshot_.cacheKey == expected)
                 snapshot_ = std::move(result);
         }

@@ -104,8 +104,9 @@ erneut versuchbar.
 Artwork, kleine Galerie-Vorschaubilder und der zugehörige strukturierte Metadatensatz werden in
 einem persistenten Disc-Cache unter dem MiSTer-Pat-Datenverzeichnis gespeichert, nicht auf der
 Disc. Cache-Schlüssel kombinieren Plattform mit stabiler Disc-Kennung; wenn nur ein Titel
-verfügbar ist, wird dieser normalisiert und mit Plattform sowie Anbieter-ID gespeichert, damit
-gleichnamige Titel nicht kollidieren. Temporäre Downloads werden erst nach erfolgreicher
+verfügbar ist, wird dessen normalisierte Form als lesbarer Teil genutzt und der Fingerprint des
+Originaltitels ergänzt, damit durch Normalisierung gleichnamige Cache-Schlüssel nicht kollidieren.
+Die Anbieter-ID wird in den Metadaten gespeichert. Temporäre Downloads werden erst nach erfolgreicher
 Validierung atomar übernommen. Anbieter, Spiel-ID, Disc-Kennung und gefundene Bildtypen werden
 mitgespeichert. Der Cache wird bei 128 MiB oder 80 Disc-Verzeichnissen anhand der ältesten
 Verzeichnisse verkleinert; das aktuelle Spiel bleibt dabei erhalten. Metadaten halten Anbieter
