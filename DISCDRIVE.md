@@ -306,8 +306,10 @@ Disc-Generation unverändert ist und der passende Core weiterhin bereit ist. Wir
 der Tab verlassen, wird der ausstehende Start verworfen. Während das Disc-Paket installiert oder
 aktualisiert wird, bleibt der Start gesperrt.
 Die explizite Startprüfung liest die Disc-Metadaten erneut vom Laufwerk, auch wenn der Treiber
-kein Medienwechsel-Flag meldet; das normale Vier-Sekunden-Polling verwendet bei unverändertem
-Medium weiterhin den Snapshot.
+kein Medienwechsel-Flag meldet. Ein Fingerprint aus Saturn-Bootsektor beziehungsweise PS1-PVD
+und `SYSTEM.CNF` fließt in die Mediengeneration ein, damit ein Wechsel mit identischem Titel und
+gleicher Serienkennung den ausstehenden Start trotzdem invalidiert. Das normale
+Vier-Sekunden-Polling verwendet bei unverändertem Medium weiterhin den Snapshot.
 
 ## Disc-Informationen ermitteln
 

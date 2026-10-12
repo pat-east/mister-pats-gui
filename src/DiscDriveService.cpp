@@ -46,6 +46,7 @@ struct ProbeWire {
     uint32_t system = 0;
     uint32_t reserved = 0;
     uint64_t generation = 0;
+    uint64_t mediaFingerprint = 0;
     char device[64] = {};
     char model[128] = {};
     char title[512] = {};
@@ -65,6 +66,7 @@ ProbeWire toWire(const DiscDriveService::Snapshot &snapshot) {
     wire.state = static_cast<uint32_t>(snapshot.state);
     wire.system = static_cast<uint32_t>(snapshot.system);
     wire.generation = snapshot.generation;
+    wire.mediaFingerprint = snapshot.mediaFingerprint;
     copyWireText(wire.device, snapshot.device);
     copyWireText(wire.model, snapshot.model);
     copyWireText(wire.title, snapshot.title);
@@ -86,6 +88,7 @@ bool fromWire(const ProbeWire &wire, DiscDriveService::Snapshot &snapshot) {
     snapshot.state = static_cast<DiscDriveService::MediaState>(wire.state);
     snapshot.system = static_cast<DiscDriveService::System>(wire.system);
     snapshot.generation = wire.generation;
+    snapshot.mediaFingerprint = wire.mediaFingerprint;
     snapshot.device = wire.device;
     snapshot.model = wire.model;
     snapshot.title = wire.title;
@@ -322,6 +325,15 @@ bool readAt(int fd, uint64_t lba, unsigned char *bytes, size_t count) {
     return true;
 }
 
+uint64_t fingerprintBytes(uint64_t fingerprint, const unsigned char *bytes, size_t count) {
+    if (fingerprint == 0) fingerprint = 14695981039346656037ull;
+    for (size_t i = 0; i < count; ++i) {
+        fingerprint ^= bytes[i];
+        fingerprint *= 1099511628211ull;
+    }
+    return fingerprint;
+}
+
 uint32_t little32(const unsigned char *bytes) {
     return uint32_t(bytes[0]) | (uint32_t(bytes[1]) << 8) |
            (uint32_t(bytes[2]) << 16) | (uint32_t(bytes[3]) << 24);
@@ -388,11 +400,12 @@ std::string normalizePsxSerial(const std::string &text) {
     return std::string();
 }
 
-bool readPsxBootIdentifier(int fd, std::string &identifier) {
+bool readPsxBootIdentifier(int fd, std::string &identifier, uint64_t &fingerprint) {
     unsigned char pvd[kSectorBytes];
     uint32_t volumeBlocks = 0;
     if (!readAt(fd, 16, pvd, sizeof(pvd)) || !isPlayStationPvd(pvd, volumeBlocks))
         return false;
+    fingerprint = fingerprintBytes(0, pvd, sizeof(pvd));
 
     const unsigned char *root = pvd + 156;
     uint32_t rootExtent = 0;
@@ -452,6 +465,7 @@ bool readPsxBootIdentifier(int fd, std::string &identifier) {
     const size_t sectors = (configBytes + kSectorBytes - 1) / kSectorBytes;
     std::vector<unsigned char> data(sectors * kSectorBytes);
     if (!readAt(fd, configLba, data.data(), data.size())) return false;
+    fingerprint = fingerprintBytes(fingerprint, data.data(), configBytes);
     std::copy(data.begin(), data.begin() + configBytes, config.begin());
 
     size_t start = 0;
@@ -478,6 +492,7 @@ void readMetadata(int fd, DiscDriveService::Snapshot &out) {
         out.error = "Could not read the disc";
         return;
     }
+    out.mediaFingerprint = fingerprintBytes(0, first, sizeof(first));
 
     if (std::memcmp(first, "SEGA SEGASATURN", 15) == 0) {
         out.system = DiscDriveService::System::Saturn;
@@ -494,9 +509,11 @@ void readMetadata(int fd, DiscDriveService::Snapshot &out) {
     }
 
     std::string serial;
-    if (readPsxBootIdentifier(fd, serial)) {
+    uint64_t psxFingerprint = 0;
+    if (readPsxBootIdentifier(fd, serial, psxFingerprint)) {
         out.system = DiscDriveService::System::PlayStation;
         out.identifier = serial;
+        out.mediaFingerprint = psxFingerprint;
         out.title = indexedTitle("PSX", serial);
         if (out.title.empty()) out.title = "PlayStation disc";
         out.state = DiscDriveService::MediaState::Readable;
@@ -509,6 +526,7 @@ void readMetadata(int fd, DiscDriveService::Snapshot &out) {
     uint32_t volumeBlocks = 0;
     if (readAt(fd, 16, pvd, sizeof(pvd)) && isPlayStationPvd(pvd, volumeBlocks)) {
         out.system = DiscDriveService::System::PlayStation;
+        out.mediaFingerprint = fingerprintBytes(out.mediaFingerprint, pvd, sizeof(pvd));
         out.state = DiscDriveService::MediaState::Readable;
         return;
     }
@@ -536,7 +554,7 @@ bool opticalDeviceName(const char *name) {
 bool sameMedia(const DiscDriveService::Snapshot &a, const DiscDriveService::Snapshot &b) {
     return a.state == b.state && a.system == b.system && a.device == b.device &&
            a.model == b.model && a.title == b.title && a.identifier == b.identifier &&
-           a.error == b.error;
+           a.error == b.error && a.mediaFingerprint == b.mediaFingerprint;
 }
 
 } // namespace

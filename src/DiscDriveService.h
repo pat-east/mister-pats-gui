@@ -22,6 +22,7 @@ public:
         std::string title;
         std::string identifier;
         std::string error;
+        uint64_t mediaFingerprint = 0;
         uint64_t generation = 0;
     };
 
