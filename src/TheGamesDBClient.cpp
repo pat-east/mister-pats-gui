@@ -95,15 +95,23 @@ bool parseJsonString(const std::string &json, size_t quote, std::string &value, 
 }
 
 size_t propertyPosition(const std::string &json, const std::string &key) {
+    unsigned objectDepth = 0;
+    unsigned arrayDepth = 0;
     for (size_t i = 0; i < json.size(); ++i) {
-        if (json[i] != '"') continue;
-        std::string candidate;
-        size_t after = 0;
-        if (!parseJsonString(json, i, candidate, after)) return std::string::npos;
-        size_t colon = after;
-        while (colon < json.size() && std::isspace(static_cast<unsigned char>(json[colon]))) ++colon;
-        if (candidate == key && colon < json.size() && json[colon] == ':') return i;
-        i = after - 1;
+        const char ch = json[i];
+        if (ch == '"') {
+            std::string candidate;
+            size_t after = 0;
+            if (!parseJsonString(json, i, candidate, after)) return std::string::npos;
+            size_t colon = after;
+            while (colon < json.size() && std::isspace(static_cast<unsigned char>(json[colon]))) ++colon;
+            if (objectDepth == 1 && arrayDepth == 0 && candidate == key &&
+                colon < json.size() && json[colon] == ':') return i;
+            i = after - 1;
+        } else if (ch == '{') ++objectDepth;
+        else if (ch == '}' && objectDepth > 0) --objectDepth;
+        else if (ch == '[') ++arrayDepth;
+        else if (ch == ']' && arrayDepth > 0) --arrayDepth;
     }
     return std::string::npos;
 }
