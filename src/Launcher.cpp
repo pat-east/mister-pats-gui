@@ -34,11 +34,35 @@ const char *kDiscExtensions[] = {"cue", "chd", "iso", "ccd"};
 constexpr int kResolveAttempts = 10;
 constexpr int kResolveDelayUs = 300000;   // 300 ms; ten attempts is a three-second ceiling
 
+int openDirectoryNoFollow(const std::string &path) {
+    if (path.empty() || path.front() != '/') return -1;
+    int directory = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (directory < 0) return -1;
+    size_t start = 1;
+    while (start < path.size()) {
+        const size_t slash = path.find('/', start);
+        const std::string component = path.substr(start,
+            slash == std::string::npos ? std::string::npos : slash - start);
+        if (component.empty() || component == "." || component == "..") {
+            close(directory);
+            return -1;
+        }
+        const int next = openat(directory, component.c_str(),
+                                O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        close(directory);
+        if (next < 0) return -1;
+        directory = next;
+        if (slash == std::string::npos) break;
+        start = slash + 1;
+    }
+    return directory;
+}
+
 bool readPhysicalMgl(const std::string &root, const std::string &relative,
                      std::string &contents) {
     contents.clear();
     if (relative.empty()) return false;
-    int directory = open(root.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    int directory = openDirectoryNoFollow(root);
     if (directory < 0) return false;
 
     size_t start = 0;
