@@ -56,8 +56,9 @@ Status daher nicht ausschließlich als „invalid key“ darstellen. Netzwerkfeh
 ungültige JSON-Antworten erhalten verständliche Meldungen. Der Key wird nie ausgegeben.
 
 Der HTTP-Status und die API-Antwort werden ausgewertet; API-Key-Werte sind URL-kodiert. UI-Thread
-und Render-Loop warten nicht auf den Netzwerkzugriff. Der Key selbst wird weder angezeigt noch
-protokolliert.
+und Render-Loop warten nicht auf den Netzwerkzugriff. API-Requests mit Key folgen keinen HTTP-
+Redirects, damit der Query-Key nicht an ein Redirect-Ziel weitergereicht wird. Der Key selbst wird
+weder angezeigt noch protokolliert.
 
 TheGamesDB dokumentiert außerdem Spielsuche nach Name (`/v1.1/Games/ByGameName`), optional mit
 `filter[platform]`, und Cover-Abruf über `/v1/Games/Images`. Das kann Disc-Metadaten und Artwork

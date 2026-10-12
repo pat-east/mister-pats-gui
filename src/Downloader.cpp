@@ -103,7 +103,8 @@ std::string Downloader::command(Tool tool, const std::string &url,
 
 bool Downloader::fetchWithStatus(const std::string &url, const std::string &destination,
                                  int &httpStatus, int timeoutSeconds,
-                                 const std::atomic<bool> *cancel, size_t maxBytes) {
+                                 const std::atomic<bool> *cancel, size_t maxBytes,
+                                 bool followRedirects) {
     error_.clear();
     httpStatus = 0;
     if (cancel && cancel->load()) {
@@ -150,11 +151,12 @@ bool Downloader::fetchWithStatus(const std::string &url, const std::string &dest
     posix_spawn_file_actions_addclose(&actions, configPipe[0]);
     posix_spawn_file_actions_addclose(&actions, statusPipe[0]);
     posix_spawn_file_actions_addclose(&actions, statusPipe[1]);
-    std::vector<std::string> args = {"curl", "-4", "-sS", "-L", "--proto", "=https",
+    std::vector<std::string> args = {"curl", "-4", "-sS", "--proto", "=https",
         "--proto-redir", "=https", "--connect-timeout", "12", "--max-time",
         std::to_string(timeoutSeconds), "--max-filesize", std::to_string(maxBytes),
         "-w", "%{http_code}",
         "-o", destination, "--config", "-"};
+    if (followRedirects) args.insert(args.begin() + 3, "-L");
     for (const char *path : kCertificates) {
         if (!fileExists(path)) continue;
         args.insert(args.end() - 2, {"--cacert", path});

@@ -502,7 +502,8 @@ bool DiscArtworkService::fetchFromTheGamesDB(const Request &request, Downloader 
         std::to_string(platform);
     const std::string searchFile = gameDir + "/tgdb-search.json";
     int httpStatus = 0;
-    if (!downloader.fetchWithStatus(searchUrl, searchFile, httpStatus, 25, &cancel) || httpStatus != 200)
+    if (!downloader.fetchWithStatus(searchUrl, searchFile, httpStatus, 25, &cancel,
+                                    65536, false) || httpStatus != 200)
         return false;
     const std::string searchJson = readText(searchFile);
     unlink(searchFile.c_str());
@@ -531,7 +532,8 @@ bool DiscArtworkService::fetchFromTheGamesDB(const Request &request, Downloader 
         "&games_id=" + gameId + "&filter%5Btype%5D=boxart%2Cscreenshot";
     const std::string imageJsonPath = gameDir + "/tgdb-images.json";
     httpStatus = 0;
-    if (!downloader.fetchWithStatus(imageUrl, imageJsonPath, httpStatus, 25, &cancel) || httpStatus != 200) {
+    if (!downloader.fetchWithStatus(imageUrl, imageJsonPath, httpStatus, 25, &cancel,
+                                    65536, false) || httpStatus != 200) {
         unlink(imageJsonPath.c_str());
         return false;
     }

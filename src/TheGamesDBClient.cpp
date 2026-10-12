@@ -201,7 +201,8 @@ void TheGamesDBClient::workerLoop() {
                                 Downloader::encodeComponent(key);
         CheckState result = CheckState::NetworkError;
         int httpStatus = 0;
-        if (downloader.fetchWithStatus(url, target, httpStatus, 20, &cancelCurrent_)) {
+        if (downloader.fetchWithStatus(url, target, httpStatus, 20, &cancelCurrent_,
+                                       65536, false)) {
             std::ifstream input(target.c_str(), std::ios::binary);
             const std::string json((std::istreambuf_iterator<char>(input)),
                                    std::istreambuf_iterator<char>());
