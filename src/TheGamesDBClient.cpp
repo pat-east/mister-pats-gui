@@ -164,8 +164,10 @@ bool TheGamesDBClient::startApiKeyCheck() {
 }
 
 bool TheGamesDBClient::checking() const {
+    const std::string key = readKey();
+    if (key.empty()) return false;
     std::lock_guard<std::mutex> lock(mutex_);
-    return state_ == CheckState::Checking;
+    return state_ == CheckState::Checking && activeKey_ == key;
 }
 
 TheGamesDBClient::CheckState TheGamesDBClient::checkState() const {
