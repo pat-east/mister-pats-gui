@@ -373,12 +373,16 @@ bool readPsxBootIdentifier(int fd, std::string &identifier) {
         logicalBlockSize != kSectorBytes) return false;
 
     const unsigned char *root = pvd + 156;
+    uint32_t rootExtent = 0;
     uint32_t directoryLba = 0;
     uint32_t directoryBytes = 0;
     if (root[0] < 34 || (root[25] & 0x02) == 0 || root[32] != 1 || root[33] != 0 ||
-        !isoBothEndian32(root + 2, directoryLba) ||
+        !isoBothEndian32(root + 2, rootExtent) ||
         !isoBothEndian32(root + 10, directoryBytes)) return false;
     if (!directoryBytes || directoryBytes > kMaxRootDirectoryBytes) return false;
+    const uint64_t directoryStart = uint64_t(rootExtent) + root[1];
+    if (directoryStart > UINT32_MAX) return false;
+    directoryLba = uint32_t(directoryStart);
     const uint64_t directorySectors =
         (uint64_t(directoryBytes) + kSectorBytes - 1) / kSectorBytes;
     if (uint64_t(directoryLba) + directorySectors > volumeBlocks) return false;
@@ -402,9 +406,13 @@ bool readPsxBootIdentifier(int fd, std::string &identifier) {
             const size_t version = name.find(';');
             if (version != std::string::npos) name.erase(version);
             if (upperAscii(name) == "SYSTEM.CNF") {
+                uint32_t configExtent = 0;
                 if ((sector[pos + 25] & 0x82) != 0 ||
-                    !isoBothEndian32(sector + pos + 2, configLba) ||
+                    !isoBothEndian32(sector + pos + 2, configExtent) ||
                     !isoBothEndian32(sector + pos + 10, configBytes)) return false;
+                const uint64_t configStart = uint64_t(configExtent) + sector[pos + 1];
+                if (configStart > UINT32_MAX) return false;
+                configLba = uint32_t(configStart);
                 break;
             }
             pos += recordBytes;
