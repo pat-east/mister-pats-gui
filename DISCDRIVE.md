@@ -380,13 +380,28 @@ ROM-Bibliothek gehört nicht zum Disc-Drive-Umfang von 0.8.0.
 
 ## Noch offene Abnahme
 
-- PS1- und Saturn-MGL-Start sowie Disc-Wechsel auf echtem Dock abnehmen; bisher sind dort nur
-  Laufwerk und lesbare Disc-Metadaten bestätigt.
-- Einen nicht reagierenden Laufwerkstreiber prüfen und sicherstellen, dass das Zeitlimit keine
-  Probeprozesse anhäuft und die UI weiterhin keinen alten Start anbietet.
-- Einen ungültigen oder limitierten TheGamesDB-Key prüfen; URLs mit Key dürfen dabei nicht
-  protokolliert werden. Der erfolgreiche Live-Key-Check, Titelsuchen und echte Bildantworten sind
-  bereits bestätigt.
+Die Hardware-Abnahme ist am 12. Oktober 2026 offen. Bisher bestätigt sind das Laufwerk und das
+Lesen je einer Disc-Kennung/Titelzeile; ein erfolgreicher MGL-Start ist damit nicht belegt. Beim
+nächsten Zugriff auf das Dock diese Schritte ausführen und Ergebnis, MiSTer-Main-Version sowie
+Core-Versionen hier ergänzen:
+
+| Prüfung | Erwartung | Ergebnis |
+| --- | --- | --- |
+| Settings → System → Disc drive vor Installation | Laufwerk und fehlende/verifizierte Paketdateien getrennt angezeigt; Installation ändert `[MiSTer] main=` nicht | Offen |
+| Leere Lade, PS1 einlegen | `Please insert disc`, danach PlayStation plus lokale Kennung/Titel; während des Lesens kein alter Start | Offen |
+| PS1 **Start game** | Passendes PS1-Disc-MGL lädt; Spiel startet vom Medium; Rückkehr in die GUI funktioniert | Offen |
+| Disc bei geöffneter GUI gegen Saturn tauschen | Kurz `Reading disc…`, danach Saturn plus neue Kennung/Titel; PS1-Artwork und alter Start verschwinden | Offen |
+| Saturn **Start game** | Passendes Saturn-Disc-MGL lädt; Spiel startet vom Medium; Rückkehr in die GUI funktioniert | Offen |
+| Film-DVD oder nicht unterstützte Disc | `No supported game detected`; kein Titel/System wird erfunden und Start bleibt gesperrt | Offen |
+| Passenden PS1- oder Saturn-RBF-Core entfernen (nur wenn gefahrlos möglich) | Start des betroffenen Systems bleibt gesperrt; anderes System bleibt davon unabhängig | Offen |
+| TheGamesDB-Key ungültig/Limit erreicht | Verständlicher Status, kein Key in Dialog, Log oder Prozessargumenten; Disc-Erkennung und Start bleiben verfügbar | Offen |
+| Laufwerk während einer Probe nicht reagieren lassen | Nach sieben Sekunden kein alter Start; höchstens ein hängender Probeprozess, keine Prozessanhäufung; GUI bleibt bedienbar | Offen |
+
+Bei allen Starttests vorher und nachher den Wert `[MiSTer] main=` vergleichen; er muss unverändert
+bleiben. Den Core-Installer während eines laufenden Austauschs nicht hart beenden: Der Abbruch
+während Download/Prüfung und der sichere Abschluss des Austauschs sind unterschiedliche Fälle.
+Eine Treiber-Timeout-Prüfung nur mit einem kontrollierbaren Testaufbau durchführen, der sich
+danach wiederherstellen lässt.
 
 ## Abnahmekriterien
 
