@@ -1,12 +1,14 @@
 #include "DiscArtworkService.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cctype>
 #include <cstdlib>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <dirent.h>
+#include <fcntl.h>
 #include <fstream>
 #include <sys/stat.h>
 #include <utime.h>
@@ -22,13 +24,14 @@ namespace {
 
 bool fileExists(const std::string &path) {
     struct stat info {};
-    return stat(path.c_str(), &info) == 0 && S_ISREG(info.st_mode) && info.st_size > 0;
+    return lstat(path.c_str(), &info) == 0 && S_ISREG(info.st_mode) && info.st_size > 0;
 }
 
 bool ensureDirectory(const std::string &path) {
     if (mkdir(path.c_str(), 0755) == 0) return true;
+    if (errno != EEXIST) return false;
     struct stat info {};
-    return stat(path.c_str(), &info) == 0 && S_ISDIR(info.st_mode);
+    return lstat(path.c_str(), &info) == 0 && S_ISDIR(info.st_mode) && !S_ISLNK(info.st_mode);
 }
 
 std::string safeKey(const DiscDriveService::Snapshot &disc) {
@@ -220,18 +223,47 @@ std::string encodeUrlPath(const std::string &path) {
 }
 
 std::string readText(const std::string &path) {
-    std::ifstream input(path.c_str(), std::ios::binary);
-    return std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    const int fd = open(path.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW);
+    if (fd < 0) return {};
+    struct stat info {};
+    if (fstat(fd, &info) != 0 || !S_ISREG(info.st_mode) || info.st_size < 0 ||
+        info.st_size > 1024 * 1024) {
+        close(fd);
+        return {};
+    }
+    std::string text;
+    text.reserve(static_cast<size_t>(info.st_size));
+    char buffer[4096];
+    for (;;) {
+        const ssize_t count = read(fd, buffer, sizeof(buffer));
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) break;
+        text.append(buffer, static_cast<size_t>(count));
+        if (text.size() > 1024 * 1024) { text.clear(); break; }
+    }
+    close(fd);
+    return text;
 }
 
 bool writeTextAtomically(const std::string &path, const std::string &text) {
     const std::string part = path + ".part";
-    {
-        std::ofstream output(part.c_str(), std::ios::out | std::ios::trunc);
-        if (!output) return false;
-        output << text;
-        if (!output) { unlink(part.c_str()); return false; }
+    unlink(part.c_str());
+    const int fd = open(part.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0644);
+    if (fd < 0) return false;
+    size_t written = 0;
+    while (written < text.size()) {
+        const ssize_t count = write(fd, text.data() + written, text.size() - written);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) {
+            close(fd);
+            unlink(part.c_str());
+            return false;
+        }
+        written += static_cast<size_t>(count);
     }
+    const bool synced = fsync(fd) == 0;
+    const bool closed = close(fd) == 0;
+    if (!synced || !closed) { unlink(part.c_str()); return false; }
     if (rename(part.c_str(), path.c_str()) != 0) { unlink(part.c_str()); return false; }
     return true;
 }
@@ -243,6 +275,9 @@ struct CacheDirectory {
 };
 
 void pruneDiscCache(const std::string &root, const std::string &keep) {
+    struct stat rootInfo {};
+    if (lstat(root.c_str(), &rootInfo) != 0 || !S_ISDIR(rootInfo.st_mode) ||
+        S_ISLNK(rootInfo.st_mode)) return;
     DIR *directory = opendir(root.c_str());
     if (!directory) return;
     std::vector<CacheDirectory> games;
@@ -531,11 +566,14 @@ DiscArtworkService::Snapshot DiscArtworkService::fetch(const Request &request,
     const std::string key = safeKey(disc);
     const std::string cacheRoot = std::string(MISTER_PAT_ROOT) + "/disc-cache";
     const std::string gameDir = cacheRoot + "/" + key;
-    ensureDirectory(cacheRoot);
-    ensureDirectory(gameDir);
     Snapshot out;
     out.cacheKey = key;
     out.boxart = gameDir + "/boxart.jpg";
+    if (!ensureDirectory(MISTER_PAT_ROOT) || !ensureDirectory(cacheRoot) ||
+        !ensureDirectory(gameDir)) {
+        out.state = State::Missing;
+        return out;
+    }
     const std::string metadataPath = gameDir + "/metadata.json";
     struct utimbuf accessed {};
     accessed.actime = time(nullptr);
@@ -551,7 +589,7 @@ DiscArtworkService::Snapshot DiscArtworkService::fetch(const Request &request,
 
     Downloader downloader;
     const std::string indexCache = cacheRoot + "/index";
-    ensureDirectory(indexCache);
+    const bool indexCacheReady = ensureDirectory(indexCache);
     const bool tgdbChecked = theGamesDbCheckedRecently(metadata);
     if (!cancel.load() && client_.configured() && !tgdbChecked) {
         if (fetchFromTheGamesDB(request, downloader, out, gameDir, cancel) &&
@@ -564,6 +602,10 @@ DiscArtworkService::Snapshot DiscArtworkService::fetch(const Request &request,
     if (fileExists(out.boxart) && !out.screenshots.empty()) {
         out.state = State::Ready;
         pruneDiscCache(cacheRoot, gameDir);
+        return out;
+    }
+    if (!indexCacheReady) {
+        out.state = out.screenshots.empty() && !fileExists(out.boxart) ? State::Missing : State::Ready;
         return out;
     }
     LibretroIndex index;
