@@ -1,15 +1,18 @@
 #include "SafeFileWrite.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <dirent.h>
+#include <fcntl.h>
 #include <fstream>
 #include <sstream>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 #include <vector>
 
 namespace {
@@ -32,12 +35,29 @@ std::string dirnameOf(const std::string &path) {
 }
 
 bool readWholeFile(const std::string &path, std::string &out) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) return false;
-    std::ostringstream buffer;
-    buffer << in.rdbuf();
-    out = buffer.str();
-    return true;
+    out.clear();
+    const int fd = open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) return false;
+    struct stat info {};
+    if (fstat(fd, &info) != 0 || !S_ISREG(info.st_mode) || info.st_size < 0 ||
+        info.st_size > 1024 * 1024) {
+        close(fd);
+        return false;
+    }
+    out.reserve(static_cast<size_t>(info.st_size));
+    char buffer[4096];
+    for (;;) {
+        const ssize_t count = read(fd, buffer, sizeof(buffer));
+        if (count < 0 && errno == EINTR) continue;
+        if (count < 0 || out.size() + static_cast<size_t>(count) > 1024 * 1024) {
+            close(fd);
+            out.clear();
+            return false;
+        }
+        if (count == 0) break;
+        out.append(buffer, static_cast<size_t>(count));
+    }
+    return close(fd) == 0;
 }
 
 } // namespace
@@ -47,25 +67,42 @@ namespace SafeFileWrite {
 bool atomicWrite(const std::string &path, const std::string &content) {
     makeDirs(dirnameOf(path));
 
-    const std::string tmpPath = path + ".tmp";
-    {
-        std::ofstream out(tmpPath, std::ios::binary | std::ios::trunc);
-        if (!out) {
-            std::printf("safe-write: cannot open %s\n", tmpPath.c_str());
-            return false;
-        }
-        out.write(content.data(), std::streamsize(content.size()));
-        if (!out.good()) {
-            std::printf("safe-write: short write to %s\n", tmpPath.c_str());
-            return false;
-        }
+    static std::atomic<unsigned long long> sequence{0};
+    std::string tmpPath;
+    int fd = -1;
+    for (int attempt = 0; attempt < 8 && fd < 0; ++attempt) {
+        tmpPath = path + ".tmp-" + std::to_string(getpid()) + "-" +
+                  std::to_string(sequence.fetch_add(1));
+        fd = open(tmpPath.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0644);
     }
-
+    if (fd < 0) {
+        std::printf("safe-write: cannot create temporary file for %s: %s\n",
+                    path.c_str(), std::strerror(errno));
+        return false;
+    }
+    size_t written = 0;
+    while (written < content.size()) {
+        const ssize_t count = write(fd, content.data() + written, content.size() - written);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) break;
+        written += static_cast<size_t>(count);
+    }
+    const bool synced = written == content.size() && fsync(fd) == 0;
+    const bool closed = close(fd) == 0;
+    if (!synced || !closed) {
+        std::printf("safe-write: cannot write temporary file for %s\n", path.c_str());
+        unlink(tmpPath.c_str());
+        return false;
+    }
     if (std::rename(tmpPath.c_str(), path.c_str()) != 0) {
         std::printf("safe-write: rename %s -> %s failed: %s\n", tmpPath.c_str(), path.c_str(),
                     std::strerror(errno));
+        unlink(tmpPath.c_str());
         return false;
     }
+    const std::string parent = dirnameOf(path);
+    const int directory = open(parent.c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (directory >= 0) { fsync(directory); close(directory); }
     return true;
 }
 
