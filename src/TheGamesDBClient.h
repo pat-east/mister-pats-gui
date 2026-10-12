@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
 #include <string>
@@ -34,5 +35,6 @@ private:
     CheckState state_ = CheckState::NotChecked;
     bool pending_ = false;
     bool stopping_ = false;
+    std::atomic<bool> cancelCurrent_{false};
     std::thread worker_;
 };

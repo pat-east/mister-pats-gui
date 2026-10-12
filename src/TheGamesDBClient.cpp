@@ -66,6 +66,7 @@ TheGamesDBClient::~TheGamesDBClient() {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         stopping_ = true;
+        cancelCurrent_.store(true);
     }
     wake_.notify_all();
     if (worker_.joinable()) worker_.join();
@@ -121,6 +122,7 @@ bool TheGamesDBClient::startApiKeyCheck() {
     std::lock_guard<std::mutex> lock(mutex_);
     if (state_ == CheckState::Checking || pending_) return false;
     state_ = CheckState::Checking;
+    cancelCurrent_.store(false);
     pending_ = true;
     wake_.notify_one();
     return true;
@@ -166,7 +168,7 @@ void TheGamesDBClient::workerLoop() {
                                 Downloader::encodeComponent(key);
         CheckState result = CheckState::NetworkError;
         int httpStatus = 0;
-        if (downloader.fetchWithStatus(url, target, httpStatus, 20)) {
+        if (downloader.fetchWithStatus(url, target, httpStatus, 20, &cancelCurrent_)) {
             std::ifstream input(target.c_str(), std::ios::binary);
             const std::string json((std::istreambuf_iterator<char>(input)),
                                    std::istreambuf_iterator<char>());
