@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <mutex>
 #include <string>
@@ -31,6 +32,10 @@ private:
     void workerLoop();
 
     mutable std::mutex mutex_;
+    mutable std::mutex keyMutex_;
+    mutable std::string cachedKey_;
+    mutable std::chrono::steady_clock::time_point keyCacheCheckedAt_{};
+    mutable bool keyCacheInitialized_ = false;
     std::condition_variable wake_;
     CheckState state_ = CheckState::NotChecked;
     bool pending_ = false;

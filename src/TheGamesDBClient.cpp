@@ -98,43 +98,54 @@ void TheGamesDBClient::ensureSettingsFile() const {
 }
 
 std::string TheGamesDBClient::readKey() const {
-    ensureSettingsFile();
-    struct stat info {};
-    const int fd = open(settingsPath(), O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
-    if (fd < 0) return std::string();
-    if (fstat(fd, &info) != 0 || !S_ISREG(info.st_mode) || info.st_size < 0 ||
-        info.st_size > 16384) {
-        close(fd);
-        return std::string();
-    }
-    std::string contents;
-    contents.reserve(size_t(info.st_size));
-    char buffer[1024];
-    for (;;) {
-        const ssize_t count = read(fd, buffer, sizeof(buffer));
-        if (count < 0 && errno == EINTR) continue;
-        if (count < 0 || contents.size() + size_t(count) > 16384) {
+    std::lock_guard<std::mutex> lock(keyMutex_);
+    const auto now = std::chrono::steady_clock::now();
+    if (keyCacheInitialized_ && now - keyCacheCheckedAt_ < std::chrono::seconds(1))
+        return cachedKey_;
+
+    const auto readFromDisk = [this] {
+        ensureSettingsFile();
+        struct stat info {};
+        const int fd = open(settingsPath(), O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
+        if (fd < 0) return std::string();
+        if (fstat(fd, &info) != 0 || !S_ISREG(info.st_mode) || info.st_size < 0 ||
+            info.st_size > 16384) {
             close(fd);
             return std::string();
         }
-        if (count == 0) break;
-        contents.append(buffer, size_t(count));
-    }
-    close(fd);
-    std::istringstream input(contents);
-    std::string line;
-    while (std::getline(input, line)) {
-        line = trim(line);
-        if (line.empty() || line[0] == '#' || line[0] == ';') continue;
-        const size_t equals = line.find('=');
-        if (equals == std::string::npos || trim(line.substr(0, equals)) != "apikey") continue;
-        std::string key = trim(line.substr(equals + 1));
-        if (key.size() >= 2 && key.front() == '"' && key.back() == '"')
-            key = key.substr(1, key.size() - 2);
-        if (key.size() > 256) return std::string();
-        return trim(key);
-    }
-    return std::string();
+        std::string contents;
+        contents.reserve(size_t(info.st_size));
+        char buffer[1024];
+        for (;;) {
+            const ssize_t count = read(fd, buffer, sizeof(buffer));
+            if (count < 0 && errno == EINTR) continue;
+            if (count < 0 || contents.size() + size_t(count) > 16384) {
+                close(fd);
+                return std::string();
+            }
+            if (count == 0) break;
+            contents.append(buffer, size_t(count));
+        }
+        close(fd);
+        std::istringstream input(contents);
+        std::string line;
+        while (std::getline(input, line)) {
+            line = trim(line);
+            if (line.empty() || line[0] == '#' || line[0] == ';') continue;
+            const size_t equals = line.find('=');
+            if (equals == std::string::npos || trim(line.substr(0, equals)) != "apikey") continue;
+            std::string key = trim(line.substr(equals + 1));
+            if (key.size() >= 2 && key.front() == '"' && key.back() == '"')
+                key = key.substr(1, key.size() - 2);
+            if (key.size() > 256) return std::string();
+            return trim(key);
+        }
+        return std::string();
+    };
+    cachedKey_ = readFromDisk();
+    keyCacheCheckedAt_ = std::chrono::steady_clock::now();
+    keyCacheInitialized_ = true;
+    return cachedKey_;
 }
 
 bool TheGamesDBClient::configured() const { return !readKey().empty(); }
