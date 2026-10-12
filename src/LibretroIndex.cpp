@@ -132,7 +132,7 @@ std::string decodeHref(const std::string &text) {
 
 bool nonEmptyFile(const std::string &path) {
     struct stat st {};
-    return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0;
+    return lstat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0;
 }
 
 std::string digitsOf(const std::string &key) {
