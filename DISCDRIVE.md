@@ -136,6 +136,9 @@ Laufwerk vorhanden, öffnet sich eine Statusansicht mit getrennten Zeilen für:
 - Beim Prüfen der vorhandenen Installation verifiziert die GUI zusätzlich die SHA-256-Hashes von
   `MiSTer-disc` und beiden MGLs gegen genau diese v0.7.0-Dateien. Strukturell passende, aber
   unbekannte oder veränderte Dateien werden als **unverified** angezeigt und nicht gestartet.
+  Unmittelbar vor einem Start wird für alle drei verwalteten Dateien eine neue SHA-256-Prüfung
+  erzwungen; normale Status-Polls nutzen zur Begrenzung der SD-Karten-Lesezugriffe den
+  Dateimetadaten-Cache.
   FPGA-RBF-Dateien werden nur auf Vorhandensein geprüft, weil Nutzer diese unabhängig aktualisieren.
 
 „Disc-Paket“ meint hier Physical-Disc-Main-Unterstützung und MGLs; installierte FPGA-Cores und

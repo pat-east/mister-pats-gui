@@ -71,14 +71,16 @@ private:
     };
 
     void workerLoop();
-    Status inspect();
-    bool matchesPinnedHash(const std::string &path, const char *expectedHash);
+    Status inspect(bool forceHashes);
+    bool matchesPinnedHash(const std::string &path, const char *expectedHash,
+                           bool forceHash);
 
     mutable std::mutex mutex_;
     std::condition_variable wake_;
     Status snapshot_;
     std::unordered_map<std::string, HashCacheEntry> hashCache_;
     uint64_t requestedInspectionRevision_ = 0;
+    bool forceHashInspection_ = false;
     bool stopping_ = false;
     std::thread worker_;
 };

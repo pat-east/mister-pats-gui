@@ -192,6 +192,7 @@ uint64_t DiscCoreManager::requestInspection() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (stopping_) return requestedInspectionRevision_;
         revision = ++requestedInspectionRevision_;
+        forceHashInspection_ = true;
     }
     wake_.notify_one();
     return revision;
@@ -200,12 +201,15 @@ uint64_t DiscCoreManager::requestInspection() {
 void DiscCoreManager::workerLoop() {
     for (;;) {
         uint64_t revision;
+        bool forceHashes;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (stopping_) return;
             revision = requestedInspectionRevision_;
+            forceHashes = forceHashInspection_;
+            forceHashInspection_ = false;
         }
-        Status current = inspect();
+        Status current = inspect(forceHashes);
         current.inspectionRevision = revision;
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -220,7 +224,8 @@ void DiscCoreManager::workerLoop() {
     }
 }
 
-bool DiscCoreManager::matchesPinnedHash(const std::string &path, const char *expectedHash) {
+bool DiscCoreManager::matchesPinnedHash(const std::string &path, const char *expectedHash,
+                                        bool forceHash) {
     struct stat info {};
     if (lstat(path.c_str(), &info) != 0 || !S_ISREG(info.st_mode) || info.st_size <= 0) {
         hashCache_.erase(path);
@@ -238,7 +243,7 @@ bool DiscCoreManager::matchesPinnedHash(const std::string &path, const char *exp
             entry.mtimeNanoseconds == info.st_mtim.tv_nsec &&
             entry.ctimeSeconds == info.st_ctim.tv_sec &&
             entry.ctimeNanoseconds == info.st_ctim.tv_nsec;
-        if (sameFile && (entry.matches || now - entry.lastCheckTicks < 10))
+        if (!forceHash && sameFile && (entry.matches || now - entry.lastCheckTicks < 10))
             return entry.matches;
     }
 
@@ -257,14 +262,15 @@ bool DiscCoreManager::matchesPinnedHash(const std::string &path, const char *exp
     return entry.matches;
 }
 
-DiscCoreManager::Status DiscCoreManager::inspect() {
+DiscCoreManager::Status DiscCoreManager::inspect(bool forceHashes) {
     const std::string fatRoot = "/media/fat";
     const std::string iniPath = "/media/fat/MiSTer.ini";
     Status status;
     const std::string mainPath = fatRoot + "/MiSTer-disc";
     status.alternateMainInstalled = regularFile(mainPath);
     if (status.alternateMainInstalled) {
-        status.alternateMainVerified = matchesPinnedHash(mainPath, DiscCorePackage::kMainHash);
+        status.alternateMainVerified = matchesPinnedHash(mainPath, DiscCorePackage::kMainHash,
+                                                         forceHashes);
     }
     status.scopedMainConfigured = hasScopedMain(iniPath);
     status.psxCoreInstalled = installedRbf(fatRoot, "PSX");
@@ -282,7 +288,7 @@ DiscCoreManager::Status DiscCoreManager::inspect() {
             status.psxMglInstalled = true;
             const bool compatible = compatibleDiscMgl(path, "PSX");
             const bool verified = compatible &&
-                matchesPinnedHash(path, DiscCorePackage::kPlayStationMglHash);
+                matchesPinnedHash(path, DiscCorePackage::kPlayStationMglHash, forceHashes);
             if (status.psxMgl.empty() || verified || (!status.psxMglVerified && compatible))
                 status.psxMgl = path;
             status.psxMglCompatible = status.psxMglCompatible || compatible;
@@ -292,7 +298,7 @@ DiscCoreManager::Status DiscCoreManager::inspect() {
             status.saturnMglInstalled = true;
             const bool compatible = compatibleDiscMgl(path, "Saturn");
             const bool verified = compatible &&
-                matchesPinnedHash(path, DiscCorePackage::kSaturnMglHash);
+                matchesPinnedHash(path, DiscCorePackage::kSaturnMglHash, forceHashes);
             if (status.saturnMgl.empty() || verified || (!status.saturnMglVerified && compatible))
                 status.saturnMgl = path;
             status.saturnMglCompatible = status.saturnMglCompatible || compatible;
