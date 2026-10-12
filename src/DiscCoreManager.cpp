@@ -192,15 +192,51 @@ void DiscCoreManager::workerLoop() {
     }
 }
 
-DiscCoreManager::Status DiscCoreManager::inspect(const std::string &fatRoot,
-                                                const std::string &iniPath) const {
+bool DiscCoreManager::matchesPinnedHash(const std::string &path, const char *expectedHash) {
+    struct stat info {};
+    if (lstat(path.c_str(), &info) != 0 || !S_ISREG(info.st_mode) || info.st_size <= 0) {
+        hashCache_.erase(path);
+        return false;
+    }
+    const int64_t now = static_cast<int64_t>(
+        std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+    const auto cached = hashCache_.find(path);
+    if (cached != hashCache_.end()) {
+        const HashCacheEntry &entry = cached->second;
+        const bool sameFile = entry.device == uint64_t(info.st_dev) &&
+            entry.inode == uint64_t(info.st_ino) && entry.size == uint64_t(info.st_size) &&
+            entry.mtimeSeconds == info.st_mtim.tv_sec &&
+            entry.mtimeNanoseconds == info.st_mtim.tv_nsec &&
+            entry.ctimeSeconds == info.st_ctim.tv_sec &&
+            entry.ctimeNanoseconds == info.st_ctim.tv_nsec;
+        if (sameFile && (entry.matches || now - entry.lastCheckTicks < 10))
+            return entry.matches;
+    }
+
+    std::string ignored;
+    HashCacheEntry entry;
+    entry.device = uint64_t(info.st_dev);
+    entry.inode = uint64_t(info.st_ino);
+    entry.size = uint64_t(info.st_size);
+    entry.mtimeSeconds = info.st_mtim.tv_sec;
+    entry.mtimeNanoseconds = info.st_mtim.tv_nsec;
+    entry.ctimeSeconds = info.st_ctim.tv_sec;
+    entry.ctimeNanoseconds = info.st_ctim.tv_nsec;
+    entry.lastCheckTicks = now;
+    entry.matches = UpdateFiles::sameHash(path, expectedHash, ignored);
+    hashCache_[path] = entry;
+    return entry.matches;
+}
+
+DiscCoreManager::Status DiscCoreManager::inspect() {
+    const std::string fatRoot = "/media/fat";
+    const std::string iniPath = "/media/fat/MiSTer.ini";
     Status status;
     const std::string mainPath = fatRoot + "/MiSTer-disc";
     status.alternateMainInstalled = regularFile(mainPath);
     if (status.alternateMainInstalled) {
-        std::string ignored;
-        status.alternateMainVerified =
-            UpdateFiles::sameHash(mainPath, DiscCorePackage::kMainHash, ignored);
+        status.alternateMainVerified = matchesPinnedHash(mainPath, DiscCorePackage::kMainHash);
     }
     status.scopedMainConfigured = hasScopedMain(iniPath);
     status.psxCoreInstalled = installedRbf(fatRoot, "PSX");
@@ -217,9 +253,8 @@ DiscCoreManager::Status DiscCoreManager::inspect(const std::string &fatRoot,
              filename.find("playstation") != std::string::npos) && regularFile(path)) {
             status.psxMglInstalled = true;
             const bool compatible = compatibleDiscMgl(path, "PSX");
-            std::string ignored;
             const bool verified = compatible &&
-                UpdateFiles::sameHash(path, DiscCorePackage::kPlayStationMglHash, ignored);
+                matchesPinnedHash(path, DiscCorePackage::kPlayStationMglHash);
             if (status.psxMgl.empty() || verified || (!status.psxMglVerified && compatible))
                 status.psxMgl = path;
             status.psxMglCompatible = status.psxMglCompatible || compatible;
@@ -228,9 +263,8 @@ DiscCoreManager::Status DiscCoreManager::inspect(const std::string &fatRoot,
         if (filename.find("saturn") != std::string::npos && regularFile(path)) {
             status.saturnMglInstalled = true;
             const bool compatible = compatibleDiscMgl(path, "Saturn");
-            std::string ignored;
             const bool verified = compatible &&
-                UpdateFiles::sameHash(path, DiscCorePackage::kSaturnMglHash, ignored);
+                matchesPinnedHash(path, DiscCorePackage::kSaturnMglHash);
             if (status.saturnMgl.empty() || verified || (!status.saturnMglVerified && compatible))
                 status.saturnMgl = path;
             status.saturnMglCompatible = status.saturnMglCompatible || compatible;

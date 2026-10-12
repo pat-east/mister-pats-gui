@@ -1,9 +1,11 @@
 #pragma once
 
 #include <condition_variable>
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 
 #include "DiscDriveService.h"
 
@@ -50,16 +52,29 @@ public:
 
     // Latest filesystem inspection, refreshed by the manager worker.
     Status snapshot() const;
-    Status inspect(const std::string &fatRoot = "/media/fat",
-                   const std::string &iniPath = "/media/fat/MiSTer.ini") const;
     static const char *projectUrl();
 
 private:
+    struct HashCacheEntry {
+        uint64_t device = 0;
+        uint64_t inode = 0;
+        uint64_t size = 0;
+        int64_t mtimeSeconds = 0;
+        int64_t mtimeNanoseconds = 0;
+        int64_t ctimeSeconds = 0;
+        int64_t ctimeNanoseconds = 0;
+        int64_t lastCheckTicks = 0;
+        bool matches = false;
+    };
+
     void workerLoop();
+    Status inspect();
+    bool matchesPinnedHash(const std::string &path, const char *expectedHash);
 
     mutable std::mutex mutex_;
     std::condition_variable wake_;
     Status snapshot_;
+    std::unordered_map<std::string, HashCacheEntry> hashCache_;
     bool stopping_ = false;
     std::thread worker_;
 };
