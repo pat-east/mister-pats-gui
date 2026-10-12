@@ -23,31 +23,115 @@ std::string trim(const std::string &text) {
     return text.substr(first, last - first);
 }
 
-std::string jsonString(const std::string &json, const std::string &key) {
-    const std::string needle = "\"" + key + "\"";
-    const size_t keyPos = json.find(needle);
-    if (keyPos == std::string::npos) return std::string();
-    const size_t colon = json.find(':', keyPos + needle.size());
-    if (colon == std::string::npos) return std::string();
-    const size_t quote = json.find('"', colon + 1);
-    if (quote == std::string::npos) return std::string();
-    std::string value;
-    bool escaped = false;
-    for (size_t i = quote + 1; i < json.size(); ++i) {
-        const char ch = json[i];
-        if (escaped) { value.push_back(ch); escaped = false; continue; }
-        if (ch == '\\') { escaped = true; continue; }
-        if (ch == '"') return value;
-        value.push_back(ch);
+bool appendUtf8(std::string &out, unsigned long cp) {
+    if (cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return false;
+    if (cp <= 0x7f) out.push_back(char(cp));
+    else if (cp <= 0x7ff) {
+        out.push_back(char(0xc0 | (cp >> 6)));
+        out.push_back(char(0x80 | (cp & 0x3f)));
+    } else if (cp <= 0xffff) {
+        out.push_back(char(0xe0 | (cp >> 12)));
+        out.push_back(char(0x80 | ((cp >> 6) & 0x3f)));
+        out.push_back(char(0x80 | (cp & 0x3f)));
+    } else {
+        out.push_back(char(0xf0 | (cp >> 18)));
+        out.push_back(char(0x80 | ((cp >> 12) & 0x3f)));
+        out.push_back(char(0x80 | ((cp >> 6) & 0x3f)));
+        out.push_back(char(0x80 | (cp & 0x3f)));
     }
-    return std::string();
+    return true;
+}
+
+bool parseHexQuad(const std::string &json, size_t pos, unsigned long &value) {
+    if (pos + 4 > json.size()) return false;
+    value = 0;
+    for (size_t i = pos; i < pos + 4; ++i) {
+        const char digit = json[i];
+        value <<= 4;
+        if (digit >= '0' && digit <= '9') value |= digit - '0';
+        else if (digit >= 'a' && digit <= 'f') value |= digit - 'a' + 10;
+        else if (digit >= 'A' && digit <= 'F') value |= digit - 'A' + 10;
+        else return false;
+    }
+    return true;
+}
+
+bool parseJsonString(const std::string &json, size_t quote, std::string &value, size_t &after) {
+    if (quote >= json.size() || json[quote] != '"') return false;
+    value.clear();
+    for (size_t i = quote + 1; i < json.size(); ++i) {
+        const unsigned char ch = static_cast<unsigned char>(json[i]);
+        if (ch == '"') { after = i + 1; return true; }
+        if (ch < 0x20) return false;
+        if (ch != '\\') { value.push_back(char(ch)); continue; }
+        if (++i >= json.size()) return false;
+        switch (json[i]) {
+        case '"': value.push_back('"'); break;
+        case '\\': value.push_back('\\'); break;
+        case '/': value.push_back('/'); break;
+        case 'b': value.push_back('\b'); break;
+        case 'f': value.push_back('\f'); break;
+        case 'n': value.push_back('\n'); break;
+        case 'r': value.push_back('\r'); break;
+        case 't': value.push_back('\t'); break;
+        case 'u': {
+            unsigned long cp = 0;
+            if (!parseHexQuad(json, i + 1, cp)) return false;
+            i += 4;
+            if (cp >= 0xd800 && cp <= 0xdbff) {
+                if (i + 6 >= json.size() || json[i + 1] != '\\' || json[i + 2] != 'u') return false;
+                unsigned long low = 0;
+                if (!parseHexQuad(json, i + 3, low) || low < 0xdc00 || low > 0xdfff) return false;
+                cp = 0x10000 + ((cp - 0xd800) << 10) + (low - 0xdc00);
+                i += 6;
+            }
+            if (!appendUtf8(value, cp)) return false;
+            break;
+        }
+        default: return false;
+        }
+    }
+    return false;
+}
+
+size_t propertyPosition(const std::string &json, const std::string &key) {
+    for (size_t i = 0; i < json.size(); ++i) {
+        if (json[i] != '"') continue;
+        std::string candidate;
+        size_t after = 0;
+        if (!parseJsonString(json, i, candidate, after)) return std::string::npos;
+        size_t colon = after;
+        while (colon < json.size() && std::isspace(static_cast<unsigned char>(json[colon]))) ++colon;
+        if (candidate == key && colon < json.size() && json[colon] == ':') return i;
+        i = after - 1;
+    }
+    return std::string::npos;
+}
+
+size_t propertyColon(const std::string &json, size_t position) {
+    std::string ignored;
+    size_t after = 0;
+    if (!parseJsonString(json, position, ignored, after)) return std::string::npos;
+    while (after < json.size() && std::isspace(static_cast<unsigned char>(json[after]))) ++after;
+    return after < json.size() && json[after] == ':' ? after : std::string::npos;
+}
+
+std::string jsonString(const std::string &json, const std::string &key) {
+    const size_t pos = propertyPosition(json, key);
+    if (pos == std::string::npos) return std::string();
+    const size_t colon = propertyColon(json, pos);
+    if (colon == std::string::npos) return std::string();
+    size_t quote = colon + 1;
+    while (quote < json.size() && std::isspace(static_cast<unsigned char>(json[quote]))) ++quote;
+    std::string value;
+    size_t after = 0;
+    return parseJsonString(json, quote, value, after) ? value : std::string();
 }
 
 std::string jsonNumber(const std::string &json, const std::string &key) {
-    const std::string needle = "\"" + key + "\"";
-    const size_t keyPos = json.find(needle);
+    const size_t keyPos = propertyPosition(json, key);
     if (keyPos == std::string::npos) return std::string();
-    const size_t colon = json.find(':', keyPos + needle.size());
+    const size_t colon = propertyColon(json, keyPos);
     if (colon == std::string::npos) return std::string();
     size_t start = colon + 1;
     while (start < json.size() && std::isspace(static_cast<unsigned char>(json[start]))) ++start;
