@@ -120,6 +120,10 @@ Laufwerk vorhanden, öffnet sich eine Statusansicht mit getrennten Zeilen für:
   installiert nur `MiSTer-disc` und die PlayStation-/Saturn-MGLs, legt Backups an und schreibt
   ausschließlich `[CD-*] main=MiSTer-disc` in `MiSTer.ini`. Download und Prüfschritt lassen sich
   abbrechen; während der Installation wird ein begonnener Austausch sicher beendet.
+- Beim Prüfen der vorhandenen Installation verifiziert die GUI zusätzlich die SHA-256-Hashes von
+  `MiSTer-disc` und beiden MGLs gegen genau diese v0.7.0-Dateien. Strukturell passende, aber
+  unbekannte oder veränderte Dateien werden als **unverified** angezeigt und nicht gestartet.
+  FPGA-RBF-Dateien werden nur auf Vorhandensein geprüft, weil Nutzer diese unabhängig aktualisieren.
 
 „Disc-Paket“ meint hier Physical-Disc-Main-Unterstützung und MGLs; installierte FPGA-Cores und
 BIOS-Dateien werden nicht verändert. Der Start wird nur freigegeben, wenn auch der passende

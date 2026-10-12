@@ -18,15 +18,16 @@
 #include <zlib.h>
 
 #include "SafeFileWrite.h"
+#include "DiscCorePackage.h"
 #include "UpdateFiles.h"
 #include "VerifiedDownloader.h"
 
 namespace {
 
-const char *kMainHash = "67ba9761b08c362463805f41f18bb8d8cae34a7137893e3fd35b298988d9a909";
-const char *kMglZipHash = "df8542c705b1a764bd7eae6d859e5b0aee348a4fa73169909518f209ae5db4d7";
-const char *kMainUrl = "https://github.com/theshaneobrien/mister-disc-drive-support/releases/download/v0.7.0/MiSTer-disc";
-const char *kMglUrl = "https://github.com/theshaneobrien/mister-disc-drive-support/releases/download/v0.7.0/Disc-Cores-MGLs.zip";
+const std::string kMainUrl = std::string("https://github.com/theshaneobrien/mister-disc-drive-support/releases/download/v") +
+                             DiscCorePackage::kVersion + "/MiSTer-disc";
+const std::string kMglUrl = std::string("https://github.com/theshaneobrien/mister-disc-drive-support/releases/download/v") +
+                            DiscCorePackage::kVersion + "/Disc-Cores-MGLs.zip";
 const char *kRoot = "/media/fat";
 const char *kData = "/media/fat/mister-pat";
 
@@ -402,7 +403,7 @@ void DiscCoreInstaller::workerLoop() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (stopping_) return;
         snapshot_.state = ok ? State::Ready : cancel_.load() ? State::Cancelled : State::Failed;
-        snapshot_.message = ok ? "Disc package v0.7.0 installed" :
+        snapshot_.message = ok ? std::string("Disc package v") + DiscCorePackage::kVersion + " installed" :
             cancel_.load() ? "Download cancelled; installed files unchanged" : error;
     }
 }
@@ -436,8 +437,8 @@ bool DiscCoreInstaller::installPackage(std::string &error) {
     setState(State::Verifying, "Verifying official package…", 0);
     if (cancel_.load()) { error = "cancelled"; goto cleanup; }
     if (!UpdateFiles::isElf(mainFile) ||
-        !UpdateFiles::sameHash(mainFile, kMainHash, error, &cancel_) ||
-        !UpdateFiles::sameHash(zipFile, kMglZipHash, error, &cancel_)) {
+        !UpdateFiles::sameHash(mainFile, DiscCorePackage::kMainHash, error, &cancel_) ||
+        !UpdateFiles::sameHash(zipFile, DiscCorePackage::kMglZipHash, error, &cancel_)) {
         if (error.empty()) error = "downloaded package verification failed";
         goto cleanup;
     }

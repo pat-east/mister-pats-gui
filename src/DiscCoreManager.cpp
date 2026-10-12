@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "UpdateFiles.h"
+#include "DiscCorePackage.h"
 
 namespace {
 
@@ -32,7 +33,7 @@ std::string trim(const std::string &value) {
 
 bool regularFile(const std::string &path) {
     struct stat info {};
-    return stat(path.c_str(), &info) == 0 && S_ISREG(info.st_mode) && info.st_size > 0;
+    return lstat(path.c_str(), &info) == 0 && S_ISREG(info.st_mode) && info.st_size > 0;
 }
 
 bool endsWith(const std::string &text, const char *suffix);
@@ -194,7 +195,13 @@ void DiscCoreManager::workerLoop() {
 DiscCoreManager::Status DiscCoreManager::inspect(const std::string &fatRoot,
                                                 const std::string &iniPath) const {
     Status status;
-    status.alternateMainInstalled = regularFile(fatRoot + "/MiSTer-disc");
+    const std::string mainPath = fatRoot + "/MiSTer-disc";
+    status.alternateMainInstalled = regularFile(mainPath);
+    if (status.alternateMainInstalled) {
+        std::string ignored;
+        status.alternateMainVerified =
+            UpdateFiles::sameHash(mainPath, DiscCorePackage::kMainHash, ignored);
+    }
     status.scopedMainConfigured = hasScopedMain(iniPath);
     status.psxCoreInstalled = installedRbf(fatRoot, "PSX");
     status.saturnCoreInstalled = installedRbf(fatRoot, "Saturn");
@@ -210,14 +217,24 @@ DiscCoreManager::Status DiscCoreManager::inspect(const std::string &fatRoot,
              filename.find("playstation") != std::string::npos) && regularFile(path)) {
             status.psxMglInstalled = true;
             const bool compatible = compatibleDiscMgl(path, "PSX");
-            if (status.psxMgl.empty() || compatible) status.psxMgl = path;
+            std::string ignored;
+            const bool verified = compatible &&
+                UpdateFiles::sameHash(path, DiscCorePackage::kPlayStationMglHash, ignored);
+            if (status.psxMgl.empty() || verified || (!status.psxMglVerified && compatible))
+                status.psxMgl = path;
             status.psxMglCompatible = status.psxMglCompatible || compatible;
+            status.psxMglVerified = status.psxMglVerified || verified;
         }
         if (filename.find("saturn") != std::string::npos && regularFile(path)) {
             status.saturnMglInstalled = true;
             const bool compatible = compatibleDiscMgl(path, "Saturn");
-            if (status.saturnMgl.empty() || compatible) status.saturnMgl = path;
+            std::string ignored;
+            const bool verified = compatible &&
+                UpdateFiles::sameHash(path, DiscCorePackage::kSaturnMglHash, ignored);
+            if (status.saturnMgl.empty() || verified || (!status.saturnMglVerified && compatible))
+                status.saturnMgl = path;
             status.saturnMglCompatible = status.saturnMglCompatible || compatible;
+            status.saturnMglVerified = status.saturnMglVerified || verified;
         }
     }
     return status;

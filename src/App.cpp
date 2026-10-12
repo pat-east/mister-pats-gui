@@ -1175,10 +1175,13 @@ int App::run() {
             discCoreRefreshTimer_ = 3.0f;
             const auto current = discCores_.snapshot();
             if (current.alternateMainInstalled != discCoreStatus_.alternateMainInstalled ||
+                current.alternateMainVerified != discCoreStatus_.alternateMainVerified ||
                 current.psxMglInstalled != discCoreStatus_.psxMglInstalled ||
                 current.saturnMglInstalled != discCoreStatus_.saturnMglInstalled ||
                 current.psxMglCompatible != discCoreStatus_.psxMglCompatible ||
                 current.saturnMglCompatible != discCoreStatus_.saturnMglCompatible ||
+                current.psxMglVerified != discCoreStatus_.psxMglVerified ||
+                current.saturnMglVerified != discCoreStatus_.saturnMglVerified ||
                 current.psxCoreInstalled != discCoreStatus_.psxCoreInstalled ||
                 current.saturnCoreInstalled != discCoreStatus_.saturnCoreInstalled ||
                 current.scopedMainConfigured != discCoreStatus_.scopedMainConfigured) {

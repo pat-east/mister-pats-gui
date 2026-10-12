@@ -13,10 +13,13 @@ class DiscCoreManager {
 public:
     struct Status {
         bool alternateMainInstalled = false;
+        bool alternateMainVerified = false;
         bool psxMglInstalled = false;
         bool saturnMglInstalled = false;
         bool psxMglCompatible = false;
         bool saturnMglCompatible = false;
+        bool psxMglVerified = false;
+        bool saturnMglVerified = false;
         bool psxCoreInstalled = false;
         bool saturnCoreInstalled = false;
         bool scopedMainConfigured = false;
@@ -24,18 +27,18 @@ public:
         std::string saturnMgl;
 
         bool packageReady() const {
-            return alternateMainInstalled && psxMglCompatible && saturnMglCompatible &&
-                   scopedMainConfigured;
+            return alternateMainVerified && psxMglCompatible && saturnMglCompatible &&
+                   psxMglVerified && saturnMglVerified && scopedMainConfigured;
         }
         bool ready() const {
             return packageReady() && psxCoreInstalled && saturnCoreInstalled;
         }
         bool readyFor(DiscDriveService::System system) const {
-            return alternateMainInstalled && scopedMainConfigured &&
+            return alternateMainVerified && scopedMainConfigured &&
                    (system == DiscDriveService::System::PlayStation
-                        ? psxMglCompatible && psxCoreInstalled
+                        ? psxMglCompatible && psxMglVerified && psxCoreInstalled
                         : system == DiscDriveService::System::Saturn
-                            ? saturnMglCompatible && saturnCoreInstalled : false);
+                            ? saturnMglCompatible && saturnMglVerified && saturnCoreInstalled : false);
         }
         bool hasAnyCore() const { return psxMglInstalled || saturnMglInstalled; }
     };

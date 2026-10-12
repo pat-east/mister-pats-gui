@@ -6,6 +6,7 @@
 
 #include "Canvas.h"
 #include "ButtonLabels.h"
+#include "DiscCorePackage.h"
 #include "GamesScreen.h"
 
 namespace {
@@ -364,10 +365,12 @@ void SettingsScreen::buildRows() {
                                  std::to_string(state.bytes / 1024) + " KB — A cancel";
                          if (!state.message.empty()) return state.message;
                          const auto cores = context_.discCores.snapshot();
-                         if (cores.packageReady()) return std::string("Installed v0.7.0");
+                         if (cores.packageReady())
+                             return std::string("Installed v") + DiscCorePackage::kVersion;
                          return cores.alternateMainInstalled || cores.psxMglInstalled ||
                                 cores.saturnMglInstalled
-                             ? std::string("Repair/update v0.7.0") : std::string("Install v0.7.0");
+                             ? std::string("Repair/update v") + DiscCorePackage::kVersion
+                             : std::string("Install v") + DiscCorePackage::kVersion;
                      },
                      [this] {
                          if (context_.discInstaller.busy()) {
@@ -1570,18 +1573,27 @@ void SettingsScreen::renderDiscDriveSettings(Canvas &canvas, const Rect &area) {
     line("Drive", drive.device.empty() ? "Not available" : drive.device + "  " + drive.model,
          drive.device.empty() ? theme.warning : theme.accent);
     line("Disc status", DiscDriveService::stateName(drive.state), theme.textMuted);
-    line("Physical-Disc Main", cores.alternateMainInstalled ? "MiSTer-disc installed" : "Missing",
-         cores.alternateMainInstalled ? theme.accent : theme.warning);
+    line("Physical-Disc Main", !cores.alternateMainInstalled ? "Missing" :
+             cores.alternateMainVerified
+                 ? std::string("MiSTer-disc v") + DiscCorePackage::kVersion + " verified"
+                 : "Present, unverified",
+         cores.alternateMainVerified ? theme.accent : theme.warning);
     line("Scoped [CD-*] setting", cores.scopedMainConfigured ? "Configured" : "Missing",
          cores.scopedMainConfigured ? theme.accent : theme.warning);
     line("PlayStation MGL", !cores.psxMglInstalled ? "Missing" :
-             cores.psxMglCompatible ? cores.psxMgl : "Incompatible",
-         cores.psxMglCompatible ? theme.accent : theme.warning);
+             !cores.psxMglCompatible ? "Incompatible" :
+             cores.psxMglVerified
+                 ? std::string("v") + DiscCorePackage::kVersion + " verified"
+                 : "Compatible, unverified",
+         cores.psxMglVerified ? theme.accent : theme.warning);
     line("PlayStation RBF", cores.psxCoreInstalled ? "Installed" : "Missing",
          cores.psxCoreInstalled ? theme.accent : theme.warning);
     line("Saturn MGL", !cores.saturnMglInstalled ? "Missing" :
-             cores.saturnMglCompatible ? cores.saturnMgl : "Incompatible",
-         cores.saturnMglCompatible ? theme.accent : theme.warning);
+             !cores.saturnMglCompatible ? "Incompatible" :
+             cores.saturnMglVerified
+                 ? std::string("v") + DiscCorePackage::kVersion + " verified"
+                 : "Compatible, unverified",
+         cores.saturnMglVerified ? theme.accent : theme.warning);
     line("Saturn RBF", cores.saturnCoreInstalled ? "Installed" : "Missing",
          cores.saturnCoreInstalled ? theme.accent : theme.warning);
     y += theme.px(12);
