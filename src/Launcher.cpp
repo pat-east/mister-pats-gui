@@ -1,10 +1,12 @@
 #include "Launcher.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <dirent.h>
+#include <fcntl.h>
 #include <fstream>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -12,7 +14,6 @@
 
 #include "Archive.h"
 #include "Library.h"
-#include "UpdateFiles.h"
 
 namespace {
 
@@ -32,6 +33,58 @@ const char *kDiscExtensions[] = {"cue", "chd", "iso", "ccd"};
 // up yet.
 constexpr int kResolveAttempts = 10;
 constexpr int kResolveDelayUs = 300000;   // 300 ms; ten attempts is a three-second ceiling
+
+bool readPhysicalMgl(const std::string &root, const std::string &relative,
+                     std::string &contents) {
+    contents.clear();
+    if (relative.empty()) return false;
+    int directory = open(root.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (directory < 0) return false;
+
+    size_t start = 0;
+    while (start < relative.size()) {
+        const size_t slash = relative.find('/', start);
+        const std::string component = relative.substr(start,
+            slash == std::string::npos ? std::string::npos : slash - start);
+        if (component.empty() || component == "." || component == "..") {
+            close(directory);
+            return false;
+        }
+        const bool final = slash == std::string::npos;
+        const int flags = O_RDONLY | O_NOFOLLOW | O_CLOEXEC |
+                          (final ? 0 : O_DIRECTORY);
+        const int next = openat(directory, component.c_str(), flags);
+        close(directory);
+        if (next < 0) return false;
+        if (final) {
+            struct stat info {};
+            if (fstat(next, &info) != 0 || !S_ISREG(info.st_mode) ||
+                info.st_size <= 0 || info.st_size > 16384) {
+                close(next);
+                return false;
+            }
+            char buffer[4096];
+            for (;;) {
+                const ssize_t count = read(next, buffer, sizeof(buffer));
+                if (count < 0 && errno == EINTR) continue;
+                if (count == 0) {
+                    close(next);
+                    return !contents.empty();
+                }
+                if (count < 0 || contents.size() + size_t(count) > 16384) {
+                    close(next);
+                    contents.clear();
+                    return false;
+                }
+                contents.append(buffer, size_t(count));
+            }
+        }
+        directory = next;
+        start = slash + 1;
+    }
+    close(directory);
+    return false;
+}
 
 std::string extensionOf(const std::string &name) {
     const size_t dot = name.find_last_of('.');
@@ -237,12 +290,11 @@ bool Launcher::launchPhysicalDisc(const std::string &mglPath) {
             return false;
         }
     }
-    if (!UpdateFiles::regularFile(mglPath)) {
-        error_ = "physical-disc MGL is missing: " + mglPath;
-        return false;
-    }
-    if (!UpdateFiles::readLimited(mglPath, 16384, mgl_)) {
-        error_ = "physical-disc MGL cannot be read or exceeds 16 KiB: " + mglPath;
+    const bool nested = mglPath.compare(0, nestedRoot.size(), nestedRoot) == 0;
+    const std::string &selectedRoot = nested ? nestedRoot : root;
+    const std::string rootWithoutSlash = selectedRoot.substr(0, selectedRoot.size() - 1);
+    if (!readPhysicalMgl(rootWithoutSlash, mglPath.substr(selectedRoot.size()), mgl_)) {
+        error_ = "physical-disc MGL cannot be opened safely or exceeds 16 KiB: " + mglPath;
         return false;
     }
     if (mgl_.empty() || mgl_.find("<mistergamedescription") == std::string::npos ||
