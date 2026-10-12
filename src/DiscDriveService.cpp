@@ -16,6 +16,7 @@
 #include <poll.h>
 #include <spawn.h>
 #include <signal.h>
+#include <sys/file.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
@@ -27,6 +28,7 @@
 
 #include "Paths.h"
 #include "DiscIndexData.h"
+#include "DebugLog.h"
 
 extern char **environ;
 
@@ -51,6 +53,7 @@ struct ProbeWire {
     char model[128] = {};
     char title[512] = {};
     char identifier[128] = {};
+    char region[64] = {};
     char error[256] = {};
 };
 
@@ -71,6 +74,7 @@ ProbeWire toWire(const DiscDriveService::Snapshot &snapshot) {
     copyWireText(wire.model, snapshot.model);
     copyWireText(wire.title, snapshot.title);
     copyWireText(wire.identifier, snapshot.identifier);
+    copyWireText(wire.region, snapshot.region);
     copyWireText(wire.error, snapshot.error);
     return wire;
 }
@@ -84,6 +88,7 @@ bool fromWire(const ProbeWire &wire, DiscDriveService::Snapshot &snapshot) {
         wire.model[sizeof(wire.model) - 1] != '\0' ||
         wire.title[sizeof(wire.title) - 1] != '\0' ||
         wire.identifier[sizeof(wire.identifier) - 1] != '\0' ||
+        wire.region[sizeof(wire.region) - 1] != '\0' ||
         wire.error[sizeof(wire.error) - 1] != '\0') return false;
     snapshot.state = static_cast<DiscDriveService::MediaState>(wire.state);
     snapshot.system = static_cast<DiscDriveService::System>(wire.system);
@@ -93,6 +98,7 @@ bool fromWire(const ProbeWire &wire, DiscDriveService::Snapshot &snapshot) {
     snapshot.model = wire.model;
     snapshot.title = wire.title;
     snapshot.identifier = wire.identifier;
+    snapshot.region = wire.region;
     snapshot.error = wire.error;
     return true;
 }
@@ -131,6 +137,62 @@ bool sendAllNoSignal(int fd, const void *buffer, size_t size) {
         offset += size_t(sent);
     }
     return true;
+}
+
+bool probeExitedFromCrash(int status) {
+    if (WIFSIGNALED(status)) return WTERMSIG(status) != SIGKILL;
+    if (!WIFEXITED(status)) return false;
+    const int code = WEXITSTATUS(status);
+    return code == 70 || code == 128 + SIGSEGV || code == 128 + SIGBUS ||
+           code == 128 + SIGILL || code == 128 + SIGFPE || code == 128 + SIGABRT;
+}
+
+bool moveAboveStandardDescriptors(int &fd) {
+    if (fd >= STDERR_FILENO + 1) return true;
+    const int duplicate = fcntl(fd, F_DUPFD_CLOEXEC, STDERR_FILENO + 1);
+    if (duplicate < 0) return false;
+    close(fd);
+    fd = duplicate;
+    return true;
+}
+
+int acquireProbeGuard(bool &alreadyHeld, int &errorNumber) {
+    alreadyHeld = false;
+    errorNumber = 0;
+    int fd = open("/tmp/mister-pat-disc-probe.lock",
+                  O_RDWR | O_CREAT | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK, 0600);
+    if (fd < 0) { errorNumber = errno; return -1; }
+    struct stat info {};
+    if (fstat(fd, &info) != 0) {
+        errorNumber = errno;
+        close(fd);
+        return -1;
+    }
+    if (!S_ISREG(info.st_mode) || info.st_uid != geteuid() || (info.st_mode & 0077) != 0) {
+        errorNumber = EINVAL;
+        close(fd);
+        return -1;
+    }
+    if (flock(fd, LOCK_EX | LOCK_NB) != 0) {
+        errorNumber = errno;
+        alreadyHeld = errorNumber == EWOULDBLOCK || errorNumber == EAGAIN;
+        close(fd);
+        return -1;
+    }
+    if (!moveAboveStandardDescriptors(fd)) {
+        errorNumber = errno;
+        flock(fd, LOCK_UN);
+        close(fd);
+        return -1;
+    }
+    const int descriptorFlags = fcntl(fd, F_GETFD);
+    if (descriptorFlags < 0 || fcntl(fd, F_SETFD, descriptorFlags & ~FD_CLOEXEC) != 0) {
+        errorNumber = errno;
+        flock(fd, LOCK_UN);
+        close(fd);
+        return -1;
+    }
+    return fd;
 }
 
 std::string trim(const std::string &text);
@@ -233,13 +295,27 @@ const std::unordered_map<std::string, std::vector<std::string>> &titleIndex() {
     static const std::unordered_map<std::string, std::vector<std::string>> index = [] {
         std::unordered_map<std::string, std::vector<std::string>> result;
         std::string embedded;
-        if (loadEmbeddedDiscIndex(embedded)) {
+        const bool embeddedLoaded = loadEmbeddedDiscIndex(embedded);
+        if (embeddedLoaded) {
             std::istringstream builtIn(embedded);
             readIndex(builtIn, result);
         }
+        const auto recordCounts = [](const std::unordered_map<std::string,
+                                         std::vector<std::string>> &entries) {
+            std::pair<size_t, size_t> counts{0, 0};
+            for (const auto &entry : entries) {
+                if (entry.first.compare(0, 4, "PSX\t") == 0) counts.first += entry.second.size();
+                else if (entry.first.compare(0, 7, "SATURN\t") == 0) counts.second += entry.second.size();
+            }
+            return counts;
+        };
+        const auto embeddedCounts = recordCounts(result);
 
         const std::string externalPath = std::string(MISTER_PAT_ROOT) + "/disc-index.tsv";
         const int indexFd = open(externalPath.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+        std::string externalState = indexFd < 0
+            ? (errno == ENOENT ? "absent" : "unavailable") : "invalid";
+        size_t externalRecords = 0;
         if (indexFd >= 0) {
             struct stat info {};
             if (fstat(indexFd, &info) == 0 && S_ISREG(info.st_mode) &&
@@ -263,13 +339,53 @@ const std::unordered_map<std::string, std::vector<std::string>> &titleIndex() {
                     std::istringstream externalInput(contents);
                     std::unordered_map<std::string, std::vector<std::string>> overrides;
                     readIndex(externalInput, overrides);
+                    const auto externalCounts = recordCounts(overrides);
+                    externalRecords = externalCounts.first + externalCounts.second;
                     for (auto &entry : overrides)
                         result[entry.first] = std::move(entry.second);
+                    externalState = externalRecords ? "loaded" : "empty";
                 }
             }
             close(indexFd);
         }
+        const auto totalCounts = recordCounts(result);
+        const std::string summary = std::string("disc index: embedded=") +
+            (embeddedLoaded ? "loaded" : "failed") +
+            "; embedded-PS1=" + std::to_string(embeddedCounts.first) +
+            "; embedded-Saturn=" + std::to_string(embeddedCounts.second) +
+            "; external=" + externalState +
+            "; external-records=" + std::to_string(externalRecords) +
+            "; total-PS1=" + std::to_string(totalCounts.first) +
+            "; total-Saturn=" + std::to_string(totalCounts.second);
+        if (embeddedCounts.first == 0 || embeddedCounts.second == 0)
+            DebugLog::error(summary);
+        else
+            DebugLog::info(summary);
         return result;
+    }();
+    return index;
+}
+
+std::string serialLookupKey(const std::string &value) {
+    std::string normalized;
+    normalized.reserve(value.size());
+    for (unsigned char ch : value) {
+        if (ch >= 'A' && ch <= 'Z') normalized.push_back(char(ch));
+        else if (ch >= 'a' && ch <= 'z') normalized.push_back(char(ch - 'a' + 'A'));
+        else if (ch >= '0' && ch <= '9') normalized.push_back(char(ch));
+    }
+    return normalized;
+}
+
+const std::unordered_map<std::string, std::vector<std::string>> &normalizedPsxIndex() {
+    static const std::unordered_map<std::string, std::vector<std::string>> index = [] {
+        std::unordered_map<std::string, std::vector<std::string>> normalized;
+        for (const auto &entry : titleIndex()) {
+            if (entry.first.compare(0, 4, "PSX\t") != 0) continue;
+            std::vector<std::string> &titles = normalized[serialLookupKey(entry.first.substr(4))];
+            titles.insert(titles.end(), entry.second.begin(), entry.second.end());
+        }
+        return normalized;
     }();
     return index;
 }
@@ -279,6 +395,12 @@ std::string indexedTitle(const char *system, const std::string &identifier) {
     const std::string key = std::string(system) + "\t" + identifier;
     auto exact = index.find(key);
     if (exact != index.end()) return resolveIndexTitles(exact->second);
+    if (std::strcmp(system, "PSX") == 0) {
+        const auto &normalized = normalizedPsxIndex();
+        const auto match = normalized.find(serialLookupKey(identifier));
+        if (match != normalized.end()) return resolveIndexTitles(match->second);
+        return {};
+    }
     // Saturn boot headers omit Redump's region/disc suffix (for example -50).
     if (std::strcmp(system, "SATURN") == 0) {
         const std::string prefix = key + "-";
@@ -370,6 +492,22 @@ std::string headerText(const unsigned char *bytes, size_t length) {
     return trim(out);
 }
 
+std::string collapseSpaces(const std::string &text) {
+    std::string out;
+    out.reserve(text.size());
+    bool previousWasSpace = false;
+    for (char ch : text) {
+        if (ch == ' ') {
+            if (!previousWasSpace) out.push_back(ch);
+            previousWasSpace = true;
+        } else {
+            out.push_back(ch);
+            previousWasSpace = false;
+        }
+    }
+    return out;
+}
+
 bool isPlayStationPvd(const unsigned char *pvd, uint32_t &volumeBlocks) {
     uint16_t logicalBlockSize = 0;
     return pvd[0] == 1 && std::memcmp(pvd + 1, "CD001", 5) == 0 && pvd[6] == 1 &&
@@ -381,23 +519,89 @@ bool isPlayStationPvd(const unsigned char *pvd, uint32_t &volumeBlocks) {
 
 std::string normalizePsxSerial(const std::string &text) {
     const std::string upper = upperAscii(text);
-    for (size_t start = 0; start + 11 <= upper.size(); ++start) {
-        bool prefix = true;
-        for (size_t i = 0; i < 4; ++i)
-            if (upper[start + i] < 'A' || upper[start + i] > 'Z') prefix = false;
-        if (!prefix) continue;
-        const char separator = upper[start + 4];
-        if (separator != '_' && separator != '-') continue;
-        if (!std::isdigit(static_cast<unsigned char>(upper[start + 5])) ||
-            !std::isdigit(static_cast<unsigned char>(upper[start + 6])) ||
-            !std::isdigit(static_cast<unsigned char>(upper[start + 7])) ||
-            (upper[start + 8] != '.' && upper[start + 8] != '_') ||
-            !std::isdigit(static_cast<unsigned char>(upper[start + 9])) ||
-            !std::isdigit(static_cast<unsigned char>(upper[start + 10]))) continue;
-        return upper.substr(start, 4) + "-" + upper.substr(start + 5, 3) +
-               upper.substr(start + 9, 2);
+    const size_t colon = upper.find(':');
+    std::string path = colon == std::string::npos ? upper : upper.substr(colon + 1);
+    while (!path.empty() && (path.front() == '/' || path.front() == '\\')) path.erase(path.begin());
+    const size_t version = path.find(';');
+    if (version != std::string::npos) path.resize(version);
+    const size_t slash = path.find_last_of("/\\");
+    if (slash != std::string::npos) path.erase(0, slash + 1);
+
+    const auto indexedFallback = [&path] {
+        if (path.empty()) return std::string();
+        for (unsigned char ch : path)
+            if (!((ch >= 'A' && ch <= 'Z') || std::isdigit(ch) ||
+                  ch == '.' || ch == '_' || ch == '-')) return std::string();
+        return indexedTitle("PSX", path).empty() ? std::string() : path;
+    };
+
+    size_t prefixLength = 0;
+    while (prefixLength < path.size() && prefixLength < 4 &&
+           path[prefixLength] >= 'A' && path[prefixLength] <= 'Z') ++prefixLength;
+    if (prefixLength < 2 || prefixLength >= path.size() ||
+        (path[prefixLength] != '_' && path[prefixLength] != '-')) return indexedFallback();
+    const size_t serialStart = prefixLength + 1;
+    if (path.size() - serialStart < 4) return indexedFallback();
+    bool hasDigit = false;
+    for (size_t i = serialStart; i < path.size(); ++i) {
+        const unsigned char ch = static_cast<unsigned char>(path[i]);
+        if (std::isdigit(ch)) { hasDigit = true; continue; }
+        if ((ch >= 'A' && ch <= 'Z') || ch == '.' || ch == '_' || ch == '-') continue;
+        return indexedFallback();
     }
-    return std::string();
+    if (!hasDigit) return indexedFallback();
+    path[prefixLength] = '-';
+    // The common four-letter serial form writes a dot or underscore between its
+    // three-digit product code and two-digit suffix (e.g. SLES_015.07). Keep the
+    // established display form without that separator while preserving less common
+    // identifiers such as LSP-010150-0.1 verbatim for the normalized index lookup.
+    if (prefixLength == 4 && path.size() == prefixLength + 7 &&
+        std::isdigit(static_cast<unsigned char>(path[prefixLength + 1])) &&
+        std::isdigit(static_cast<unsigned char>(path[prefixLength + 2])) &&
+        std::isdigit(static_cast<unsigned char>(path[prefixLength + 3])) &&
+        (path[prefixLength + 4] == '.' || path[prefixLength + 4] == '_') &&
+        std::isdigit(static_cast<unsigned char>(path[prefixLength + 5])) &&
+        std::isdigit(static_cast<unsigned char>(path[prefixLength + 6]))) {
+        path.erase(prefixLength + 4, 1);
+    }
+    return path;
+}
+
+std::string psxRegion(const std::string &serial) {
+    const size_t separator = serial.find('-');
+    const std::string prefix = serial.substr(0, separator);
+    if (prefix == "SLES" || prefix == "SCES" || prefix == "SCED" || prefix == "SLED" ||
+        prefix == "PEPX") return "Europe";
+    if (prefix == "SLUS" || prefix == "SCUS" || prefix == "SPUS" || prefix == "LSP")
+        return "USA";
+    if (prefix == "SLPS" || prefix == "SLPM" || prefix == "SCPS" || prefix == "SCPM" ||
+        prefix == "SCZS" || prefix == "SIPS" || prefix == "PAPX" || prefix == "PCPX" ||
+        prefix == "PTPX" || prefix == "ESPM") return "Japan";
+    if (prefix == "SLKA" || prefix == "SCKA") return "Korea";
+    return {};
+}
+
+std::string saturnRegion(const unsigned char *header) {
+    const std::string flags = upperAscii(headerText(header + 0x40, 16));
+    std::string regions;
+    const auto add = [&regions](const char *name) {
+        if (regions.find(name) != std::string::npos) return;
+        if (!regions.empty()) regions += ", ";
+        regions += name;
+    };
+    for (char flag : flags) {
+        switch (flag) {
+        case 'J': add("Japan"); break;
+        case 'U': add("USA"); break;
+        case 'E': add("Europe"); break;
+        case 'A': add("Asia"); break;
+        case 'K': add("Korea"); break;
+        case 'B': add("Brazil"); break;
+        case ' ': break;
+        default: return {};
+        }
+    }
+    return regions;
 }
 
 bool readPsxBootIdentifier(int fd, std::string &identifier, uint64_t &fingerprint) {
@@ -488,6 +692,7 @@ bool readPsxBootIdentifier(int fd, std::string &identifier, uint64_t &fingerprin
 void readMetadata(int fd, DiscDriveService::Snapshot &out) {
     unsigned char first[kSectorBytes];
     if (!readAt(fd, 0, first, sizeof(first))) {
+        DebugLog::warn("disc metadata: could not read the first sector");
         out.state = DiscDriveService::MediaState::Unreadable;
         out.error = "Could not read the disc";
         return;
@@ -497,14 +702,29 @@ void readMetadata(int fd, DiscDriveService::Snapshot &out) {
     if (std::memcmp(first, "SEGA SEGASATURN", 15) == 0) {
         out.system = DiscDriveService::System::Saturn;
         out.identifier = headerText(first + 0x20, 16);
-        out.title = headerText(first + 0x60, 0x70);
+        out.region = saturnRegion(first);
+        const std::string headerTitle = collapseSpaces(headerText(first + 0x60, 0x70));
+        out.title = headerTitle;
         const std::string indexed = indexedTitle("SATURN", out.identifier);
-        if (!indexed.empty()) out.title = indexed;
+        // Saturn's own header carries the regional product title. The local
+        // Redump index can contain only another region's title for a shared
+        // product code (for example "Legend of Oasis, The (USA)" for a PAL
+        // disc whose header says "The Story of Thor 2"). Use the index only
+        // when the disc header has no usable title.
+        if (out.title.empty()) out.title = indexed;
+        const char *titleSource = !headerTitle.empty() ? "disc-header" :
+                                  !indexed.empty() ? "local-title-index" : "identifier";
         if (out.title.empty()) out.title = out.identifier;
+        DebugLog::info(std::string("disc metadata: Saturn header recognized; local-title-index=") +
+                       (indexed.empty() ? "miss" : "hit") +
+                       "; title-source=" + titleSource +
+                       "; region-flags=" + (out.region.empty() ? "unknown" : "recognized"));
         out.state = out.identifier.empty() ? DiscDriveService::MediaState::Unreadable
                                            : DiscDriveService::MediaState::Readable;
-        if (out.state == DiscDriveService::MediaState::Unreadable)
+        if (out.state == DiscDriveService::MediaState::Unreadable) {
             out.error = "The Saturn disc header is incomplete";
+            DebugLog::warn("disc metadata: Saturn header is incomplete");
+        }
         return;
     }
 
@@ -513,9 +733,14 @@ void readMetadata(int fd, DiscDriveService::Snapshot &out) {
     if (readPsxBootIdentifier(fd, serial, psxFingerprint)) {
         out.system = DiscDriveService::System::PlayStation;
         out.identifier = serial;
+        out.region = psxRegion(serial);
         out.mediaFingerprint = psxFingerprint;
         out.title = indexedTitle("PSX", serial);
+        const bool titleFound = !out.title.empty();
         if (out.title.empty()) out.title = "PlayStation disc";
+        DebugLog::info(std::string("disc metadata: PlayStation boot ID recognized; local-title-index=") +
+                       (titleFound ? "hit" : "miss") +
+                       "; region-prefix=" + (out.region.empty() ? "unknown" : "recognized"));
         out.state = DiscDriveService::MediaState::Readable;
         return;
     }
@@ -528,11 +753,13 @@ void readMetadata(int fd, DiscDriveService::Snapshot &out) {
         out.system = DiscDriveService::System::PlayStation;
         out.mediaFingerprint = fingerprintBytes(out.mediaFingerprint, pvd, sizeof(pvd));
         out.state = DiscDriveService::MediaState::Readable;
+        DebugLog::warn("disc metadata: PlayStation volume descriptor found, but SYSTEM.CNF boot ID was not resolved");
         return;
     }
 
     out.state = DiscDriveService::MediaState::Unsupported;
     out.error = "No supported PlayStation or Saturn disc was found";
+    DebugLog::warn("disc metadata: medium is not a supported PlayStation or Saturn disc");
 }
 
 std::string readModel(const std::string &device) {
@@ -554,7 +781,8 @@ bool opticalDeviceName(const char *name) {
 bool sameMedia(const DiscDriveService::Snapshot &a, const DiscDriveService::Snapshot &b) {
     return a.state == b.state && a.system == b.system && a.device == b.device &&
            a.model == b.model && a.title == b.title && a.identifier == b.identifier &&
-           a.error == b.error && a.mediaFingerprint == b.mediaFingerprint;
+           a.region == b.region && a.error == b.error &&
+           a.mediaFingerprint == b.mediaFingerprint;
 }
 
 } // namespace
@@ -594,7 +822,11 @@ DiscDriveService::~DiscDriveService() {
 
 DiscDriveService::Snapshot DiscDriveService::snapshot() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    if ((probeActive_ || probeRequested_) && snapshot_.state != MediaState::NoDrive) {
+    if (probeActive_ || probeRequested_) {
+        // Keep the last confirmed media state visible while a periodic check runs. Marking
+        // a known empty drive as Checking made the empty-state controls flash every poll;
+        // marking a readable disc that way also made its metadata and Start button blink.
+        if (snapshot_.state != MediaState::Checking) return snapshot_;
         Snapshot pending = snapshot_;
         pending.state = MediaState::Checking;
         pending.system = System::Unknown;
@@ -631,6 +863,7 @@ const char *DiscDriveService::systemName(System system) {
 }
 
 void DiscDriveService::workerLoop() {
+    bool hasLoggedProbe = false;
     for (;;) {
         Snapshot previous;
         bool forceMetadataRead = false;
@@ -645,11 +878,38 @@ void DiscDriveService::workerLoop() {
             probeStarted_ = std::chrono::steady_clock::now();
         }
 
+        const auto probeStart = std::chrono::steady_clock::now();
         Snapshot next = probeWithTimeout(previous, forceMetadataRead);
         if (next.generation <= previous.generation) {
             next.generation = sameMedia(previous, next)
                 ? previous.generation : previous.generation + 1;
         }
+        if (!hasLoggedProbe || forceMetadataRead ||
+            next.state != previous.state || next.system != previous.system ||
+            next.generation != previous.generation || next.device != previous.device) {
+            const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - probeStart).count();
+            std::string message = std::string("disc probe: state=") + stateName(next.state) +
+                "; system=" + systemName(next.system) +
+                "; media-generation=" + std::to_string(next.generation) +
+                "; ID=" + (next.identifier.empty() ? "unavailable" : "present") +
+                "; title=" + (next.title.empty() || next.title == "PlayStation disc" ? "unresolved" : "resolved") +
+                "; elapsed-ms=" + std::to_string(elapsed);
+            if (!next.error.empty()) {
+                const std::string category = next.error.find("timed out") != std::string::npos ? "timeout" :
+                    next.error.find("taking longer") != std::string::npos ? "device-still-blocked" :
+                    next.error.find("create bounded") != std::string::npos ? "pipe-setup" :
+                    next.error.find("reserve bounded") != std::string::npos ? "descriptor-setup" :
+                    next.error.find("start bounded") != std::string::npos ? "worker-start" :
+                    next.error.find("send bounded") != std::string::npos ? "request-send" :
+                    next.error.find("probe failed") != std::string::npos ? "worker-response" :
+                    next.error.find("Could not read") != std::string::npos ? "sector-read" :
+                    next.error.find("Cannot open") != std::string::npos ? "device-open" : "probe-error";
+                DebugLog::warn(message + "; probe-error=" + category);
+            }
+            else DebugLog::info(message);
+        }
+        hasLoggedProbe = true;
         {
             std::unique_lock<std::mutex> lock(mutex_);
             probeActive_ = false;
@@ -676,8 +936,10 @@ DiscDriveService::Snapshot DiscDriveService::probeWithTimeout(const Snapshot &pr
                                                                bool forceMetadataRead) {
     if (outstandingProbePid_ > 0) {
         int status = 0;
-        const pid_t result = waitpid(pid_t(outstandingProbePid_), &status, WNOHANG);
-        if (result == 0) {
+        pid_t result;
+        do { result = waitpid(pid_t(outstandingProbePid_), &status, WNOHANG); }
+        while (result < 0 && errno == EINTR);
+        if (result == 0 || (result < 0 && errno != ECHILD)) {
             Snapshot pending = previous;
             pending.state = MediaState::Checking;
             pending.system = System::Unknown;
@@ -686,12 +948,15 @@ DiscDriveService::Snapshot DiscDriveService::probeWithTimeout(const Snapshot &pr
             pending.error = "Drive read is taking longer than expected";
             return pending;
         }
+        if (result == pid_t(outstandingProbePid_) && probeExitedFromCrash(status))
+            probeCrashLogged_ = true;
         outstandingProbePid_ = -1;
     }
 
     int requestSocket[2] = {-1, -1};
     int responsePipe[2] = {-1, -1};
-    if (socketpair(AF_UNIX, SOCK_STREAM, 0, requestSocket) != 0 || pipe(responsePipe) != 0) {
+    if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, requestSocket) != 0 ||
+        pipe2(responsePipe, O_CLOEXEC) != 0) {
         if (requestSocket[0] >= 0) { close(requestSocket[0]); close(requestSocket[1]); }
         if (responsePipe[0] >= 0) { close(responsePipe[0]); close(responsePipe[1]); }
         Snapshot failed;
@@ -699,28 +964,99 @@ DiscDriveService::Snapshot DiscDriveService::probeWithTimeout(const Snapshot &pr
         failed.error = "Cannot create bounded disc probe";
         return failed;
     }
+    if (!moveAboveStandardDescriptors(requestSocket[0]) ||
+        !moveAboveStandardDescriptors(requestSocket[1]) ||
+        !moveAboveStandardDescriptors(responsePipe[0]) ||
+        !moveAboveStandardDescriptors(responsePipe[1])) {
+        close(requestSocket[0]); close(requestSocket[1]);
+        close(responsePipe[0]); close(responsePipe[1]);
+        Snapshot failed;
+        failed.state = MediaState::Unreadable;
+        failed.error = "Cannot reserve bounded disc probe descriptors";
+        return failed;
+    }
+
+    bool probeGuardAlreadyHeld = false;
+    int probeGuardError = 0;
+    int probeGuardFd = acquireProbeGuard(probeGuardAlreadyHeld, probeGuardError);
+    if (probeGuardFd < 0) {
+        close(requestSocket[0]); close(requestSocket[1]);
+        close(responsePipe[0]); close(responsePipe[1]);
+        Snapshot pending = previous;
+        pending.state = probeGuardAlreadyHeld ? MediaState::Checking : MediaState::Unreadable;
+        pending.system = System::Unknown;
+        pending.title.clear();
+        pending.identifier.clear();
+        pending.error = probeGuardAlreadyHeld ? "Drive read is taking longer than expected"
+                                              : "Cannot reserve bounded disc probe lock";
+        DebugLog::write(probeGuardAlreadyHeld ? DebugLog::Level::Warning : DebugLog::Level::Error,
+            probeGuardAlreadyHeld
+                ? "disc probe: another process still holds the drive-read guard; no probe started"
+                : std::string("disc probe: could not acquire drive-read guard; error=") +
+                      std::strerror(probeGuardError));
+        return pending;
+    }
 
     posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_adddup2(&actions, requestSocket[1], STDIN_FILENO);
-    posix_spawn_file_actions_adddup2(&actions, responsePipe[1], STDOUT_FILENO);
-    posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
-    posix_spawn_file_actions_addclose(&actions, requestSocket[0]);
-    posix_spawn_file_actions_addclose(&actions, responsePipe[0]);
-    posix_spawn_file_actions_addclose(&actions, requestSocket[1]);
-    posix_spawn_file_actions_addclose(&actions, responsePipe[1]);
+    int actionsError = posix_spawn_file_actions_init(&actions);
+    const bool actionsInitialized = actionsError == 0;
+    const char *actionsStage = "initialize";
+    if (actionsError == 0) {
+        actionsStage = "stdin-dup";
+        actionsError = posix_spawn_file_actions_adddup2(&actions, requestSocket[1], STDIN_FILENO);
+    }
+    if (actionsError == 0) {
+        actionsStage = "stdout-dup";
+        actionsError = posix_spawn_file_actions_adddup2(&actions, responsePipe[1], STDOUT_FILENO);
+    }
+    if (actionsError == 0) {
+        actionsStage = "stderr-redirect";
+        actionsError = posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+    }
+    if (actionsError == 0) {
+        actionsStage = "close-parent-socket";
+        actionsError = posix_spawn_file_actions_addclose(&actions, requestSocket[0]);
+    }
+    if (actionsError == 0) {
+        actionsStage = "close-parent-pipe";
+        actionsError = posix_spawn_file_actions_addclose(&actions, responsePipe[0]);
+    }
+    if (actionsError == 0) {
+        actionsStage = "close-child-socket";
+        actionsError = posix_spawn_file_actions_addclose(&actions, requestSocket[1]);
+    }
+    if (actionsError == 0) {
+        actionsStage = "close-child-pipe";
+        actionsError = posix_spawn_file_actions_addclose(&actions, responsePipe[1]);
+    }
+    if (actionsError != 0) {
+        if (actionsInitialized) posix_spawn_file_actions_destroy(&actions);
+        close(probeGuardFd);
+        close(requestSocket[0]); close(requestSocket[1]);
+        close(responsePipe[0]); close(responsePipe[1]);
+        DebugLog::error(std::string("disc probe: could not configure child process; stage=") +
+                        actionsStage + "; error=" + std::strerror(actionsError));
+        Snapshot failed;
+        failed.state = MediaState::Unreadable;
+        failed.error = "Cannot configure bounded disc probe";
+        return failed;
+    }
 
     char program[] = MISTER_PAT_ROOT "/mister-gui";
     char probeArg[] = "--disc-probe-once";
-    char *argv[] = {program, probeArg, nullptr};
+    char noCrashLogArg[] = "--no-disc-probe-crash-log";
+    char *argv[] = {program, probeArg, probeCrashLogged_ ? noCrashLogArg : nullptr, nullptr};
     pid_t child = -1;
     const int spawnError = posix_spawn(&child, program, &actions, nullptr, argv, environ);
     posix_spawn_file_actions_destroy(&actions);
+    close(probeGuardFd);
     close(requestSocket[1]);
     close(responsePipe[1]);
     if (spawnError != 0) {
         close(requestSocket[0]);
         close(responsePipe[0]);
+        DebugLog::error(std::string("disc probe: could not start child process; error=") +
+                        std::strerror(spawnError));
         Snapshot failed;
         failed.state = MediaState::Unreadable;
         failed.error = "Cannot start bounded disc probe";
@@ -773,6 +1109,8 @@ DiscDriveService::Snapshot DiscDriveService::probeWithTimeout(const Snapshot &pr
         // Retain one PID and do not pile up more probes behind it.
         outstandingProbePid_ = int(child);
     }
+    if (waited == child && probeExitedFromCrash(childStatus))
+        probeCrashLogged_ = true;
     if (received == sizeof(response)) {
         Snapshot result;
         if (fromWire(response, result)) return result;

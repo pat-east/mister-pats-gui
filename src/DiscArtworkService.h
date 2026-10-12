@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <mutex>
 #include <string>
@@ -20,6 +21,11 @@ public:
         State state = State::Idle;
         std::string cacheKey;
         std::string boxart;
+        std::string releaseYear;
+        std::string players;
+        std::string rating;
+        std::string coop;
+        std::string overview;
         std::vector<std::string> screenshots;
     };
 
@@ -29,6 +35,8 @@ public:
     DiscArtworkService &operator=(const DiscArtworkService &) = delete;
 
     void request(const DiscDriveService::Snapshot &disc);
+    void refresh(const DiscDriveService::Snapshot &disc);
+    void reload(const DiscDriveService::Snapshot &disc);
     Snapshot snapshot() const;
 
 private:
@@ -37,6 +45,8 @@ private:
         DiscDriveService::System system = DiscDriveService::System::Unknown;
         std::string title;
         std::string identifier;
+        std::string region;
+        bool clearCache = false;
     };
     void workerLoop();
     Snapshot fetch(const Request &request, const std::atomic<bool> &cancel);
@@ -51,6 +61,7 @@ private:
     uint64_t activeGeneration_ = 0;
     bool hasPending_ = false;
     bool stopping_ = false;
+    std::chrono::steady_clock::time_point retryAt_{};
     std::atomic<bool> cancelCurrent_{false};
     TheGamesDBClient &client_;
     std::thread worker_;

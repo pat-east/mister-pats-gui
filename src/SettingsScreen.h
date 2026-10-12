@@ -130,6 +130,8 @@ private:
     int changelogMaxScroll_ = 0;
     int notesScroll_ = 0;
     std::vector<Category> categories_;
+    TheGamesDBClient::CheckState previousTheGamesDbCheckState_ =
+        TheGamesDBClient::CheckState::NotChecked;
     SystemInfo system_;
     std::string framebufferInfo_;
     int categoryCursor_ = 0;

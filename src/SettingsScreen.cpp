@@ -12,6 +12,8 @@
 namespace {
 
 std::string settingHelp(const std::string &label) {
+    if (label == "TheGamesDB")
+        return "Looks up box art, screenshots and release year for PlayStation and Saturn discs. Add your API key to /media/fat/mister-pat/thegamesdb-settings.ini as apikey=\"YOUR_KEY\", then select this row to test it. Without a key or a matching result, artwork falls back to Libretro.";
     if (label == "Build game list")
         return "Search connected drives for games and save a list the menus can load quickly. Run this after adding or removing games.";
     if (label == "Prepare box art")
@@ -177,22 +179,8 @@ void SettingsScreen::buildRows() {
     categories_.push_back({"System", {}});
     auto &library = categories_[0].rows;
 
-    // Library and content — building/refreshing it, then managing what it shows. Grouped
-    // together and in this order because that is the order they actually depend on each
-    // other: a database has to exist before its art can be fetched/prepared or systems can be
-    // hidden, and "Reload" only ever re-reads what the other two just produced.
-    library.push_back({"TheGamesDB",
-                     [this] { return context_.theGamesDB.checkStatus(); },
-                     [this] {
-                         if (!context_.theGamesDB.configured()) {
-                             context_.notify(std::string("Add your key to ") +
-                                             TheGamesDBClient::settingsPath(), 8.0f);
-                         } else if (!context_.theGamesDB.startApiKeyCheck()) {
-                             context_.notify(context_.theGamesDB.checkStatus(), 5.0f);
-                         } else {
-                             context_.notify("Checking TheGamesDB API key…", 4.0f);
-                         }
-                     }});
+    // Library and content — build and refresh the saved library, manage its views,
+    // then keep version grouping and the external artwork service at the bottom.
 
     library.push_back({"Build game list", [] { return std::string("A"); },
                      [this] { onBuildDatabase_(); }});
@@ -210,6 +198,12 @@ void SettingsScreen::buildRows() {
                          context_.notify("Saved game list loaded");
                      }});
 
+    library.push_back({"Manage systems", [] { return std::string("A"); },
+                     [this] { onManageSystems_(); }});
+
+    library.push_back({"Manage Arcade", [] { return std::string("A"); },
+                     [this] { onManageArcade_(); }});
+
     library.push_back({"Organize game-versions",
                      [this] { return std::string(context_.preferences.organizeGameVersions() ? "On" : "Off"); },
                      [this] { context_.preferences.setOrganizeGameVersions(
@@ -217,11 +211,18 @@ void SettingsScreen::buildRows() {
                              if (context_.onGameVersionSettingChanged)
                                  context_.onGameVersionSettingChanged(); }});
 
-    library.push_back({"Manage systems", [] { return std::string("A"); },
-                     [this] { onManageSystems_(); }});
-
-    library.push_back({"Manage Arcade", [] { return std::string("A"); },
-                     [this] { onManageArcade_(); }});
+    library.push_back({"TheGamesDB",
+                     [this] { return context_.theGamesDB.checkStatus(); },
+                     [this] {
+                         if (!context_.theGamesDB.configured()) {
+                             context_.notify(std::string("Add your key to ") +
+                                             TheGamesDBClient::settingsPath(), 8.0f);
+                         } else if (!context_.theGamesDB.startApiKeyCheck()) {
+                             context_.notify(context_.theGamesDB.checkStatus(), 5.0f);
+                         } else {
+                             context_.notify("Checking TheGamesDB API key…", 4.0f);
+                         }
+                     }});
 
     // Hardware.
     auto &controllers = categories_[1].rows;
@@ -356,6 +357,8 @@ void SettingsScreen::buildRows() {
                      [this] { discDriveSettingsActive_ = true; }, false});
     system.push_back({"Install/update Disc cores",
                      [this] {
+                         if (context_.discInstaller.recoveryBlocked())
+                             return std::string("Recovery failed — package actions disabled");
                          const auto state = context_.discInstaller.snapshot();
                          if (state.state == DiscCoreInstaller::State::Installing)
                              return std::string("Installing — finishing safely");
@@ -381,6 +384,10 @@ void SettingsScreen::buildRows() {
                                  context_.notify("Cancelling disc package download…", 5.0f);
                              }
                          } else {
+                             if (context_.discInstaller.recoveryBlocked()) {
+                                 context_.notify(context_.discInstaller.snapshot().message, 7.0f);
+                                 return;
+                             }
                              discCoreInstallConfirmationActive_ = true;
                          }
                      }});
@@ -619,6 +626,14 @@ void SettingsScreen::update(float deltaSeconds) {
     system_.update(deltaSeconds);
     wifi_.update(deltaSeconds);
     wifi_.refreshInterface();
+    const auto gamesDbCheckState = context_.theGamesDB.checkState();
+    if (previousTheGamesDbCheckState_ == TheGamesDBClient::CheckState::Checking &&
+        gamesDbCheckState == TheGamesDBClient::CheckState::Success) {
+        context_.discArtwork.refresh(context_.discDrive.snapshot());
+        context_.notify("TheGamesDB key works: " + context_.theGamesDB.checkStatus() +
+                        ".", 7.0f);
+    }
+    previousTheGamesDbCheckState_ = gamesDbCheckState;
     if (categories_.size() > 5) {
         auto &systemRows = categories_[5].rows;
         const auto wifiRow = std::find_if(systemRows.begin(), systemRows.end(),

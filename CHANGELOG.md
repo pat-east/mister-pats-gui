@@ -5,6 +5,40 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-10-12
+
+### Added
+
+- **Physical Disc Drive support** for PlayStation and Sega Saturn discs. Detect the drive and
+  media, read disc IDs, titles and regions, and launch through the matching Physical-Disc MGL.
+  A bundled local title index keeps disc identification available without Wi-Fi or an API key.
+- **Disc artwork and metadata lookup** through TheGamesDB, with regional variant ranking,
+  locally cached metadata and images, and Libretro artwork as a fallback.
+- **Manual artwork reload** on the Disc Drive tab. The top face button clears the current game's
+  cached artwork and metadata, then requests them again; its displayed label follows the selected
+  Xbox, PlayStation or Nintendo button style.
+- **Organize game versions** to group regional, language and revision variants under one title
+  and choose which ROM version to start.
+- **TheGamesDB allowance status** in Settings after a successful API-key check, plus expanded
+  diagnostic logging for disc artwork and fatal process signals.
+
+### Changed
+
+- **Disc Drive presentation** groups disc metadata, launch controls and screenshots in the
+  dedicated tab; TheGamesDB settings now appear at the bottom of Settings → Library.
+- **Game version grouping** can be enabled or disabled from Settings → Library without rebuilding
+  the game database.
+- **TheGamesDB title matching** preserves the complete disc title in the search request and
+  normalizes title prefixes only when comparing results, supporting alternate-title lookups.
+
+### Known limitations
+
+- TheGamesDB can list a game under a different canonical name and may still fail to return it
+  for a disc's alternate title; possible matching improvements are documented in
+  [THEGAMEDB.md](docs/THEGAMEDB.md).
+- Full hardware acceptance across media changes, unreadable discs, missing cores and network
+  failures remains open; see [DISCDRIVE.md](docs/DISCDRIVE.md).
+
 ## [0.7.0] - 2026-10-11
 
 ### Added

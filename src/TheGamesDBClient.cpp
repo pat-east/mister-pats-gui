@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cerrno>
 #include <cstring>
+#include <cstdlib>
 #include <fcntl.h>
 #include <fstream>
 #include <sys/stat.h>
@@ -13,6 +14,7 @@
 
 #include "Downloader.h"
 #include "Paths.h"
+#include "DebugLog.h"
 
 namespace {
 
@@ -148,6 +150,37 @@ std::string jsonNumber(const std::string &json, const std::string &key) {
     return json.substr(start, end - start);
 }
 
+std::string formatCount(const std::string &digits) {
+    if (digits.empty()) return {};
+    std::string formatted;
+    formatted.reserve(digits.size() + digits.size() / 3);
+    for (size_t i = 0; i < digits.size(); ++i) {
+        if (i && (digits.size() - i) % 3 == 0) formatted.push_back(',');
+        formatted.push_back(digits[i]);
+    }
+    return formatted;
+}
+
+std::string formatAllowance(const std::string &remaining, const std::string &extra,
+                            const std::string &refresh) {
+    if (remaining.empty()) return {};
+    std::string status = formatCount(remaining) + " left";
+    if (!extra.empty() && extra != "0") status += " · +" + formatCount(extra) + " extra";
+    if (!refresh.empty()) {
+        const long long seconds = std::strtoll(refresh.c_str(), nullptr, 10);
+        if (seconds > 0) {
+            const long long days = seconds / 86400;
+            const long long hours = (seconds % 86400) / 3600;
+            const long long minutes = (seconds % 3600) / 60;
+            status += " · reset in ";
+            if (days) status += std::to_string(days) + "d " + std::to_string(hours) + "h";
+            else if (hours) status += std::to_string(hours) + "h " + std::to_string(minutes) + "m";
+            else status += std::to_string(minutes) + "m";
+        }
+    }
+    return status;
+}
+
 } // namespace
 
 TheGamesDBClient::TheGamesDBClient() {
@@ -244,14 +277,21 @@ bool TheGamesDBClient::configured() const { return !readKey().empty(); }
 
 bool TheGamesDBClient::startApiKeyCheck() {
     const std::string key = readKey();
-    if (key.empty()) return false;
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (state_ == CheckState::Checking || pending_) return false;
-    activeKey_ = key;
-    state_ = CheckState::Checking;
-    cancelCurrent_.store(false);
-    pending_ = true;
+    if (key.empty()) {
+        DebugLog::warn("TheGamesDB: API-key check requested, but no usable key is configured");
+        return false;
+    }
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (state_ == CheckState::Checking || pending_) return false;
+        activeKey_ = key;
+        allowanceStatus_.clear();
+        state_ = CheckState::Checking;
+        cancelCurrent_.store(false);
+        pending_ = true;
+    }
     wake_.notify_one();
+    DebugLog::info("TheGamesDB: API-key allowance check queued");
     return true;
 }
 
@@ -281,7 +321,8 @@ std::string TheGamesDBClient::checkStatus() const {
     switch (state_) {
     case CheckState::NotChecked: return "Configured";
     case CheckState::Checking: return "Checking API key…";
-    case CheckState::Success: return "API key works";
+    case CheckState::Success:
+        return allowanceStatus_.empty() ? "API key works" : allowanceStatus_;
     case CheckState::InvalidOrLimited: return "Key invalid or allowance reached";
     case CheckState::NetworkError: return "Network/HTTP error; try again";
     case CheckState::InvalidResponse: return "Unexpected API response";
@@ -305,6 +346,7 @@ void TheGamesDBClient::workerLoop() {
         const std::string url = "https://api.thegamesdb.net/v1/API/Limit?apikey=" +
                                 Downloader::encodeComponent(key);
         CheckState result = CheckState::NetworkError;
+        std::string allowanceStatus;
         int httpStatus = 0;
         if (downloader.fetchWithStatus(url, target, httpStatus, 20, &cancelCurrent_,
                                        65536, false)) {
@@ -318,19 +360,27 @@ void TheGamesDBClient::workerLoop() {
             const std::string remaining = jsonNumber(json, "remaining_monthly_allowance");
             const std::string extra = jsonNumber(json, "extra_allowance");
             const std::string refresh = jsonNumber(json, "allowance_refresh_timer");
+            allowanceStatus = formatAllowance(remaining, extra, refresh);
             if (httpStatus == 403 || httpStatus == 401 || code == "403" || code == "401")
                 result = CheckState::InvalidOrLimited;
             else if (httpStatus != 200) result = CheckState::NetworkError;
             else if ((code == "200" && status == "Success") ||
                      (code.empty() && status.empty() && !remaining.empty() &&
                       !extra.empty() && !refresh.empty())) result = CheckState::Success;
-            else if (code.empty() || status.empty()) result = CheckState::InvalidResponse;
-            else result = CheckState::InvalidOrLimited;
-        }
+            else result = CheckState::InvalidResponse;
+        } else DebugLog::warn("TheGamesDB: API-key allowance request failed before a response was read");
         unlink(target.c_str());
+        const char *resultName = result == CheckState::Success ? "success" :
+            result == CheckState::InvalidOrLimited ? "invalid-or-limited" :
+            result == CheckState::NetworkError ? "network-error" : "invalid-response";
+        DebugLog::write(result == CheckState::Success ? DebugLog::Level::Info : DebugLog::Level::Warning,
+                        std::string("TheGamesDB: API-key allowance check result=") + resultName +
+                        "; HTTP=" + std::to_string(httpStatus));
+        if (result != CheckState::Success) allowanceStatus.clear();
         std::lock_guard<std::mutex> lock(mutex_);
         if (stopping_) return;
         state_ = result;
+        allowanceStatus_ = allowanceStatus;
         checkedKey_ = key;
         activeKey_.clear();
     }

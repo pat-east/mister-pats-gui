@@ -14,6 +14,7 @@
 
 #include "Archive.h"
 #include "Library.h"
+#include "DebugLog.h"
 
 namespace {
 
@@ -210,8 +211,10 @@ bool Launcher::sendCommand(const std::string &command) {
         return true;
     }
 
-    FILE *fifo = std::fopen(kCommandFifo, "w");
+    const int fifoFd = open(kCommandFifo, O_WRONLY | O_CLOEXEC);
+    FILE *fifo = fifoFd >= 0 ? fdopen(fifoFd, "w") : nullptr;
     if (!fifo) {
+        if (fifoFd >= 0) close(fifoFd);
         error_ = std::string("cannot open ") + kCommandFifo +
                  " - is the MiSTer binary running?";
         return false;
@@ -286,11 +289,13 @@ bool Launcher::launchCore(const GameSystem &system) {
 bool Launcher::launchPhysicalDisc(const std::string &mglPath) {
     error_.clear();
     mgl_.clear();
+    DebugLog::info("physical-disc launch: validating selected MGL");
     const std::string root = "/media/fat/_Disc_Cores/";
     const std::string nestedRoot = "/media/fat/mgl/_Disc_Cores/";
     if (mglPath.compare(0, root.size(), root) != 0 &&
         mglPath.compare(0, nestedRoot.size(), nestedRoot) != 0) {
         error_ = "physical-disc MGL is outside the installed disc-core folder";
+        DebugLog::error("physical-disc launch: selected MGL is outside the managed folders");
         return false;
     }
     size_t componentStart = 0;
@@ -300,6 +305,7 @@ bool Launcher::launchPhysicalDisc(const std::string &mglPath) {
             slash == std::string::npos ? std::string::npos : slash - componentStart);
         if (component == "." || component == "..") {
             error_ = "physical-disc MGL path contains a traversal component";
+            DebugLog::error("physical-disc launch: rejected path traversal in MGL path");
             return false;
         }
         if (slash == std::string::npos) break;
@@ -311,6 +317,7 @@ bool Launcher::launchPhysicalDisc(const std::string &mglPath) {
                           ch == '-' || ch == '.';
         if (!safe) {
             error_ = "physical-disc MGL path contains unsupported characters";
+            DebugLog::error("physical-disc launch: rejected unsafe MGL path characters");
             return false;
         }
     }
@@ -319,13 +326,18 @@ bool Launcher::launchPhysicalDisc(const std::string &mglPath) {
     const std::string rootWithoutSlash = selectedRoot.substr(0, selectedRoot.size() - 1);
     if (!readPhysicalMgl(rootWithoutSlash, mglPath.substr(selectedRoot.size()), mgl_)) {
         error_ = "physical-disc MGL cannot be opened safely or exceeds 16 KiB: " + mglPath;
+        DebugLog::error("physical-disc launch: selected MGL could not be opened safely");
         return false;
     }
     if (mgl_.empty() || mgl_.find("<mistergamedescription") == std::string::npos ||
         mgl_.find("<rbf>") == std::string::npos || mgl_.find("</rbf>") == std::string::npos) {
         error_ = "physical-disc MGL is invalid: " + mglPath;
         mgl_.clear();
+        DebugLog::error("physical-disc launch: selected MGL failed structural validation");
         return false;
     }
-    return sendCommand(std::string("load_core ") + mglPath);
+    const bool sent = sendCommand(std::string("load_core ") + mglPath);
+    if (sent) DebugLog::info("physical-disc launch: load_core command sent to MiSTer");
+    else DebugLog::error("physical-disc launch: could not send load_core command to MiSTer");
+    return sent;
 }

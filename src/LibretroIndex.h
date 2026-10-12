@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <map>
 #include <string>
 #include <vector>
@@ -30,7 +31,8 @@ public:
     // there. Roughly 9000 names and 2.5 MB over the wire for a big platform, which is why it
     // is cached on the card rather than fetched per game.
     bool open(const std::string &platform, Downloader &downloader, const std::string &cacheDir,
-              const std::string &mediaFolder = "Named_Boxarts");
+              const std::string &mediaFolder = "Named_Boxarts",
+              const std::atomic<bool> *cancel = nullptr, bool requireVerifiedTls = false);
 
     // The server's filename for a title, or empty when no exact or known variant matches.
     std::string match(const std::string &title) const;

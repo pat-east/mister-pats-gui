@@ -289,7 +289,8 @@ bool LibretroIndex::parse(const std::string &htmlPath) {
 }
 
 bool LibretroIndex::open(const std::string &platform, Downloader &downloader,
-                         const std::string &cacheDir, const std::string &mediaFolder) {
+                         const std::string &cacheDir, const std::string &mediaFolder,
+                         const std::atomic<bool> *cancel, bool requireVerifiedTls) {
     error_.clear();
     platform_ = platform;
     byKey_.clear();
@@ -306,12 +307,24 @@ bool LibretroIndex::open(const std::string &platform, Downloader &downloader,
     // it is what makes a second scrape run cost nothing but the images that are missing.
     std::string cacheName;
     for (char c : platform) cacheName.push_back((c == '/' || c == ' ') ? '_' : c);
-    const std::string cached = cacheDir + "/" + cacheName + "-" + mediaFolder + ".html";
+    const std::string cached = cacheDir + "/" + cacheName + "-" + mediaFolder +
+                               (requireVerifiedTls ? "-verified" : "") + ".html";
 
     const auto fetchIndex = [&]() {
         const std::string url = std::string(kHost) + "/" +
                                 Downloader::encodeComponent(platform) + "/" + mediaFolder + "/";
         // Generous: this is 2.5 MB of directory listing for a big platform, once.
+        if (requireVerifiedTls) {
+            int httpStatus = 0;
+            if (downloader.fetchWithStatus(url, cached, httpStatus, 120, cancel,
+                                           8u * 1024u * 1024u, true) && httpStatus == 200)
+                return true;
+            error_ = cancel && cancel->load() ? "cancelled" :
+                     "could not fetch the index over verified HTTPS" +
+                     (downloader.lastError().empty() ? std::string() :
+                      "; reason=" + downloader.lastError());
+            return false;
+        }
         if (downloader.fetch(url, cached, 120)) return true;
         error_ = "could not fetch the index: " + downloader.lastError();
         return false;

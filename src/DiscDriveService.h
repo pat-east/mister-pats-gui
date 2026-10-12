@@ -21,6 +21,7 @@ public:
         std::string model;
         std::string title;
         std::string identifier;
+        std::string region;
         std::string error;
         uint64_t mediaFingerprint = 0;
         uint64_t generation = 0;
@@ -54,5 +55,6 @@ private:
     bool forceMetadataRead_ = false;
     std::chrono::steady_clock::time_point probeStarted_{};
     int outstandingProbePid_ = -1;
+    bool probeCrashLogged_ = false;
     std::thread worker_;
 };

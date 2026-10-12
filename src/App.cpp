@@ -634,8 +634,8 @@ void App::renderGameActions() {
     canvas.fillRect(bounds, theme.shadow.withAlpha(175));
 
     const int width = std::min(theme.px(650), bounds.w - theme.px(64));
-    const int height = theme.px(gameActionWorking_ ? 350 : gameVersionChooserActive_
-        ? std::min(620, 150 + int(gameActionGame_.versions.size()) * 50) : 310);
+    const int height = theme.px(gameActionWorking_ ? 380 : gameVersionChooserActive_
+        ? std::min(620, 150 + int(gameActionGame_.versions.size()) * 50) : 360);
     const Rect panel{bounds.x + (bounds.w - width) / 2, bounds.y + (bounds.h - height) / 2,
                      width, height};
     canvas.dropShadow(panel, theme.radius(), theme.px(24), theme.shadow.withAlpha(160));
@@ -670,15 +670,6 @@ void App::renderGameActions() {
             formatButtonLabels("A  Start version     B  Back"), theme.sizeSmall(), theme.textMuted);
         return;
     }
-
-    const std::string description = gameActionCursor_ == 0
-        ? "Play starts this game."
-        : gameActionCursor_ == 1 ? "Choose a ROM version to start."
-        : "Find a missing cover online or prepare an existing cover for the game views.";
-    theme.regular().draw(canvas, left, y,
-                         theme.regular().elide(description, theme.sizeSmall(), textWidth),
-                         theme.sizeSmall(), theme.textMuted);
-    y += theme.px(34);
 
     if (gameActionWorking_) {
         const bool done = scraper_.finished();

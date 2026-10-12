@@ -52,13 +52,21 @@ Query-Parameter. Der Live-Check am 12. Oktober 2026 lieferte HTTP 200 mit
 `remaining_monthly_allowance`, `extra_allowance` und `allowance_refresh_timer` direkt im JSON-Root,
 ohne `code`/`status`-Hülle. Beide dokumentierten Antwortformen werden akzeptiert. `403` kann laut
 API sowohl einen ungültigen Key als auch ein erreichtes Nutzungslimit bedeuten; die UI darf diesen
-Status daher nicht ausschließlich als „invalid key“ darstellen. Netzwerkfehler, HTTP-Fehler und
-ungültige JSON-Antworten erhalten verständliche Meldungen. Der Key wird nie ausgegeben.
+Status daher nicht ausschließlich als „invalid key“ darstellen. Nur HTTP/API 401 und 403 werden
+als ungültiger Key oder erreichtes Limit gemeldet; andere API-Fehlercodes gelten als unerwartete
+Antwort. Netzwerkfehler, HTTP-Fehler und ungültige JSON-Antworten erhalten verständliche Meldungen.
+Der Key wird nie ausgegeben.
+
+Nach erfolgreicher Prüfung zeigt der Einstellungs-Punkt die verbleibenden Anfragen und den Countdown
+bis zum Reset; ein positives Extra-Kontingent wird separat ergänzt. Dieselbe Quote erscheint in der
+Erfolgsmeldung. Dafür wird kein zusätzlicher API-Aufruf gemacht: Die Werte stammen aus der Antwort
+des vorhandenen `/v1/API/Limit`-Checks.
 
 Der HTTP-Status und die API-Antwort werden ausgewertet; API-Key-Werte sind URL-kodiert. UI-Thread
 und Render-Loop warten nicht auf den Netzwerkzugriff. API-Requests mit Key folgen keinen HTTP-
 Redirects, damit der Query-Key nicht an ein Redirect-Ziel weitergereicht wird. Der Key selbst wird
-weder angezeigt noch protokolliert.
+weder angezeigt noch protokolliert. Die URL wird über die stdin-Konfiguration an `curl` übergeben,
+nicht als Prozessargument; dessen stderr wird verworfen.
 
 TheGamesDB dokumentiert außerdem Spielsuche nach Name (`/v1.1/Games/ByGameName`), optional mit
 `filter[platform]`, und Cover-Abruf über `/v1/Games/Images`. Das kann Disc-Metadaten und Artwork
@@ -96,6 +104,9 @@ Screenshots sind die bevorzugte Quelle
 für Ingame-Bilder; andere Bildtypen werden nur dann als Ersatz verwendet, wenn ihr Inhalt zur
 Vorschau passt. Boxart und höchstens vier Ingame-Bilder werden heruntergeladen. Die GUI lädt
 nicht bei jedem Tab-Wechsel erneut herunter.
+Ein verfügbares `release_date` des eindeutigen TheGamesDB-Treffers wird als vierstelliges Jahr
+im selben Cache gespeichert und in der Disc-Ansicht angezeigt. Ein gespeichertes Jahr erscheint
+auch ohne Key; ohne Treffer und Cache-Eintrag bleibt das Feld leer.
 
 Eindeutige Nulltreffer (kein passendes Spiel oder keine passenden Bildtypen) werden im Metadaten-
 Cache 30 Tage lang vermerkt. Netzwerk- und HTTP-Fehler gelten nicht als Nulltreffer und bleiben
@@ -114,6 +125,10 @@ pro Bildtyp fest, auch wenn Boxart und Screenshots aus unterschiedlichen Quellen
 negative TheGamesDB-Cache bleibt dabei erhalten. Cache-Verzeichnisse und vorhandene Bild- und
 Metadatendateien werden ohne Symlink-Auflösung geprüft; bei einem unsicheren Cache-Pfad wird die
 Artwork-Suche übersprungen.
+Neue Libretro-Abrufe für Disc-Artwork verwenden ausschließlich TLS-verifiziertes HTTPS.
+Vorhandene Cachebilder werden lokal wiederverwendet. Index- und Bildabrufe lassen sich bei einem
+Disc-Wechsel abbrechen; verifizierte Index-Cachedateien werden getrennt von älteren Cachedateien
+aus anderen Downloadpfaden gehalten.
 
 TheGamesDB-Limits sollen nicht bei jedem Wechsel in die Disc-Ansicht vorsorglich abgefragt
 werden. Der Key-Check bleibt eine explizite Aktion in Settings; normale Anfragen werten deren
@@ -155,12 +170,18 @@ unsichere oder fehlende Pfade stoppen die Wiederherstellung, statt Dateien umzul
 Die Implementierung sucht alle vier Sekunden nach `/dev/sr*`-Blockgeräten und liest das Modell aus
 `/sys/block/sr*/device/model`. Laufwerkserkennung, eingelegte Disc und Lesbarkeit bleiben getrennte
 Zustände. Die Hardwareabfrage läuft in einem separaten Loader-Unterprozess. Nach sieben Sekunden
-ohne Ergebnis beendet der GUI-Prozess die Probe, verwirft den alten Titel und sperrt **Start game**.
+ohne Ergebnis sendet die GUI `SIGKILL`, wartet nicht blockierend auf das Prozessende, verwirft den
+alten Titel und sperrt **Start game**.
+Framebuffer-, Eingabe- und Konsolen-FDs sowie interne Pipes und Socketpaare sind
+`close-on-exec`. Der Probeprozess wird über eigens angelegte Anfrage- und Antwortkanäle gesteuert.
+Nur der FD der exklusiven Probe-Sperre bleibt absichtlich über `exec` offen, damit eine zweite
+GUI-Instanz einen im Kernel festhängenden Probeprozess erkennen kann.
 Bereits während jeder laufenden Probe zeigt die GUI **Checking disc**, verwirft Titel und
 Kennung des vorherigen Mediums und sperrt **Start game**, damit ein Disc-Wechsel nicht kurzzeitig
 den alten Datenträger startbar lässt.
-Falls ein Treiber den Prozess in einem nicht unterbrechbaren Kernel-Wartezustand hält, wird kein
-weiterer Probeprozess gestartet, bis der alte Prozess beendet ist.
+Falls ein Treiber den Prozess in einem nicht unterbrechbaren Kernel-Wartezustand hält, verhindert
+die vererbte Sperre weitere Probeprozesse — auch nach einem GUI-Neustart — bis der alte Prozess
+beendet ist.
 
 ## Disc-Tab und Darstellung
 
@@ -317,8 +338,14 @@ Vier-Sekunden-Polling verwendet bei unverändertem Medium weiterhin den Snapshot
 Render-Loops. Saturn wird anhand des IP.BIN-Headers an LBA 0 erkannt. Für PS1 wird der
 ISO-9660-Deskriptor an LBA 16 geprüft, anschließend `SYSTEM.CNF` aus dem Root-Verzeichnis gelesen
 und die `BOOT`-Kennung normalisiert. Der mitgelieferte Redump/TOSEC-Index löst Kennungen offline
-zu Titeln auf. Mehrdeutige Kennungen werden nicht willkürlich einem Titel zugeordnet; beim Saturn
-bleibt dann der im IP.BIN gelesene Titel erhalten.
+zu Titeln auf. Der PS1-Parser akzeptiert Präfixe mit zwei bis vier Buchstaben und abweichende
+Trennzeichen oder Punkt-Schreibweisen in `BOOT`-Pfaden (beispielsweise `LSP_010150-0.1` oder
+`KRT-SPS01`); beim Indexabgleich werden nur Buchstaben und Ziffern verglichen. Mehrdeutige
+Kennungen werden nicht willkürlich einem Titel zugeordnet; beim Saturn bleibt dann der im IP.BIN
+gelesene Titel erhalten.
+Die Region wird ohne Netzverbindung aus bekannten PS1-Serienpräfixen beziehungsweise den Saturn-
+IP.BIN-Regionsflags ermittelt. Dazu gehören die gängigen Sony-Präfixe für Europa, USA, Japan und
+Korea. Nicht eindeutig unterstützte Angaben bleiben leer.
 
 `assets/disc-index.tsv` enthält 15.671 Kennung-/Titel-Zuordnungen: 13.068 für PS1 und 2.603 für
 Saturn. Die TSV-Datei ist 865.040 Byte groß und wird zusätzlich komprimiert in die GUI eingebettet;
@@ -333,7 +360,11 @@ der verwendeten Quelle, keine Garantie, dass jede veröffentlichte Disc enthalte
 Auf dem Dock wurden `/dev/sr0` (`DVDRAM GUD1N`), Saturn `T-11302H` / `DISC WORLD` und PS1
 `SLES-01507` aus `SYSTEM.CNF` gelesen. Das bestätigt die dort verwendeten Sektorzugriffe. Das
 Timeout- und Abbruchverhalten des isolierten Prozesses muss noch mit einem nicht reagierenden
-Laufwerk validiert werden.
+Laufwerk validiert werden. Eine exklusive Sperre in `/tmp/mister-pat-disc-probe.lock` wird an den
+Probe-Kindprozess vererbt. Falls dieser im nicht unterbrechbaren Kernel-Wartezustand bleibt und
+die GUI neu gestartet wird, erkennt die neue GUI die gehaltene Sperre und startet keinen zweiten
+Probeprozess. Der gehaltene Lock wird beim Systemneustart freigegeben; eine eventuell verbleibende
+Lockdatei enthält keinen Zustand und kann wiederverwendet werden.
 
 ## Startpfad
 
@@ -375,6 +406,46 @@ oder expliziter Aktualisierung neu angefordert.
 Bildsuche greift nicht auf den ROM-Scan zu. Das Einlesen der vorhandenen Spiele-Datenbank wird
 für den Disc-Tab nicht neu gestartet.
 
+## Diagnoseprotokolle
+
+Die GUI schreibt zeitgestempelte Laufzeitmeldungen nach
+`/media/fat/mister-pat/logs/debug.log`; bei 512 KiB wird eine vorherige Datei als
+`debug.log.old` aufbewahrt. Disc-Probe, erkannte Systemklasse, Trefferstatus des Offline-Index,
+geladene PS1-/Saturn-Datensatzumfang und Status eines externen Index-Overrides, Artwork-Cache
+und Provider-Fallback, Core-Integritätsstatus, Installer-Phasen und der
+Physical-Disc-Startpfad werden protokolliert. Installationsfehler enthalten Phase, Kategorie und
+eine gekürzte Fehlerbeschreibung; fehlgeschlagene Bilddecodierung wird von Netzwerkfehlern
+unterschieden. Fehler beim Einrichten oder Starten von `curl` enthalten Prozessphase und
+Systemfehlertext, aber keine Request-URL. Disc-Titel, Kennungen, Dateipfade und TheGamesDB-API-Keys
+werden von den Disc-Integrationsmeldungen nicht ins Debugprotokoll geschrieben.
+
+Fatal-Signale und unbehandelte C++-Exceptions werden separat in
+`/media/fat/mister-pat/logs/crash.log` festgehalten. Bei mehr als 512 KiB wird die vorherige
+Datei beim nächsten GUI-Start als `crash.log.old` aufbewahrt. Ein fataler Signalabsturz des isolierten
+Disc-Probe-Prozesses wird dort ebenfalls mit Signal und Adressen protokolliert; er pausiert den
+Neustart der weiterlaufenden GUI nicht. Unbehandelte C++-Exceptions des Probe-Prozesses werden
+mit Typ und Backtrace, aber ohne Exception-Text, protokolliert. Damit ein reproduzierbarer Fehler
+die SD-Karte nicht mit Wiederholungen füllt, wird höchstens der erste Probe-Crash pro GUI-Prozess
+in `crash.log` gespeichert; spätere Probeprozesse lassen den Crash-Eintrag aus.
+`symbolize-crash.sh` gibt diese
+Zeilen aus; wegen der separaten Prozessadressierung werden ihre Adressen nicht mit der Modulkarte
+der GUI aufgelöst.
+Die Startadressen der geladenen GUI-Module
+liegen in `module-map.log`, damit ein Backtrace den Binärdateien zugeordnet werden kann. Nach
+einem fatalen Fehler pausiert der automatische GUI-Neustart; der Crash-Bildschirm zeigt die letzte
+Crash-Zeile gekürzt an und nennt den Pfad zum Protokoll. Auch abgefangene, unbehandelte C++-
+Exceptions werden dort mit Typ, begrenzter Meldung und Backtrace festgehalten. Für einen Fehlerbericht sollten
+`debug.log`, `debug.log.old` (falls vorhanden),
+`crash.log` und `module-map.log` gemeinsam gesichert werden.
+Mit dem passenden Build samt `mister-gui.debug` und der exakt passenden versionierten
+`mister-pats-gui-*.so.debug` lässt sich der Backtrace lokal auflösen:
+
+```sh
+tools/symbolize-crash.sh crash.log build
+```
+
+Debug-Symbole und `module-map.log` müssen zur abgestürzten GUI-Version gehören.
+
 Der `DiscArtworkService` verwendet einen gemeinsamen Provider-Vertrag. TheGamesDB liefert optionale
 Disc-Metadaten und -Bilder; die vorhandene Libretro.com-Suche dient als Fallback. Der Client kann
 später als Quelle für einen allgemeinen Bibliotheks-Scraper erweitert werden. Bulk-Scraping der
@@ -390,9 +461,9 @@ Core-Versionen hier ergänzen:
 | Prüfung | Erwartung | Ergebnis |
 | --- | --- | --- |
 | Settings → System → Disc drive vor Installation | Laufwerk und fehlende/verifizierte Paketdateien getrennt angezeigt; Installation ändert `[MiSTer] main=` nicht | Offen |
-| Leere Lade, PS1 einlegen | `Please insert disc`, danach PlayStation plus lokale Kennung/Titel; während des Lesens kein alter Start | Offen |
+| Leere Lade, PS1 einlegen | `Please insert disc`, danach PlayStation plus lokale Kennung/Titel und für `SLES-01507` die Region Europe; während des Lesens kein alter Start | Offen |
 | PS1 **Start game** | Passendes PS1-Disc-MGL lädt; Spiel startet vom Medium; Rückkehr in die GUI funktioniert | Offen |
-| Disc bei geöffneter GUI gegen Saturn tauschen | Kurz `Reading disc…`, danach Saturn plus neue Kennung/Titel; PS1-Artwork und alter Start verschwinden | Offen |
+| Disc bei geöffneter GUI gegen Saturn tauschen | Kurz `Reading disc…`, danach Saturn plus neue Kennung/Titel und laut IP.BIN-Flag; PS1-Artwork und alter Start verschwinden | Offen |
 | Saturn **Start game** | Passendes Saturn-Disc-MGL lädt; Spiel startet vom Medium; Rückkehr in die GUI funktioniert | Offen |
 | Film-DVD oder nicht unterstützte Disc | `No supported game detected`; kein Titel/System wird erfunden und Start bleibt gesperrt | Offen |
 | Passenden PS1- oder Saturn-RBF-Core entfernen (nur wenn gefahrlos möglich) | Start des betroffenen Systems bleibt gesperrt; anderes System bleibt davon unabhängig | Offen |
@@ -436,4 +507,4 @@ danach wiederherstellen lässt.
 - [TheGamesDB API Swagger UI](https://api.thegamesdb.net/)
 - [TheGamesDB API OpenAPI-Spezifikation](https://github.com/TheGamesDB/TheGamesDBv2/blob/master/API/spec.yaml)
 - [Bootstrap Icons: Disc](https://icons.getbootstrap.com/icons/disc/)
-- [`docs/POC.md` — Physical PlayStation and Saturn discs](docs/POC.md)
+- [`docs/POC.md` — Physical PlayStation and Saturn discs](POC.md)

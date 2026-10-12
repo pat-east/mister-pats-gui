@@ -1,4 +1,5 @@
 #include <csignal>
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -6,6 +7,7 @@
 #include <execinfo.h>
 #include <fcntl.h>
 #include <string>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <typeinfo>
 #include <ucontext.h>
@@ -22,6 +24,43 @@ namespace {
 App *g_app = nullptr;
 volatile sig_atomic_t g_crashHandlerEntered = 0;
 volatile sig_atomic_t g_stopSignal = 0;
+volatile sig_atomic_t g_logDiscProbeCrash = 1;
+constexpr off_t kMaxCrashLogBytes = 512 * 1024;
+
+void rotateCrashLogIfNeeded() {
+    constexpr const char *path = "/media/fat/mister-pat/logs/crash.log";
+    constexpr const char *oldPath = "/media/fat/mister-pat/logs/crash.log.old";
+    struct stat info {};
+    if (lstat(path, &info) != 0) {
+        if (errno != ENOENT) DebugLog::warn("crash log: could not inspect existing log");
+        return;
+    }
+    if (!S_ISREG(info.st_mode) || S_ISLNK(info.st_mode)) {
+        DebugLog::warn("crash log: existing log is not a regular file; crash records may be unavailable");
+        return;
+    }
+    if (info.st_size <= kMaxCrashLogBytes) return;
+    if (rename(path, oldPath) == 0)
+        DebugLog::info("crash log: rotated oversized log to crash.log.old");
+    else
+        DebugLog::warn("crash log: could not rotate oversized log");
+}
+
+void writeHex(int fd, uintptr_t value);
+void writeDecimal(int fd, int value);
+void writeLiteral(int fd, const char *text);
+
+int openCrashLog() {
+    const int fd = open("/media/fat/mister-pat/logs/crash.log",
+                        O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK, 0644);
+    if (fd < 0) return -1;
+    struct stat info {};
+    if (fstat(fd, &info) != 0 || !S_ISREG(info.st_mode)) {
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
 
 void writeLiteral(int fd, const char *text) {
     size_t length = 0;
@@ -32,6 +71,96 @@ void writeLiteral(int fd, const char *text) {
         text += written;
         length -= size_t(written);
     }
+}
+
+bool safeTokenCharacter(unsigned char ch) {
+    return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+           (ch >= '0' && ch <= '9') || ch == '-' || ch == '_';
+}
+
+bool startsWithApiKeyParameter(const char *message, size_t offset) {
+    static const char parameter[] = "apikey=";
+    for (size_t i = 0; i < sizeof(parameter) - 1; ++i) {
+        char ch = message[offset + i];
+        if (!ch) return false;
+        if (ch >= 'A' && ch <= 'Z') ch = char(ch - 'A' + 'a');
+        if (ch != parameter[i]) return false;
+    }
+    return true;
+}
+
+void writeSafeExceptionMessage(int fd, const char *message) {
+    if (!message) { writeLiteral(fd, "(null)"); return; }
+    size_t input = 0;
+    size_t output = 0;
+    while (message[input] && output < 512) {
+        if (startsWithApiKeyParameter(message, input)) {
+            writeLiteral(fd, "apikey=[redacted]");
+            output += sizeof("apikey=[redacted]") - 1;
+            input += sizeof("apikey=") - 1;
+            while (message[input] && message[input] != '&' && message[input] != ' ' &&
+                   message[input] != '\t' && message[input] != '\r' && message[input] != '\n' &&
+                   message[input] != '"' && message[input] != '\'' && message[input] != ';')
+                ++input;
+            continue;
+        }
+        if (safeTokenCharacter(static_cast<unsigned char>(message[input]))) {
+            size_t end = input;
+            while (safeTokenCharacter(static_cast<unsigned char>(message[end]))) ++end;
+            if (end - input >= 32) {
+                writeLiteral(fd, "[redacted]");
+                output += sizeof("[redacted]") - 1;
+                input = end;
+                continue;
+            }
+        }
+        const char ch = message[input++];
+        const char safe[2] = {ch == '\n' || ch == '\r' || ch == '\t' ? ' ' : ch, '\0'};
+        writeLiteral(fd, safe);
+        ++output;
+    }
+    if (message[input]) writeLiteral(fd, " [truncated]");
+}
+
+void appendCaughtException(const char *type, const char *message) {
+    const int fd = openCrashLog();
+    if (fd < 0) return;
+    void *frames[32];
+    const int count = backtrace(frames, int(sizeof(frames) / sizeof(frames[0])));
+    writeLiteral(fd, "uncaught exception type=");
+    writeLiteral(fd, type ? type : "unknown");
+    writeLiteral(fd, " message=");
+    writeSafeExceptionMessage(fd, message);
+    writeLiteral(fd, " backtrace:");
+    for (int i = 0; i < count; ++i) {
+        writeLiteral(fd, " ");
+        writeHex(fd, reinterpret_cast<uintptr_t>(frames[i]));
+    }
+    writeLiteral(fd, " pid=");
+    writeDecimal(fd, int(getpid()));
+    writeLiteral(fd, " auto_relaunch=paused\n");
+    fsync(fd);
+    close(fd);
+}
+
+void appendDiscProbeException(const char *type) {
+    if (!g_logDiscProbeCrash) return;
+    const int fd = openCrashLog();
+    if (fd < 0) return;
+    void *frames[32];
+    const int count = backtrace(frames, int(sizeof(frames) / sizeof(frames[0])));
+    writeLiteral(fd, "disc-probe exception type=");
+    writeLiteral(fd, type ? type : "unknown");
+    writeLiteral(fd, " backtrace:");
+    for (int i = 0; i < count; ++i) {
+        writeLiteral(fd, " ");
+        writeHex(fd, reinterpret_cast<uintptr_t>(frames[i]));
+    }
+    writeLiteral(fd, " pid=");
+    writeDecimal(fd, int(getpid()));
+    writeLiteral(fd, " parent_gui_continues\n");
+    fsync(fd);
+    close(fd);
 }
 
 void writeHex(int fd, uintptr_t value) {
@@ -71,9 +200,16 @@ void writeDecimal(int fd, int value) {
 // loop after a fatal error: otherwise every failed start adds more log writes and repeats the
 // same failure indefinitely. The marker lives in /tmp (RAM) and a reboot clears it.
 void pauseAutomaticRelaunch() {
-    const int fd = open(App::kSuspendMarkerPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    const int fd = open(App::kSuspendMarkerPath,
+                        O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK, 0644);
     if (fd < 0) return;
+    struct stat info {};
+    if (fstat(fd, &info) != 0 || !S_ISREG(info.st_mode)) {
+        close(fd);
+        return;
+    }
     writeLiteral(fd, "fatal GUI exit\n");
+    fsync(fd);
     close(fd);
 }
 
@@ -96,8 +232,7 @@ void onFatalSignal(int signalNumber, siginfo_t *info, void *context) {
     g_crashHandlerEntered = 1;
     pauseAutomaticRelaunch();
 
-    const int fd = open("/media/fat/mister-pat/logs/crash.log",
-                        O_WRONLY | O_CREAT | O_APPEND, 0644);
+    const int fd = openCrashLog();
     if (fd >= 0) {
         writeLiteral(fd, "fatal ");
         writeLiteral(fd, signalName(signalNumber));
@@ -122,6 +257,7 @@ void onFatalSignal(int signalNumber, siginfo_t *info, void *context) {
         writeDecimal(fd, int(getpid()));
         writeLiteral(fd, " auto_relaunch=paused");
         writeLiteral(fd, "\n");
+        fsync(fd);
         close(fd);
     }
 
@@ -130,13 +266,44 @@ void onFatalSignal(int signalNumber, siginfo_t *info, void *context) {
     _exit(128 + signalNumber);
 }
 
+void onDiscProbeFatalSignal(int signalNumber, siginfo_t *info, void *context) {
+    if (g_crashHandlerEntered) _exit(128 + signalNumber);
+    g_crashHandlerEntered = 1;
+    if (!g_logDiscProbeCrash) _exit(128 + signalNumber);
+    const int fd = openCrashLog();
+    if (fd >= 0) {
+        writeLiteral(fd, "fatal disc-probe ");
+        writeLiteral(fd, signalName(signalNumber));
+        writeLiteral(fd, " number=");
+        writeDecimal(fd, signalNumber);
+        writeLiteral(fd, " code=");
+        writeDecimal(fd, info ? info->si_code : 0);
+        writeLiteral(fd, " address=");
+        writeHex(fd, info ? reinterpret_cast<uintptr_t>(info->si_addr) : 0);
+#if defined(__arm__)
+        if (context) {
+            const ucontext_t *uc = static_cast<const ucontext_t *>(context);
+            writeLiteral(fd, " pc=");
+            writeHex(fd, uintptr_t(uc->uc_mcontext.arm_pc));
+            writeLiteral(fd, " lr=");
+            writeHex(fd, uintptr_t(uc->uc_mcontext.arm_lr));
+        }
+#endif
+        writeLiteral(fd, " pid=");
+        writeDecimal(fd, int(getpid()));
+        writeLiteral(fd, " parent_gui_continues\n");
+        fsync(fd);
+        close(fd);
+    }
+    _exit(128 + signalNumber);
+}
+
 void onTerminate() {
     pauseAutomaticRelaunch();
     void *frames[32];
     const int count = backtrace(frames, int(sizeof(frames) / sizeof(frames[0])));
     const std::exception_ptr exception = std::current_exception();
-    const int fd = open("/media/fat/mister-pat/logs/crash.log",
-                        O_WRONLY | O_CREAT | O_APPEND, 0644);
+    const int fd = openCrashLog();
     if (fd >= 0) {
         writeLiteral(fd, "std::terminate backtrace:");
         for (int i = 0; i < count; ++i) {
@@ -152,7 +319,7 @@ void onTerminate() {
             } catch (const std::exception &error) {
                 writeLiteral(fd, typeid(error).name());
                 writeLiteral(fd, " what=");
-                writeLiteral(fd, error.what() ? error.what() : "(null)");
+                writeSafeExceptionMessage(fd, error.what());
             } catch (...) {
                 writeLiteral(fd, "non-std-exception");
             }
@@ -161,6 +328,7 @@ void onTerminate() {
         writeDecimal(fd, int(getpid()));
         writeLiteral(fd, " auto_relaunch=paused");
         writeLiteral(fd, "\n");
+        fsync(fd);
         close(fd);
     }
     _exit(134);
@@ -175,17 +343,38 @@ void installFatalSignalLogging() {
     for (int signalNumber : signals) sigaction(signalNumber, &action, nullptr);
 }
 
+void installDiscProbeSignalLogging(bool logCrash) {
+    g_logDiscProbeCrash = logCrash ? 1 : 0;
+    struct sigaction action{};
+    action.sa_sigaction = onDiscProbeFatalSignal;
+    action.sa_flags = SA_SIGINFO | SA_RESETHAND;
+    sigemptyset(&action.sa_mask);
+    const int signals[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGABRT};
+    for (int signalNumber : signals) sigaction(signalNumber, &action, nullptr);
+}
+
 void recordModuleMap() {
     FILE *input = std::fopen("/proc/self/maps", "r");
     if (!input) return;
-    FILE *output = std::fopen("/media/fat/mister-pat/logs/module-map.log", "w");
-    if (!output) { std::fclose(input); return; }
+    const int outputFd = open("/media/fat/mister-pat/logs/module-map.log",
+        O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK, 0644);
+    if (outputFd < 0) { std::fclose(input); return; }
+    struct stat outputInfo {};
+    if (fstat(outputFd, &outputInfo) != 0 || !S_ISREG(outputInfo.st_mode)) {
+        close(outputFd);
+        std::fclose(input);
+        return;
+    }
+    FILE *output = fdopen(outputFd, "w");
+    if (!output) { close(outputFd); std::fclose(input); return; }
     std::fprintf(output, "pid=%ld\n", long(getpid()));
     char line[1024];
     while (std::fgets(line, sizeof(line), input)) {
         if (std::strstr(line, "/media/fat/mister-pat/") != nullptr)
             std::fputs(line, output);
     }
+    std::fflush(output);
+    fsync(outputFd);
     std::fclose(output);
     std::fclose(input);
 }
@@ -202,7 +391,7 @@ void onScreenshot(int) {
 void usage() {
     std::printf(
         "mister-gui [options]\n"
-        "  --tab home|favorites|systems|arcade|games|settings  screen to open\n"
+        "  --tab disc|home|favorites|systems|arcade|games|settings  screen to open\n"
         "  --view list|grid|small                  game presentation\n"
         "  --system NAME                            preselect a system\n"
         "  --frames N                               render N frames, then exit\n"
@@ -228,7 +417,8 @@ bool parse(int argc, char **argv, App::Options &options) {
 
         if (arg == "--tab" && hasValue) {
             const std::string value = argv[++i];
-            if (value == "home") options.tab = Tab::Home;
+            if (value == "disc") options.tab = Tab::Disc;
+            else if (value == "home") options.tab = Tab::Home;
             else if (value == "favorites") options.tab = Tab::Favorites;
             else if (value == "systems") options.tab = Tab::Systems;
             else if (value == "arcade") options.tab = Tab::Arcade;
@@ -300,6 +490,8 @@ static int runGui(int argc, char **argv) {
         return CrashScreen::show(exitStatus);
     }
 
+    DebugLog::info("process: fatal-signal and terminate logging initialized");
+    rotateCrashLogIfNeeded();
     std::set_terminate(onTerminate);
     installFatalSignalLogging();
     recordModuleMap();
@@ -336,19 +528,41 @@ int mister_gui_main_v1(int argc, char **argv) noexcept {
     try {
         return runGui(argc, argv);
     } catch (const std::exception &error) {
-        std::fprintf(stderr, "mister-gui: %s\n", error.what());
+        std::fprintf(stderr, "mister-gui: uncaught exception type=%s\n", typeid(error).name());
+        pauseAutomaticRelaunch();
+        appendCaughtException(typeid(error).name(), error.what());
+        DebugLog::error(std::string("uncaught GUI exception type=") + typeid(error).name());
     } catch (...) {
         std::fprintf(stderr, "mister-gui: unhandled exception\n");
+        pauseAutomaticRelaunch();
+        appendCaughtException("non-standard", "message unavailable");
+        DebugLog::error("uncaught non-standard GUI exception");
     }
     return 1;
 }
 
 extern "C" __attribute__((visibility("default")))
 int mister_gui_disc_probe_v1(int argc, char **argv) noexcept {
-    if (argc != 2 || std::strcmp(argv[1], "--disc-probe-once") != 0) return 64;
+    if ((argc != 2 && argc != 3) || std::strcmp(argv[1], "--disc-probe-once") != 0 ||
+        (argc == 3 && std::strcmp(argv[2], "--no-disc-probe-crash-log") != 0)) {
+        DebugLog::error("disc probe process: rejected invalid command line");
+        return 64;
+    }
+    installDiscProbeSignalLogging(argc == 2);
     try {
-        return DiscDriveService::runProbeRequest(STDIN_FILENO, STDOUT_FILENO);
+        const int result = DiscDriveService::runProbeRequest(STDIN_FILENO, STDOUT_FILENO);
+        if (result != 0)
+            DebugLog::error(std::string("disc probe process: request failed; category=") +
+                            (result == 2 ? "invalid-or-incomplete-request" : "response-write-failed"));
+        return result;
+    } catch (const std::exception &error) {
+        const char *type = typeid(error).name();
+        DebugLog::error(std::string("disc probe process: uncaught exception; type=") + type);
+        appendDiscProbeException(type);
+        return 70;
     } catch (...) {
+        DebugLog::error("disc probe process: uncaught non-standard exception");
+        appendDiscProbeException("non-standard");
         return 70;
     }
 }

@@ -30,8 +30,8 @@ bool runTool(const std::vector<std::string> &args, const std::string &input,
              std::string &output) {
     if (args.empty()) return false;
     int inPipe[2], outPipe[2];
-    if (socketpair(AF_UNIX, SOCK_STREAM, 0, inPipe) != 0) return false;
-    if (pipe(outPipe) != 0) { close(inPipe[0]); close(inPipe[1]); return false; }
+    if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, inPipe) != 0) return false;
+    if (pipe2(outPipe, O_CLOEXEC) != 0) { close(inPipe[0]); close(inPipe[1]); return false; }
     const pid_t child = fork();
     if (child < 0) {
         close(inPipe[0]); close(inPipe[1]); close(outPipe[0]); close(outPipe[1]);

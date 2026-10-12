@@ -40,6 +40,15 @@ bool safeHttps(const std::string &url) {
     return true;
 }
 
+bool moveAboveStandardDescriptors(int &fd) {
+    if (fd >= STDERR_FILENO + 1) return true;
+    const int duplicate = fcntl(fd, F_DUPFD_CLOEXEC, STDERR_FILENO + 1);
+    if (duplicate < 0) return false;
+    close(fd);
+    fd = duplicate;
+    return true;
+}
+
 void stopChild(pid_t child) {
     kill(child, SIGTERM);
     for (int i = 0; i < 20; ++i) {
@@ -69,20 +78,29 @@ DownloadResult VerifiedDownloader::fetch(const std::string &url, const std::stri
     if (!safeHttps(url)) return failed(DownloadResult::Code::Tool, "non-HTTPS URL refused", destination);
     if (cancel.load()) return failed(DownloadResult::Code::Cancelled, "cancelled", destination);
 
-    int output = open(destination.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0600);
+    int output = open(destination.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
     if (output < 0)
         return failed(DownloadResult::Code::File,
                       "cannot create " + destination + ": " + std::strerror(errno), destination);
 
     int bodyPipe[2];
     int errorPipe[2];
-    if (pipe(bodyPipe) != 0) {
+    if (pipe2(bodyPipe, O_CLOEXEC) != 0) {
         close(output);
         return failed(DownloadResult::Code::File, "cannot create download pipe", destination);
     }
-    if (pipe(errorPipe) != 0) {
+    if (pipe2(errorPipe, O_CLOEXEC) != 0) {
         close(bodyPipe[0]); close(bodyPipe[1]); close(output);
         return failed(DownloadResult::Code::File, "cannot create error pipe", destination);
+    }
+    int *descriptors[] = {&output, &bodyPipe[0], &bodyPipe[1], &errorPipe[0], &errorPipe[1]};
+    for (int *fd : descriptors) {
+        if (moveAboveStandardDescriptors(*fd)) continue;
+        close(output); close(bodyPipe[0]); close(bodyPipe[1]);
+        close(errorPipe[0]); close(errorPipe[1]);
+        unlink(destination.c_str());
+        return failed(DownloadResult::Code::File,
+                      "cannot reserve download descriptors", destination);
     }
 
     posix_spawn_file_actions_t actions;

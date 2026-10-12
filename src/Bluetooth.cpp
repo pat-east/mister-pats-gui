@@ -33,7 +33,7 @@ bool Bluetooth::startScanning() {
     if (childPid_ > 0) return false;
 
     int pipeFds[2];
-    if (pipe(pipeFds) != 0) return false;
+    if (pipe2(pipeFds, O_CLOEXEC) != 0) return false;
 
     const pid_t pid = fork();
     if (pid < 0) {

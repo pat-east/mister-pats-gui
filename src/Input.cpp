@@ -68,7 +68,7 @@ void Input::rescan() {
 
         char path[64];
         std::snprintf(path, sizeof(path), "/dev/input/event%d", i);
-        const int fd = open(path, O_RDONLY | O_NONBLOCK);
+        const int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
         if (fd < 0) continue;
 
         char name[256] = "?";

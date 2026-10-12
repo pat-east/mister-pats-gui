@@ -468,3 +468,13 @@ boxart looks better against a dark background.
 4. **Resolution.** Stay at 1080p, or render internally at 720p and let the scaler upscale? This
    will be decided by the measured frame rate.
 5. **Favorites and history.** Our own file, or can we piggyback on Console Mode's `.state`?
+
+## 10. Possible extension: game details
+
+The existing **SELECT** action menu could offer a game details view for a selected ROM. It
+could reuse the Disc tab's layout for title metadata, box art and available in-game screenshots.
+Load data asynchronously and cache successful results locally. Keep the view useful without a
+network key by showing available Libretro artwork; TheGamesDB can supply additional metadata
+and images when configured. Keep the existing start, version-choice and artwork actions
+available. See [GAME-VERSIONS.md](GAME-VERSIONS.md) for version choices and
+[THEGAMEDB.md](THEGAMEDB.md) for scraper behavior and matching constraints.

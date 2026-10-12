@@ -25,6 +25,7 @@ public:
     void cancel();
     Snapshot snapshot() const;
     bool busy() const;
+    bool recoveryBlocked() const;
 
 private:
     void workerLoop();
@@ -36,5 +37,6 @@ private:
     std::atomic<bool> cancel_{false};
     bool pending_ = false;
     bool stopping_ = false;
+    bool recoveryBlocked_ = false;
     std::thread worker_;
 };

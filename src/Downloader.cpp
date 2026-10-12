@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cerrno>
+#include <cstring>
 #include <algorithm>
 #include <chrono>
 #include <fcntl.h>
@@ -16,6 +17,8 @@
 #include <signal.h>
 #include <unistd.h>
 #include <vector>
+
+#include "DebugLog.h"
 
 extern char **environ;
 
@@ -37,6 +40,15 @@ bool fileExists(const std::string &path) {
 bool nonEmptyFile(const std::string &path) {
     struct stat st {};
     return stat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0;
+}
+
+bool moveAboveStandardDescriptors(int &fd) {
+    if (fd >= STDERR_FILENO + 1) return true;
+    const int duplicate = fcntl(fd, F_DUPFD_CLOEXEC, STDERR_FILENO + 1);
+    if (duplicate < 0) return false;
+    close(fd);
+    fd = duplicate;
+    return true;
 }
 
 } // namespace
@@ -119,13 +131,21 @@ bool Downloader::fetchWithStatus(const std::string &url, const std::string &dest
     }
 
     int configPipe[2] = {-1, -1}, statusPipe[2] = {-1, -1};
-    if (pipe(configPipe) != 0) {
+    if (pipe2(configPipe, O_CLOEXEC) != 0) {
         error_ = "cannot create API request pipes";
         return false;
     }
-    if (pipe(statusPipe) != 0) {
+    if (pipe2(statusPipe, O_CLOEXEC) != 0) {
         close(configPipe[0]); close(configPipe[1]);
         error_ = "cannot create API request pipes";
+        return false;
+    }
+    int *pipeDescriptors[] = {&configPipe[0], &configPipe[1], &statusPipe[0], &statusPipe[1]};
+    for (int *fd : pipeDescriptors) {
+        if (moveAboveStandardDescriptors(*fd)) continue;
+        close(configPipe[0]); close(configPipe[1]);
+        close(statusPipe[0]); close(statusPipe[1]);
+        error_ = "cannot reserve API request descriptors";
         return false;
     }
     const std::string config = "url = \"" + url + "\"\n";
@@ -144,19 +164,50 @@ bool Downloader::fetchWithStatus(const std::string &url, const std::string &dest
     }
     unlink(destination.c_str());
     posix_spawn_file_actions_t actions;
-    posix_spawn_file_actions_init(&actions);
-    posix_spawn_file_actions_adddup2(&actions, configPipe[0], STDIN_FILENO);
-    posix_spawn_file_actions_adddup2(&actions, statusPipe[1], STDOUT_FILENO);
-    posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
-    posix_spawn_file_actions_addclose(&actions, configPipe[0]);
-    posix_spawn_file_actions_addclose(&actions, statusPipe[0]);
-    posix_spawn_file_actions_addclose(&actions, statusPipe[1]);
+    int actionsError = posix_spawn_file_actions_init(&actions);
+    const bool actionsInitialized = actionsError == 0;
+    const char *actionsStage = "initialize";
+    if (actionsError == 0) {
+        actionsStage = "config-stdin";
+        actionsError = posix_spawn_file_actions_adddup2(&actions, configPipe[0], STDIN_FILENO);
+    }
+    if (actionsError == 0) {
+        actionsStage = "status-stdout";
+        actionsError = posix_spawn_file_actions_adddup2(&actions, statusPipe[1], STDOUT_FILENO);
+    }
+    if (actionsError == 0) {
+        actionsStage = "stderr-redirect";
+        actionsError = posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+    }
+    if (actionsError == 0) {
+        actionsStage = "close-config-pipe";
+        actionsError = posix_spawn_file_actions_addclose(&actions, configPipe[0]);
+    }
+    if (actionsError == 0) {
+        actionsStage = "close-status-read-pipe";
+        actionsError = posix_spawn_file_actions_addclose(&actions, statusPipe[0]);
+    }
+    if (actionsError == 0) {
+        actionsStage = "close-status-write-pipe";
+        actionsError = posix_spawn_file_actions_addclose(&actions, statusPipe[1]);
+    }
+    if (actionsError != 0) {
+        if (actionsInitialized) posix_spawn_file_actions_destroy(&actions);
+        close(configPipe[0]); close(statusPipe[0]); close(statusPipe[1]);
+        unlink(destination.c_str());
+        error_ = "cannot configure curl request";
+        DebugLog::error(std::string("HTTPS request: curl process setup failed; stage=") +
+                        actionsStage + "; error=" + std::strerror(actionsError));
+        return false;
+    }
     std::vector<std::string> args = {"curl", "-4", "-sS", "--proto", "=https",
         "--proto-redir", "=https", "--connect-timeout", "12", "--max-time",
         std::to_string(timeoutSeconds), "--max-filesize", std::to_string(maxBytes),
         "-w", "%{http_code}",
         "-o", destination, "--config", "-"};
-    if (followRedirects) args.insert(args.begin() + 3, "-L");
+    // Keep -L before --proto: inserting it after --proto makes curl treat it as
+    // the --proto argument and reject every verified request that follows redirects.
+    if (followRedirects) args.insert(args.begin() + 2, "-L");
     for (const char *path : kCertificates) {
         if (!fileExists(path)) continue;
         args.insert(args.end() - 2, {"--cacert", path});
@@ -173,6 +224,8 @@ bool Downloader::fetchWithStatus(const std::string &url, const std::string &dest
     if (spawnError != 0) {
         close(statusPipe[0]);
         error_ = "cannot start curl";
+        DebugLog::error(std::string("HTTPS request: curl process could not start; error=") +
+                        std::strerror(spawnError));
         return false;
     }
     char output[16] = {};
@@ -189,7 +242,8 @@ bool Downloader::fetchWithStatus(const std::string &url, const std::string &dest
         struct pollfd pfd {statusPipe[0], POLLIN | POLLHUP, 0};
         const int ready = poll(&pfd, 1, int(std::min<long long>(200, remaining)));
         if (ready < 0 && errno == EINTR) continue;
-        if (ready <= 0) { timedOut = ready == 0; break; }
+        if (ready < 0) break;
+        if (ready == 0) continue;
         const ssize_t n = read(statusPipe[0], output + count, sizeof(output) - 1 - count);
         if (n < 0 && errno == EINTR) continue;
         if (n <= 0) break;

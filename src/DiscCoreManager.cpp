@@ -15,6 +15,7 @@
 
 #include "UpdateFiles.h"
 #include "DiscCorePackage.h"
+#include "DebugLog.h"
 
 namespace {
 
@@ -199,6 +200,7 @@ uint64_t DiscCoreManager::requestInspection() {
 }
 
 void DiscCoreManager::workerLoop() {
+    std::string lastLoggedStatus;
     for (;;) {
         uint64_t revision;
         bool forceHashes;
@@ -211,6 +213,23 @@ void DiscCoreManager::workerLoop() {
         }
         Status current = inspect(forceHashes);
         current.inspectionRevision = revision;
+        const auto flag = [](bool value) { return value ? "yes" : "no"; };
+        const std::string statusLine =
+            std::string("disc cores: alternate-main installed=") + flag(current.alternateMainInstalled) +
+            " verified=" + flag(current.alternateMainVerified) +
+            " scoped-config=" + flag(current.scopedMainConfigured) +
+            "; PS1 MGL installed=" + flag(current.psxMglInstalled) +
+            " compatible=" + flag(current.psxMglCompatible) +
+            " verified=" + flag(current.psxMglVerified) +
+            " FPGA-core=" + flag(current.psxCoreInstalled) +
+            "; Saturn MGL installed=" + flag(current.saturnMglInstalled) +
+            " compatible=" + flag(current.saturnMglCompatible) +
+            " verified=" + flag(current.saturnMglVerified) +
+            " FPGA-core=" + flag(current.saturnCoreInstalled);
+        if (statusLine != lastLoggedStatus) {
+            DebugLog::info(statusLine);
+            lastLoggedStatus = statusLine;
+        }
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (stopping_) return;

@@ -50,7 +50,11 @@ def resolve(label, address):
 
 with open(log, encoding='utf-8', errors='replace') as source:
     for line in source:
-        if 'fatal ' not in line and 'std::terminate backtrace:' not in line:
+        if ('fatal disc-probe ' in line or 'disc-probe exception ' in line):
+            print(line.rstrip())
+            continue
+        if ('fatal ' not in line and 'std::terminate backtrace:' not in line and
+                'uncaught exception' not in line):
             continue
         if f'pid={pid}' not in line:
             continue
@@ -61,7 +65,8 @@ with open(log, encoding='utf-8', errors='replace') as source:
                 if match:
                     resolve(label, match[1])
         else:
-            addresses = line.split('std::terminate backtrace:', 1)[1].split(' exception=', 1)[0]
+            marker = 'std::terminate backtrace:' if 'std::terminate backtrace:' in line else 'backtrace:'
+            addresses = line.split(marker, 1)[1].split(' pid=', 1)[0]
             for address in re.findall(r'0x[0-9a-fA-F]+', addresses):
                 resolve('backtrace', address)
 PY

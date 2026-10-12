@@ -28,10 +28,12 @@ END = "<!-- screenshots:end -->"
 GALLERY = [
     ("pair", [("home", "Home"), ("favorites", "Favorites")]),
     ("pair", [("systems", "Systems"), ("arcade", "Arcade")]),
+    ("single", ("disc", "Disc")),
     ("text", "Every system's games in the presentation you prefer — Y cycles through them. "
              "Here, SNES in Grid, Boxart small and List:"),
     ("pair", [("snes-grid", "Grid"), ("snes-small", "Boxart small")]),
-    ("pair", [("snes-list", "List"), ("games", "Games")]),
+    ("pair", [("snes-list", "List"), ("select-version", "Choose version")]),
+    ("single", ("games", "Games")),
     ("text", "Settings, including Interface, Accessibility, System, the Changelog, the update page and controller input test:"),
     ("pair", [("settings", "Settings"), ("settings-interface", "Interface settings")]),
     ("pair", [("settings-accessibility", "Accessibility settings"),
@@ -40,9 +42,11 @@ GALLERY = [
 ]
 
 ALT = {
+    "disc": "Disc tab",
     "snes-grid": "SNES, grid view",
     "snes-small": "SNES, small box art view",
     "snes-list": "SNES, list view",
+    "select-version": "Choose version for Adventures of Batman & Robin on Game Gear",
 }
 
 
@@ -75,6 +79,12 @@ def main():
     for kind, content in GALLERY:
         if kind == "text":
             blocks.append(content)
+            continue
+        if kind == "single":
+            name, title = content
+            if have(name):
+                blocks.append("\n".join((f"| {title} |", "| --- |",
+                                          f"| ![{ALT.get(name, title)}](screenshots/{name}.png) |")))
             continue
         cells = [(name, title) for name, title in content if have(name)]
         if not cells:

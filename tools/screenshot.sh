@@ -13,10 +13,11 @@
 # touched. Nothing needs a controller: --tab, --system and --view choose the screen, and
 # --press feeds it button presses, so a screen several presses deep can be reached.
 #
-#   --tab home|favorites|systems|arcade|games|settings
+#   --tab disc|home|favorites|systems|arcade|games|settings
 #   --system NAME          with --tab games: that system's list
 #   --view grid|small|list|large|compact
-#   --press LIST           comma separated: up down left right confirm back fav view prev next
+#   --press LIST           comma separated: up down left right confirm back select start fav
+#                          view prev next
 #                          jumpprev jumpnext, and wait:N for N frames. One press per frame.
 #   --frames N             how many frames to run before the picture is taken
 #
@@ -81,7 +82,7 @@ downs() {
 # ---------------------------------------------------------------------------------------
 # arcade-games is not in the standard set: it takes several minutes on the device and the
 # README does not show it. Ask for it by name.
-STANDARD="home favorites systems snes snes-grid snes-small snes-list arcade games settings
+STANDARD="home favorites systems disc snes snes-grid snes-small snes-list select-version arcade games settings
 settings-interface settings-accessibility settings-system settings-updates controller-test"
 
 shot_set() {
@@ -92,10 +93,17 @@ shot_set() {
         home)        render $name 120 "$SET_DIR" --no-grab --tab home ;;
         favorites)   render $name 120 "$SET_DIR" --no-grab --tab favorites ;;
         systems)     render $name 500 "$SET_DIR" --no-grab --tab systems ;;
+        disc)        render $name 150 "$SET_DIR" --no-grab --tab disc ;;
         snes)        render $name 150 "$SET_DIR" --no-grab --tab games --system SNES ;;
         snes-grid)   render $name 150 "$SET_DIR" --no-grab --tab games --system SNES --view grid ;;
         snes-small)  render $name 150 "$SET_DIR" --no-grab --tab games --system SNES --view small ;;
         snes-list)   render $name 150 "$SET_DIR" --no-grab --tab games --system SNES --view list ;;
+        select-version)
+            # From Home: RB twice to Consoles, right three times to Game Gear, A to open it,
+            # right twice to Adventures of Batman & Robin, Select, down to Choose version, A.
+            # The GUI is already running here, so the physical Start that launches it is implicit.
+            render $name 300 "$SET_DIR" --no-grab --tab home \
+                --press "next,next,right,right,right,confirm,right,right,select,down,confirm" ;;
         arcade)      render $name 150 "$SET_DIR" --no-grab --tab arcade ;;
         games)       render $name 150 "$SET_DIR" --no-grab --tab games ;;
         settings)    render $name 60 "$SET_DIR" --no-grab --tab settings --press "right,wait:5" ;;

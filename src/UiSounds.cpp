@@ -1,6 +1,7 @@
 #include "UiSounds.h"
 
 #include <cerrno>
+#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -25,7 +26,7 @@ bool writeAll(int fd, const uint8_t *data, size_t size) {
 
 void playInWorker(const uint8_t *wav, size_t wavSize) {
     int pipeFds[2];
-    if (pipe(pipeFds) != 0) _exit(0);
+    if (pipe2(pipeFds, O_CLOEXEC) != 0) _exit(0);
     const pid_t player = fork();
     if (player < 0) {
         close(pipeFds[0]); close(pipeFds[1]);

@@ -23,6 +23,8 @@ private:
     int cursor_ = 0;
     int overlayIndex_ = 0;
     bool screenshotOverlay_ = false;
+    bool hasDiscGeneration_ = false;
+    uint64_t viewedDiscGeneration_ = 0;
     bool launchProbePending_ = false;
     uint64_t launchProbeGeneration_ = 0;
     uint64_t launchCoreRevision_ = 0;

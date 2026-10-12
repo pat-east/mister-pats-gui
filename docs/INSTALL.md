@@ -225,9 +225,10 @@ make BASE=arm-unknown-linux-gnueabihf -j4                  # bin/MiSTer
 cd ../..
 ```
 
-`make package-release` creates the five required GitHub assets from the release build and
+`make package-release` creates the eight required GitHub assets from the release build and
 the patched main binary after ELF, ABI and symbol checks. Publish those assets together under
-the matching `vX.Y.Z` tag only after the hardware release checks documented in `VNEXT.md`.
+the matching `vX.Y.Z` tag only after the hardware release checks documented in
+[DISCDRIVE.md](DISCDRIVE.md).
 
 For local development, build and deploy the current version with:
 

@@ -21,6 +21,7 @@
 #include "DiscCorePackage.h"
 #include "UpdateFiles.h"
 #include "VerifiedDownloader.h"
+#include "DebugLog.h"
 
 namespace {
 
@@ -30,6 +31,61 @@ const std::string kMglUrl = std::string("https://github.com/theshaneobrien/miste
                             DiscCorePackage::kVersion + "/Disc-Cores-MGLs.zip";
 const char *kRoot = "/media/fat";
 const char *kData = "/media/fat/mister-pat";
+
+const char *stateName(DiscCoreInstaller::State state) {
+    switch (state) {
+    case DiscCoreInstaller::State::Idle: return "idle";
+    case DiscCoreInstaller::State::Downloading: return "downloading";
+    case DiscCoreInstaller::State::Verifying: return "verifying";
+    case DiscCoreInstaller::State::Installing: return "installing";
+    case DiscCoreInstaller::State::Ready: return "ready";
+    case DiscCoreInstaller::State::Failed: return "failed";
+    case DiscCoreInstaller::State::Cancelled: return "cancelled";
+    }
+    return "unknown";
+}
+
+const char *errorCategory(const std::string &error) {
+    if (error.empty()) return "unspecified";
+    if (error == "cancelled") return "cancelled";
+    if (error.find("timed out") != std::string::npos) return "timeout";
+    if (error.find("exceeds size limit") != std::string::npos) return "download-too-large";
+    if (error.find("curl") != std::string::npos || error.find("download") != std::string::npos)
+        return "download-failed";
+    if (error.find("hash") != std::string::npos || error.find("SHA-256") != std::string::npos ||
+        error.find("verification") != std::string::npos) return "integrity-check-failed";
+    if (error.find("MGL archive") != std::string::npos || error.find("MGL entry") != std::string::npos ||
+        error.find("MGL local header") != std::string::npos) return "mgl-archive-invalid";
+    if (error.find("journal") != std::string::npos || error.find("recovery") != std::string::npos)
+        return "recovery-failed";
+    if (error.find("MiSTer.ini") != std::string::npos) return "mister-config-failed";
+    if (error.find("backup") != std::string::npos) return "backup-failed";
+    if (error.find("directory") != std::string::npos || error.find("staging") != std::string::npos)
+        return "storage-setup-failed";
+    if (error.find("managed") != std::string::npos || error.find("target") != std::string::npos ||
+        error.find("publish") != std::string::npos || error.find("sync") != std::string::npos)
+        return "file-install-failed";
+    return "package-install-failed";
+}
+
+std::string safeLogDetail(const std::string &detail) {
+    std::string out;
+    out.reserve(std::min<size_t>(detail.size(), 256));
+    for (size_t i = 0; i < detail.size();) {
+        if (out.size() == 256) break;
+        const unsigned char ch = static_cast<unsigned char>(detail[i]);
+        if (ch == '/') {
+            out += "[path]";
+            while (i < detail.size() && !std::isspace(static_cast<unsigned char>(detail[i])) &&
+                   detail[i] != ';' && detail[i] != ',') ++i;
+            continue;
+        }
+        out.push_back(ch < 0x20 || ch == 0x7f ? ' ' : char(ch));
+        ++i;
+    }
+    if (detail.size() > out.size()) out += " [truncated]";
+    return out;
+}
 
 uint16_t le16(const unsigned char *p) { return uint16_t(p[0] | (uint16_t(p[1]) << 8)); }
 uint32_t le32(const unsigned char *p) {
@@ -137,6 +193,78 @@ bool writeExclusive(const std::string &path, const unsigned char *data, size_t s
     if (close(fd) != 0 && error.empty()) error = "cannot close " + path;
     if (!error.empty()) { unlink(path.c_str()); return false; }
     return true;
+}
+
+bool publishFile(const std::string &source, const std::string &target, unsigned mode,
+                 std::string &error) {
+    const size_t slash = target.find_last_of('/');
+    if (slash == std::string::npos || slash + 1 == target.size()) {
+        error = "invalid managed-file target";
+        return false;
+    }
+    const std::string directoryPath = slash == 0 ? "/" : target.substr(0, slash);
+    const std::string name = target.substr(slash + 1);
+    const int directory = openDirectoryNoFollow(directoryPath);
+    if (directory < 0) {
+        error = "cannot open target directory safely: " + directoryPath;
+        return false;
+    }
+    const int input = open(source.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (input < 0) {
+        close(directory);
+        error = "cannot open source file safely: " + source;
+        return false;
+    }
+    struct stat sourceInfo {};
+    if (fstat(input, &sourceInfo) != 0 || !S_ISREG(sourceInfo.st_mode)) {
+        close(input);
+        close(directory);
+        error = "source is not a regular file: " + source;
+        return false;
+    }
+    int output = -1;
+    std::string temporary;
+    for (unsigned attempt = 0; attempt < 16 && output < 0; ++attempt) {
+        temporary = name + ".disc-new-" + std::to_string(getpid()) + "-" +
+                    std::to_string(attempt);
+        output = openat(directory, temporary.c_str(),
+                        O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+        if (output < 0 && errno != EEXIST) break;
+    }
+    if (output < 0) {
+        close(input);
+        close(directory);
+        error = "cannot create managed-file staging entry: " + target;
+        return false;
+    }
+    bool ok = true;
+    char buffer[32768];
+    for (;;) {
+        const ssize_t count = read(input, buffer, sizeof(buffer));
+        if (count < 0 && errno == EINTR) continue;
+        if (count < 0) { error = "cannot read source file: " + source; ok = false; break; }
+        if (count == 0) break;
+        size_t offset = 0;
+        while (offset < size_t(count)) {
+            const ssize_t written = write(output, buffer + offset, size_t(count) - offset);
+            if (written < 0 && errno == EINTR) continue;
+            if (written <= 0) { error = "cannot write managed-file staging entry: " + target; ok = false; break; }
+            offset += size_t(written);
+        }
+        if (!ok) break;
+    }
+    if (ok && fchmod(output, mode) != 0) { error = "cannot set managed-file mode: " + target; ok = false; }
+    if (ok && fsync(output) != 0) { error = "cannot sync managed-file staging entry: " + target; ok = false; }
+    close(input);
+    if (close(output) != 0 && ok) { error = "cannot close managed-file staging entry: " + target; ok = false; }
+    if (ok && renameat(directory, temporary.c_str(), directory, name.c_str()) != 0) {
+        error = "cannot publish managed file: " + target;
+        ok = false;
+    }
+    if (ok && fsync(directory) != 0) { error = "cannot sync managed-file directory: " + directoryPath; ok = false; }
+    if (!ok) unlinkat(directory, temporary.c_str(), 0);
+    close(directory);
+    return ok;
 }
 
 bool writeJournal(const std::string &path, const std::string &content, std::string &error) {
@@ -304,6 +432,7 @@ bool recoverInterruptedInstall(std::string &error) {
         error = "cannot inspect interrupted disc-install journal";
         return false;
     }
+    DebugLog::warn("disc installer: interrupted transaction found; restoring saved files");
     std::string data;
     if (!S_ISREG(journalStat.st_mode) || !UpdateFiles::readLimited(journal, 128, data)) {
         error = "invalid interrupted disc-install journal; refusing another install";
@@ -355,14 +484,8 @@ bool recoverInterruptedInstall(std::string &error) {
             error = "missing managed-file backup required for recovery: " + backup;
             return false;
         }
-        const std::string temporary = target + ".recovery-" + std::to_string(getpid());
-        unlink(temporary.c_str());
-        if (!UpdateFiles::copyFile(backup, temporary, unsigned(backupStat.st_mode & 0777), error) ||
-            rename(temporary.c_str(), target.c_str()) != 0) {
-            unlink(temporary.c_str());
-            if (error.empty()) error = "cannot restore managed disc file " + target;
+        if (!publishFile(backup, target, unsigned(backupStat.st_mode & 0777), error))
             return false;
-        }
     }
     const std::string iniBackup = backupDir + "/MiSTer.ini";
     struct stat iniStat {};
@@ -371,14 +494,7 @@ bool recoverInterruptedInstall(std::string &error) {
         return false;
     }
     const std::string iniPath = std::string(kRoot) + "/MiSTer.ini";
-    const std::string iniTemporary = iniPath + ".recovery-" + std::to_string(getpid());
-    unlink(iniTemporary.c_str());
-    if (!UpdateFiles::copyFile(iniBackup, iniTemporary, unsigned(iniStat.st_mode & 0777), error) ||
-        rename(iniTemporary.c_str(), iniPath.c_str()) != 0) {
-        unlink(iniTemporary.c_str());
-        if (error.empty()) error = "cannot restore MiSTer.ini";
-        return false;
-    }
+    if (!publishFile(iniBackup, iniPath, unsigned(iniStat.st_mode & 0777), error)) return false;
     // Make every restored file and rename durable before removing the only recovery record.
     sync();
     if (unlink(journal.c_str()) != 0) {
@@ -386,27 +502,24 @@ bool recoverInterruptedInstall(std::string &error) {
         return false;
     }
     sync();
+    DebugLog::info("disc installer: interrupted transaction recovery completed");
     return true;
 }
 
 bool installOne(const std::string &staged, const std::string &target, unsigned mode,
                 std::string &error) {
-    const std::string temporary = target + ".disc-new-" + std::to_string(getpid());
-    if (!UpdateFiles::copyFile(staged, temporary, mode, error)) return false;
-    if (rename(temporary.c_str(), target.c_str()) != 0) {
-        error = "cannot publish " + target + ": " + std::strerror(errno);
-        unlink(temporary.c_str());
-        return false;
-    }
-    return true;
+    return publishFile(staged, target, mode, error);
 }
 
 } // namespace
 
 DiscCoreInstaller::DiscCoreInstaller() {
     std::string recoveryError;
-    if (!recoverInterruptedInstall(recoveryError))
+    if (!recoverInterruptedInstall(recoveryError)) {
+        recoveryBlocked_ = true;
+        DebugLog::error("disc installer: startup recovery failed; package actions are disabled");
         snapshot_ = {State::Failed, "Disc package recovery needs attention: " + recoveryError, 0};
+    }
     worker_ = std::thread(&DiscCoreInstaller::workerLoop, this);
 }
 
@@ -418,17 +531,23 @@ DiscCoreInstaller::~DiscCoreInstaller() {
 }
 
 bool DiscCoreInstaller::start() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (pending_ || snapshot_.state == State::Downloading || snapshot_.state == State::Verifying ||
-        snapshot_.state == State::Installing) return false;
-    cancel_.store(false);
-    pending_ = true;
-    snapshot_ = {State::Downloading, "Preparing download…", 0};
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (recoveryBlocked_ || pending_ || snapshot_.state == State::Downloading || snapshot_.state == State::Verifying ||
+            snapshot_.state == State::Installing) return false;
+        cancel_.store(false);
+        pending_ = true;
+        snapshot_ = {State::Downloading, "Preparing download…", 0};
+    }
+    DebugLog::info("disc installer: package installation requested");
     wake_.notify_one();
     return true;
 }
 
-void DiscCoreInstaller::cancel() { cancel_.store(true); }
+void DiscCoreInstaller::cancel() {
+    if (busy()) DebugLog::info("disc installer: cancellation requested");
+    cancel_.store(true);
+}
 
 DiscCoreInstaller::Snapshot DiscCoreInstaller::snapshot() const {
     std::lock_guard<std::mutex> lock(mutex_);
@@ -438,6 +557,11 @@ DiscCoreInstaller::Snapshot DiscCoreInstaller::snapshot() const {
 bool DiscCoreInstaller::busy() const {
     const State state = snapshot().state;
     return state == State::Downloading || state == State::Verifying || state == State::Installing;
+}
+
+bool DiscCoreInstaller::recoveryBlocked() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return recoveryBlocked_;
 }
 
 void DiscCoreInstaller::workerLoop() {
@@ -450,11 +574,25 @@ void DiscCoreInstaller::workerLoop() {
         }
         std::string error;
         const bool ok = installPackage(error);
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (stopping_) return;
-        snapshot_.state = ok ? State::Ready : cancel_.load() ? State::Cancelled : State::Failed;
-        snapshot_.message = ok ? std::string("Disc package v") + DiscCorePackage::kVersion + " installed" :
-            cancel_.load() ? "Download cancelled; installed files unchanged" : error;
+        State finalState;
+        State failedDuring;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (stopping_) return;
+            failedDuring = snapshot_.state;
+            finalState = ok ? State::Ready : cancel_.load() ? State::Cancelled : State::Failed;
+            snapshot_.state = finalState;
+            snapshot_.message = ok ? std::string("Disc package v") + DiscCorePackage::kVersion + " installed" :
+                cancel_.load() ? "Download cancelled; installed files unchanged" : error;
+        }
+        std::string logLine = std::string("disc installer: operation ") + stateName(finalState);
+        if (!ok) {
+            logLine += std::string("; stage=") + stateName(failedDuring) +
+                       "; category=" + errorCategory(error) +
+                       "; detail=" + safeLogDetail(error);
+        }
+        DebugLog::write(ok ? DebugLog::Level::Info : finalState == State::Cancelled ? DebugLog::Level::Warning :
+                        DebugLog::Level::Error, logLine);
     }
 }
 
@@ -475,12 +613,20 @@ bool DiscCoreInstaller::installPackage(std::string &error) {
     {
     VerifiedDownloader downloader;
     auto setState = [this](State state, const std::string &message, uint64_t bytes) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        snapshot_ = {state, message, bytes};
+        bool changed;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            changed = snapshot_.state != state;
+            snapshot_ = {state, message, bytes};
+        }
+        if (changed)
+            DebugLog::info(std::string("disc installer: state=") + stateName(state));
     };
+    DebugLog::info("disc installer: downloading pinned Physical-Disc Main binary");
     DownloadResult result = downloader.fetch(kMainUrl, mainFile, 5u * 1024u * 1024u,
         120, cancel_, [&](uint64_t bytes) { setState(State::Downloading, "Downloading MiSTer-disc…", bytes); });
     if (!result.ok()) { error = result.error; goto cleanup; }
+    DebugLog::info("disc installer: downloading pinned PlayStation/Saturn MGL archive");
     result = downloader.fetch(kMglUrl, zipFile, 256u * 1024u, 60, cancel_,
         [&](uint64_t bytes) { setState(State::Downloading, "Downloading Disc MGLs…", bytes); });
     if (!result.ok()) { error = result.error; goto cleanup; }
@@ -492,9 +638,11 @@ bool DiscCoreInstaller::installPackage(std::string &error) {
         if (error.empty()) error = "downloaded package verification failed";
         goto cleanup;
     }
+    DebugLog::info("disc installer: pinned hashes passed; extracting the two managed MGLs");
     if (!extractEntry(zipFile, "_Disc_Cores/PlayStation.mgl", stage + "/PlayStation.mgl", 16384, error) ||
         !extractEntry(zipFile, "_Disc_Cores/Saturn.mgl", stage + "/Saturn.mgl", 16384, error)) goto cleanup;
     setState(State::Installing, "Saving backups and installing…", 0);
+    DebugLog::info("disc installer: creating backups and recovery journal");
     if (cancel_.load()) { error = "cancelled"; goto cleanup; }
 
     const std::string iniPath = std::string(kRoot) + "/MiSTer.ini";

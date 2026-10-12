@@ -21,7 +21,7 @@ void ConsoleGuard::acquire() {
     for (const char *path : kCandidates) {
         // O_NOCTTY matters: without a controlling terminal (after setsid) this open
         // would adopt the console as ours, and the kernel then stops us with SIGTTOU.
-        fd_ = ::open(path, O_RDWR | O_NOCTTY);
+        fd_ = ::open(path, O_RDWR | O_NOCTTY | O_CLOEXEC);
         if (fd_ < 0) continue;
 
         // Remember what we found instead of assuming text mode: whoever ran before us may

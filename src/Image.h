@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstdio>
 #include <memory>
 #include <string>
 #include <vector>
@@ -25,6 +26,8 @@ public:
     // that is the difference between writing a gigabyte to a marginal drive and writing two
     // hundred megabytes.
     bool saveJpeg(const std::string &path, int quality = 85) const;
+    // Writes to an already-open stream without taking ownership of it.
+    bool saveJpeg(std::FILE *file, int quality = 85) const;
     // Writes an uncompressed, opaque 24-bit BMP for a pre-sized artwork variant.
     bool saveBmp(const std::string &path) const;
 

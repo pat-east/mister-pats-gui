@@ -12,7 +12,7 @@
 Framebuffer::~Framebuffer() { close(); }
 
 bool Framebuffer::open(const std::string &device) {
-    fd_ = ::open(device.c_str(), O_RDWR);
+    fd_ = ::open(device.c_str(), O_RDWR | O_CLOEXEC);
     if (fd_ < 0) { perror(device.c_str()); return false; }
 
     if (ioctl(fd_, FBIOGET_VSCREENINFO, &var_) < 0) { perror("FBIOGET_VSCREENINFO"); return false; }

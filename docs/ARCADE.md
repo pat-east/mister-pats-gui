@@ -11,7 +11,7 @@ below that cites MiSTer's own source was confirmed by reading it
 (`third_party/Main_MiSTer/file_io.cpp`, `support/arcade/mra_loader.cpp`, `input.cpp`); the case
 study was confirmed live, on real hardware, in the session this document was written from.
 
-**Current status (0.7.0 source).** Built:
+**Current status (0.8.0 source).** Built:
 
 - the [diagnostic table](#implemented-the-diagnostic-table), which also launches a game;
 - [Arcade as a real system](#implemented-arcade-as-a-real-system) — a library of only the games

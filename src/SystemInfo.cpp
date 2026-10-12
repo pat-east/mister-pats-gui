@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fstream>
+#include <fcntl.h>
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <sys/statvfs.h>
@@ -31,7 +32,7 @@ uint64_t readMemoryValue(const std::string &line) {
 
 std::string readSupplicantSsid(const char *interfaceName) {
     int outputPipe[2];
-    if (pipe(outputPipe) != 0) return {};
+    if (pipe2(outputPipe, O_CLOEXEC) != 0) return {};
 
     const pid_t child = fork();
     if (child < 0) {

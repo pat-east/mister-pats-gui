@@ -6,6 +6,26 @@ from pathlib import Path
 
 def main():
     source = Path(sys.argv[1]).read_bytes()
+    text = source.decode("utf-8")
+    counts = {"PSX": 0, "SATURN": 0}
+    for number, line in enumerate(text.splitlines(), 1):
+        if not line or line.startswith("#"):
+            continue
+        fields = line.split("\t")
+        if len(fields) != 3:
+            raise SystemExit(f"{sys.argv[1]}:{number}: expected three tab-separated fields")
+        system, identifier, title = fields
+        if system not in counts or not identifier or not title:
+            raise SystemExit(f"{sys.argv[1]}:{number}: invalid system, identifier or title")
+        if len(identifier.encode("utf-8")) > 128 or len(title.encode("utf-8")) > 512:
+            raise SystemExit(f"{sys.argv[1]}:{number}: identifier or title exceeds runtime limit")
+        if len(line.encode("utf-8")) > 2048:
+            raise SystemExit(f"{sys.argv[1]}:{number}: row exceeds runtime limit")
+        counts[system] += 1
+    missing = [system for system, count in counts.items() if not count]
+    if missing:
+        raise SystemExit(f"{sys.argv[1]}: missing title records for {', '.join(missing)}")
+
     compressed = zlib.compress(source, 9)
     output = Path(sys.argv[2])
     with output.open("w", encoding="ascii", newline="\n") as target:

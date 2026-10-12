@@ -38,6 +38,7 @@ private:
     mutable bool keyCacheInitialized_ = false;
     std::condition_variable wake_;
     CheckState state_ = CheckState::NotChecked;
+    std::string allowanceStatus_;
     std::string activeKey_;
     std::string checkedKey_;
     bool pending_ = false;

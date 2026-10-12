@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <fcntl.h>
 #include <string>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "Canvas.h"
@@ -12,6 +14,60 @@
 
 namespace CrashScreen {
 namespace {
+
+std::string lastCrashSummary() {
+    const char *path = "/media/fat/mister-pat/logs/crash.log";
+    const int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    if (fd < 0) return "Crash details are unavailable.";
+    struct stat info {};
+    if (fstat(fd, &info) != 0 || !S_ISREG(info.st_mode)) {
+        close(fd);
+        return "Crash details are unavailable.";
+    }
+    FILE *input = fdopen(fd, "r");
+    if (!input) {
+        close(fd);
+        return "Crash details are unavailable.";
+    }
+    constexpr long kTailBytes = 8192;
+    if (info.st_size > kTailBytes) {
+        if (fseek(input, -kTailBytes, SEEK_END) != 0) {
+            fclose(input);
+            return "Crash details are unavailable.";
+        }
+        char discard[1024];
+        if (!fgets(discard, sizeof(discard), input)) {
+            fclose(input);
+            return "Crash details are unavailable.";
+        }
+    }
+    std::string line, last;
+    char buffer[1024];
+    while (fgets(buffer, sizeof(buffer), input)) {
+        line += buffer;
+        if (line.size() > 4096) line.resize(4096);
+        if (line.find('\n') != std::string::npos) {
+            while (!line.empty() && (line.back() == '\n' || line.back() == '\r')) line.pop_back();
+            if (!line.empty()) last = line;
+            line.clear();
+        }
+    }
+    if (!line.empty()) last = line;
+    fclose(input);
+    if (last.empty()) return "Crash details are unavailable.";
+    const size_t pid = last.find(" pid=");
+    if (pid != std::string::npos) last.resize(pid);
+    const size_t relaunch = last.find(" auto_relaunch=");
+    if (relaunch != std::string::npos) last.resize(relaunch);
+    if (last.compare(0, 25, "std::terminate backtrace:") == 0) {
+        const size_t exception = last.find(" exception=");
+        if (exception != std::string::npos) last = "C++ terminate:" + last.substr(exception + 11);
+    } else if (last.compare(0, 18, "uncaught exception") == 0) {
+        const size_t backtrace = last.find(" backtrace:");
+        if (backtrace != std::string::npos) last.resize(backtrace);
+    }
+    return last;
+}
 
 void draw(Framebuffer &framebuffer, Theme &theme, int exitStatus) {
     Canvas canvas(framebuffer.width(), framebuffer.height());
@@ -60,6 +116,11 @@ void draw(Framebuffer &framebuffer, Theme &theme, int exitStatus) {
         canvas, {innerX, pill.bottom() + theme.px(22), innerWidth, theme.px(30)},
         "Crash log (if available): /media/fat/mister-pat/logs/crash.log", theme.px(16),
         theme.textMuted);
+    const int detailSize = theme.px(16);
+    const std::string summary = theme.regular().elide(lastCrashSummary(), detailSize, innerWidth);
+    theme.regular().drawCentered(
+        canvas, {innerX, pill.bottom() + theme.px(60), innerWidth, theme.px(34)},
+        summary, detailSize, theme.textPrimary);
 
     framebuffer.present(canvas);
 }

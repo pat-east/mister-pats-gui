@@ -16,6 +16,19 @@ extern char **environ;
 
 namespace UpdateFiles {
 
+namespace {
+
+bool moveAboveStandardDescriptors(int &fd) {
+    if (fd >= STDERR_FILENO + 1) return true;
+    const int duplicate = fcntl(fd, F_DUPFD_CLOEXEC, STDERR_FILENO + 1);
+    if (duplicate < 0) return false;
+    close(fd);
+    fd = duplicate;
+    return true;
+}
+
+} // namespace
+
 bool regularFile(const std::string &path) {
     struct stat st {};
     return lstat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode);
@@ -158,22 +171,49 @@ std::string bootId() {
 bool sha256(const std::string &path, std::string &hash, std::string &error,
             const std::atomic<bool> *cancel) {
     hash.clear();
-    if (!regularFile(path)) { error = "not a regular file: " + path; return false; }
+    int input = open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+    if (input < 0) { error = "cannot open regular file for hashing: " + path; return false; }
+    if (!moveAboveStandardDescriptors(input)) {
+        close(input);
+        error = "cannot reserve hash input descriptor";
+        return false;
+    }
+    struct stat before {};
+    if (fstat(input, &before) != 0 || !S_ISREG(before.st_mode)) {
+        close(input);
+        error = "not a regular file: " + path;
+        return false;
+    }
     int outputPipe[2];
-    if (pipe(outputPipe) != 0) { error = "cannot create hash pipe"; return false; }
+    if (pipe2(outputPipe, O_CLOEXEC) != 0) {
+        close(input);
+        error = "cannot create hash pipe";
+        return false;
+    }
+    if (!moveAboveStandardDescriptors(outputPipe[0]) ||
+        !moveAboveStandardDescriptors(outputPipe[1])) {
+        close(input);
+        close(outputPipe[0]);
+        close(outputPipe[1]);
+        error = "cannot reserve hash pipe descriptors";
+        return false;
+    }
     posix_spawn_file_actions_t actions;
     posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, input, STDIN_FILENO);
     posix_spawn_file_actions_adddup2(&actions, outputPipe[1], STDOUT_FILENO);
+    posix_spawn_file_actions_addclose(&actions, input);
     posix_spawn_file_actions_addclose(&actions, outputPipe[0]);
     posix_spawn_file_actions_addclose(&actions, outputPipe[1]);
     char program[] = "sha256sum";
-    char *args[] = {program, const_cast<char *>(path.c_str()), nullptr};
+    char *args[] = {program, nullptr};
     pid_t child = -1;
     int spawned = posix_spawnp(&child, program, &actions, nullptr, args, environ);
     posix_spawn_file_actions_destroy(&actions);
     close(outputPipe[1]);
     if (spawned != 0) {
         close(outputPipe[0]);
+        close(input);
         error = "cannot start sha256sum: " + std::string(std::strerror(spawned));
         return false;
     }
@@ -217,8 +257,26 @@ bool sha256(const std::string &path, std::string &hash, std::string &error,
         if (!reaped) kill(child, SIGKILL);
     }
     while (waitpid(child, &status, 0) < 0 && errno == EINTR) {}
+    struct stat after {}, named {};
+    const bool stableDescriptor = fstat(input, &after) == 0 &&
+        before.st_dev == after.st_dev && before.st_ino == after.st_ino &&
+        before.st_size == after.st_size && before.st_mtim.tv_sec == after.st_mtim.tv_sec &&
+        before.st_mtim.tv_nsec == after.st_mtim.tv_nsec &&
+        before.st_ctim.tv_sec == after.st_ctim.tv_sec &&
+        before.st_ctim.tv_nsec == after.st_ctim.tv_nsec;
+    const bool stablePath = lstat(path.c_str(), &named) == 0 && S_ISREG(named.st_mode) &&
+        named.st_dev == before.st_dev && named.st_ino == before.st_ino &&
+        named.st_size == before.st_size && named.st_mtim.tv_sec == before.st_mtim.tv_sec &&
+        named.st_mtim.tv_nsec == before.st_mtim.tv_nsec &&
+        named.st_ctim.tv_sec == before.st_ctim.tv_sec &&
+        named.st_ctim.tv_nsec == before.st_ctim.tv_nsec;
+    close(input);
     if (interrupted) { error = "cancelled"; return false; }
     if (!error.empty()) return false;
+    if (!stableDescriptor || !stablePath) {
+        error = "file changed while hashing: " + path;
+        return false;
+    }
     if (!WIFEXITED(status) || WEXITSTATUS(status) != 0 ||
         line.size() < 66 || line[64] != ' ') {
         error = "sha256sum failed for " + path;

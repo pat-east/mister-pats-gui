@@ -387,6 +387,14 @@ bool Image::saveJpeg(const std::string &path, int quality) const {
     std::FILE *file = std::fopen(path.c_str(), "wb");
     if (!file) return false;
 
+    const bool saved = saveJpeg(file, quality);
+    const bool closed = std::fclose(file) == 0;
+    return saved && closed;
+}
+
+bool Image::saveJpeg(std::FILE *file, int quality) const {
+    if (!valid() || !file) return false;
+
     jpeg_compress_struct info;
     JpegError error;
     info.err = jpeg_std_error(&error.base);
@@ -394,7 +402,6 @@ bool Image::saveJpeg(const std::string &path, int quality) const {
 
     if (setjmp(error.escape)) {
         jpeg_destroy_compress(&info);
-        std::fclose(file);
         return false;
     }
 
@@ -418,8 +425,7 @@ bool Image::saveJpeg(const std::string &path, int quality) const {
 
     jpeg_finish_compress(&info);
     jpeg_destroy_compress(&info);
-    std::fclose(file);
-    return true;
+    return std::fflush(file) == 0;
 }
 
 bool Image::saveBmp(const std::string &path) const {
