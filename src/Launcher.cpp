@@ -12,6 +12,7 @@
 
 #include "Archive.h"
 #include "Library.h"
+#include "UpdateFiles.h"
 
 namespace {
 
@@ -215,6 +216,18 @@ bool Launcher::launchPhysicalDisc(const std::string &mglPath) {
         error_ = "physical-disc MGL is outside the installed disc-core folder";
         return false;
     }
+    size_t componentStart = 0;
+    while (componentStart < mglPath.size()) {
+        const size_t slash = mglPath.find('/', componentStart);
+        const std::string component = mglPath.substr(componentStart,
+            slash == std::string::npos ? std::string::npos : slash - componentStart);
+        if (component == "." || component == "..") {
+            error_ = "physical-disc MGL path contains a traversal component";
+            return false;
+        }
+        if (slash == std::string::npos) break;
+        componentStart = slash + 1;
+    }
     for (unsigned char ch : mglPath) {
         const bool safe = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
                           (ch >= '0' && ch <= '9') || ch == '/' || ch == '_' ||
@@ -224,17 +237,14 @@ bool Launcher::launchPhysicalDisc(const std::string &mglPath) {
             return false;
         }
     }
-    struct stat info {};
-    if (stat(mglPath.c_str(), &info) != 0 || !S_ISREG(info.st_mode)) {
+    if (!UpdateFiles::regularFile(mglPath)) {
         error_ = "physical-disc MGL is missing: " + mglPath;
         return false;
     }
-    std::ifstream input(mglPath.c_str(), std::ios::binary);
-    if (!input) {
-        error_ = "cannot read physical-disc MGL: " + mglPath;
+    if (!UpdateFiles::readLimited(mglPath, 16384, mgl_)) {
+        error_ = "physical-disc MGL cannot be read or exceeds 16 KiB: " + mglPath;
         return false;
     }
-    mgl_.assign(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
     if (mgl_.empty() || mgl_.find("<mistergamedescription") == std::string::npos ||
         mgl_.find("<rbf>") == std::string::npos || mgl_.find("</rbf>") == std::string::npos) {
         error_ = "physical-disc MGL is invalid: " + mglPath;
