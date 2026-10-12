@@ -6,6 +6,7 @@
 #include <cstring>
 #include <fstream>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include "Downloader.h"
 
@@ -307,15 +308,22 @@ bool LibretroIndex::open(const std::string &platform, Downloader &downloader,
     for (char c : platform) cacheName.push_back((c == '/' || c == ' ') ? '_' : c);
     const std::string cached = cacheDir + "/" + cacheName + "-" + mediaFolder + ".html";
 
-    if (!nonEmptyFile(cached)) {
+    const auto fetchIndex = [&]() {
         const std::string url = std::string(kHost) + "/" +
                                 Downloader::encodeComponent(platform) + "/" + mediaFolder + "/";
         // Generous: this is 2.5 MB of directory listing for a big platform, once.
-        if (!downloader.fetch(url, cached, 120)) {
-            error_ = "could not fetch the index: " + downloader.lastError();
-            return false;
-        }
-    }
+        if (downloader.fetch(url, cached, 120)) return true;
+        error_ = "could not fetch the index: " + downloader.lastError();
+        return false;
+    };
+
+    if (nonEmptyFile(cached) && parse(cached)) return true;
+
+    // A truncated or obsolete listing must not poison the local cache indefinitely. Drop
+    // it and retry once from the source; network failures still leave the scrape usable via
+    // other metadata providers.
+    unlink(cached.c_str());
+    if (!fetchIndex()) return false;
 
     if (!parse(cached)) {
         error_ = "the index could not be read";
