@@ -32,15 +32,15 @@ apikey=""
 
 Die Konfiguration bleibt vorerst manuell. Die GUI zeigt den Status **Not configured** oder
 **Configured** an, ohne den API-Key anzuzeigen oder in Logs auszugeben. Ein leerer oder nicht
-lesbarer Key ist nicht konfiguriert. Die Datei wird beim Lesen tolerant gegen Leerzeilen und
-Kommentare sein.
+lesbarer Key ist nicht konfiguriert. Die Datei wird tolerant gegen Leerzeilen und Kommentare
+gelesen.
 
 Der Einstellungs-Punkt bleibt auch ohne Key sichtbar, damit der Status auffindbar ist. Beim
-Anwählen ohne Key erklärt ein kurzer Dialog den Dateipfad und das benötigte Format, statt einen
+Anwählen ohne Key zeigt eine Meldung den Dateipfad und das benötigte Format, statt einen
 Netzwerkaufruf zu starten.
 
-Wenn ein Key vorhanden ist, öffnet **TheGamesDB** einen Dialog mit **Check API key**. Der Check
-sendet einen HTTPS-GET an:
+Wenn ein Key vorhanden ist, startet die Auswahl von **TheGamesDB** einen API-Key-Check im Worker.
+Der Check sendet einen HTTPS-GET an:
 
 ```text
 https://api.thegamesdb.net/v1/API/Limit?apikey=<URL-encoded-key>
@@ -53,19 +53,16 @@ Key als auch ein erreichtes Nutzungslimit bedeuten; die UI darf diesen Status da
 ausschließlich als „invalid key“ darstellen. Netzwerkfehler, HTTP-Fehler und ungültige JSON-
 Antworten erhalten verständliche Meldungen. Der Key wird nie ausgegeben.
 
-Der bestehende `Downloader` kann HTTPS-Dateien abrufen, bietet aber keinen strukturierten
-HTTP-Status/JSON-Response. Für den Check braucht es deshalb entweder eine eng begrenzte
-API-Client-Erweiterung oder einen kleinen Request-Pfad, der HTTP-Status und Antwortdaten sicher
-auswertet. API-Key-Werte müssen als URL-Komponente kodiert werden. UI-Thread und Render-Loop
-dürfen nicht auf den Netzwerkzugriff warten; der Dialog zeigt einen laufenden Zustand und kann
-geschlossen bzw. abgebrochen werden.
+Der HTTP-Status und die API-Antwort werden ausgewertet; API-Key-Werte sind URL-kodiert. UI-Thread
+und Render-Loop warten nicht auf den Netzwerkzugriff. Der Key selbst wird weder angezeigt noch
+protokolliert.
 
 TheGamesDB dokumentiert außerdem Spielsuche nach Name (`/v1.1/Games/ByGameName`), optional mit
 `filter[platform]`, und Cover-Abruf über `/v1/Games/Images`. Das kann Disc-Metadaten und Artwork
 ergänzen, ersetzt aber nicht das lokale Lesen der Disc. Die API-Plattform-IDs für PS1 und Saturn
 müssen einmal explizit geprüft und festgelegt werden. Treffer werden anhand des Disc-Titels,
-der erkannten Plattform und — wenn vorhanden — Disc-ID/Serial plausibilisiert; bei mehreren
-Treffern wird nicht stillschweigend ein beliebiges Spiel ausgewählt.
+der erkannten Plattform plausibilisiert. Mehrdeutige Titeltreffer werden verworfen. Die
+Plattform-IDs sind PS1 `10` und Saturn `17`.
 
 ### Artwork-Auflösung und Fallback
 
@@ -79,22 +76,28 @@ vorhandene `LibretroIndex`-Zuordnung und `MediaScraper`-Download-/Bildverarbeitu
 kein Bild gefunden wird, bleibt das große Disc-Icon als Platzhalter stehen. Fehler bei TheGamesDB
 dürfen die Disc-Ansicht und den Spielstart nicht blockieren.
 
-Für TheGamesDB wird zunächst per Titel und erkannter Plattform gesucht; eine PS1-Serial oder
-Saturn-Kennung dient, sofern extrahierbar, zur zusätzlichen Plausibilisierung. Mehrdeutige
-Treffer werden verworfen oder erfordern eine explizite Auswahl. Für den Treffer werden Boxart
-sowie verfügbare Bilder vom Typ `screenshot` abgefragt. Screenshots sind die bevorzugte Quelle
+Für TheGamesDB wird per erkanntem Titel und Plattform gesucht. Nur Kandidaten mit exakt
+passendem normalisiertem Titel und Plattform werden akzeptiert; mehrere unterschiedliche IDs
+werden als mehrdeutig verworfen. Die Disc-Kennung dient dem lokalen Titelindex und dem stabilen
+Cache-Schlüssel, da TheGamesDB dafür keinen verlässlichen Disc-Serial-Abgleich bereitstellt. Für
+einen eindeutigen Treffer werden Boxart sowie verfügbare Bilder vom Typ `screenshot` abgefragt.
+Screenshots sind die bevorzugte Quelle
 für Ingame-Bilder; andere Bildtypen werden nur dann als Ersatz verwendet, wenn ihr Inhalt zur
 Vorschau passt. Boxart und höchstens vier Ingame-Bilder werden heruntergeladen. Die GUI lädt
 nicht bei jedem Tab-Wechsel erneut herunter.
+
+Eindeutige Nulltreffer (kein passendes Spiel oder keine passenden Bildtypen) werden im Metadaten-
+Cache 30 Tage lang vermerkt. Netzwerk- und HTTP-Fehler gelten nicht als Nulltreffer und bleiben
+erneut versuchbar.
 
 Artwork, kleine Galerie-Vorschaubilder und der zugehörige strukturierte Metadatensatz werden in
 einem persistenten Disc-Cache unter dem MiSTer-Pat-Datenverzeichnis gespeichert, nicht auf der
 Disc. Cache-Schlüssel kombinieren Plattform mit stabiler Disc-Kennung; wenn nur ein Titel
 verfügbar ist, wird dieser normalisiert und mit Plattform sowie Anbieter-ID gespeichert, damit
 gleichnamige Titel nicht kollidieren. Temporäre Downloads werden erst nach erfolgreicher
-Validierung atomar übernommen. Anbieter, Abrufzeit und gefundene Bildtypen werden mitgespeichert,
-damit Fehlerzustände und erneute Versuche kontrolliert behandelt werden können. Cache-Größe,
-Verdrängung und Aktualisierungsdauer sind vor Implementierung festzulegen.
+Validierung atomar übernommen. Anbieter, Spiel-ID, Disc-Kennung und gefundene Bildtypen werden
+mitgespeichert. Der Cache wird bei 128 MiB oder 80 Disc-Verzeichnissen anhand der ältesten
+Verzeichnisse verkleinert; das aktuelle Spiel bleibt dabei erhalten.
 
 TheGamesDB-Limits sollen nicht bei jedem Wechsel in die Disc-Ansicht vorsorglich abgefragt
 werden. Der Key-Check bleibt eine explizite Aktion in Settings; normale Anfragen werten deren
@@ -103,36 +106,33 @@ dürfen weder geloggt noch in Fehlermeldungen angezeigt werden.
 
 ## Settings → System → Disc drive
 
-Der Punkt ist sichtbar, aber **disabled**, wenn kein unterstütztes optisches Laufwerk erkannt
-wird. Ist ein Laufwerk vorhanden, öffnet sich eine Status-/Verwaltungsansicht mit getrennten
-Zeilen für:
+Der Punkt ist sichtbar, aber **disabled**, wenn kein optisches Laufwerk erkannt wird. Ist ein
+Laufwerk vorhanden, öffnet sich eine Statusansicht mit getrennten Zeilen für:
 
 - Laufwerk: erkannt/nicht verfügbar, Gerätepfad und Lesestatus.
 - Physical-Disc-Main: installiert, fehlt oder Version unbekannt.
-- PlayStation Disc Core/MGL und Saturn Disc Core/MGL: installiert, fehlt oder inkompatibel.
-- **Install disc drive cores** bei fehlenden Dateien.
-- **Update disc drive cores** bei installierten, aber älteren Dateien.
+- PlayStation Disc MGL und zugehöriger PlayStation-RBF-Core sowie Saturn Disc MGL und
+  zugehöriger Saturn-RBF-Core: installiert, fehlt oder inkompatibel. MGL-RBF-Pfad und
+  CD-Setname werden geprüft; die passenden RBFs werden nur erkannt, nicht durch den
+  Disc-Paketinstaller verändert.
+- `Install/update Disc cores`: lädt das gepinnte v0.7.0-Paket, prüft beide SHA-256-Prüfsummen,
+  installiert nur `MiSTer-disc` und die PlayStation-/Saturn-MGLs, legt Backups an und schreibt
+  ausschließlich `[CD-*] main=MiSTer-disc` in `MiSTer.ini`. Download und Prüfschritt lassen sich
+  abbrechen; während der Installation wird ein begonnener Austausch sicher beendet.
 
-„Cores“ meint hier das zusammengehörige Softwarepaket aus Physical-Disc-Main-Unterstützung,
-MGLs und den benötigten Core-Dateien. Ein einzelner vorhandener PSX-/Saturn-RBF genügt nicht als
-Kompatibilitätsnachweis. Installation und Update brauchen eine festgelegte Quelle, Versions-
-und Kompatibilitätsregeln, Integritätsprüfung, Download-Fortschritt sowie einen sicheren
-Abbruch-/Rollback-Pfad. Dateien werden zunächst in temporäre Pfade geladen und erst nach
-erfolgreicher Prüfung atomar installiert. Nutzerdateien und BIOS-Dateien werden weder geladen
-noch überschrieben.
+„Disc-Paket“ meint hier Physical-Disc-Main-Unterstützung und MGLs; installierte FPGA-Cores und
+BIOS-Dateien werden nicht verändert. Der Start wird nur freigegeben, wenn auch der passende
+PlayStation- beziehungsweise Saturn-RBF-Core vorhanden ist. Nutzerdateien werden nur an den drei
+ausdrücklich verwalteten Zielpfaden ersetzt; davor werden sie gesichert.
 
 ### Laufwerkserkennung
 
-Die Erkennung läuft außerhalb des Render-Loops und wird zeitlich begrenzt wiederholt. Auf Linux
-sollten mindestens `/dev/sr*`-Geräte und die zugehörigen `/sys/block/sr*`-Informationen geprüft
-werden; konkrete Erkennung und Disc-Status müssen auf dem Dock verifiziert werden. `physcd_probe`
-aus dem untersuchten Loader-Projekt ist ein nützliches manuelles Diagnosewerkzeug, aber die GUI
-sollte nicht von einem optionalen Diagnoseprogramm als einziger Erkennungsmethode abhängen.
-
-Laufwerkserkennung, eingelegte Disc und Lesbarkeit sind verschiedene Zustände. Ein nicht
-beantwortender Gerätetreiber darf keine blockierende Schleife in Navigation oder Darstellung
-auslösen. Laufwerksabfragen und Disc-Reads laufen in einem Worker mit Timeout; UI-Updates werden
-als Zustandswechsel an den Hauptthread übergeben.
+Die Implementierung sucht alle vier Sekunden nach `/dev/sr*`-Blockgeräten und liest das Modell aus
+`/sys/block/sr*/device/model`. Laufwerkserkennung, eingelegte Disc und Lesbarkeit bleiben getrennte
+Zustände. Die Hardwareabfrage läuft in einem separaten Loader-Unterprozess. Nach sieben Sekunden
+ohne Ergebnis beendet der GUI-Prozess die Probe, verwirft den alten Titel und sperrt **Start game**.
+Falls ein Treiber den Prozess in einem nicht unterbrechbaren Kernel-Wartezustand hält, wird kein
+weiterer Probeprozess gestartet, bis der alte Prozess beendet ist.
 
 ## Disc-Tab und Darstellung
 
@@ -275,23 +275,17 @@ Artwork-Suche sind keine Startvoraussetzungen.
 
 ## Disc-Informationen ermitteln
 
-Der Optical-Drive-Backend ist die Voraussetzung, dass der Core Sektoren von einer Disc lesen
-kann. Für GUI-Metadaten wird zusätzlich eine begrenzte lokale Abfrage benötigt. Der aktuelle POC
-belegt noch keine konkrete, auf dem SuperStation Dock getestete Methode dafür. Zu untersuchen
-sind:
+`DiscDriveService` sucht alle `/dev/sr*`-Blockgeräte und liest den Laufwerksstatus außerhalb des
+Render-Loops. Saturn wird anhand des IP.BIN-Headers an LBA 0 erkannt. Für PS1 wird der
+ISO-9660-Deskriptor an LBA 16 geprüft, anschließend `SYSTEM.CNF` aus dem Root-Verzeichnis gelesen
+und die `BOOT`-Kennung normalisiert. Der mitgelieferte Redump/TOSEC-Index löst Kennungen offline
+zu Titeln auf. Mehrdeutige Kennungen werden nicht willkürlich einem Titel zugeordnet; beim Saturn
+bleibt dann der im IP.BIN gelesene Titel erhalten.
 
-1. Laufwerk und Disc-Status über Linux-Geräte-/CD-ROM-Schnittstellen erkennen.
-2. TOC und verfügbare Disc-Kennungen lesen, ohne bei fehlender Disc zu blockieren.
-3. Bei PlayStation 1 die Disc-ID aus lesbaren Disc-Strukturen, typischerweise über die
-   `SYSTEM.CNF`-Boot-Zeile, gewinnen.
-4. Bei Saturn Systemkennung und Titel aus den Disc-Header-/IP.BIN-Daten ermitteln.
-5. Bei nicht lesbaren oder abweichenden Discs mit Status und unbekannten Feldern sauber
-   weiterarbeiten.
-
-Das konkrete Read-Verfahren, Sektorzugriff und Kompatibilität mit der SuperStation-Hardware
-müssen praktisch validiert werden. TheGamesDB kann danach anhand des extrahierten Namens bzw.
-der Kennung einen Titel, eine Plattform und Artwork ergänzen. Der lokale Parser bleibt die
-Quelle für den tatsächlichen Gerät-/Disc-Status.
+Auf dem Dock wurden `/dev/sr0` (`DVDRAM GUD1N`), Saturn `T-11302H` / `DISC WORLD` und PS1
+`SLES-01507` aus `SYSTEM.CNF` gelesen. Das bestätigt die dort verwendeten Sektorzugriffe. Das
+Timeout- und Abbruchverhalten des isolierten Prozesses muss noch mit einem nicht reagierenden
+Laufwerk validiert werden.
 
 ## Startpfad
 
@@ -302,25 +296,20 @@ normalen CD-Core den Slot `s`, Index `1`; Saturn den Slot `s`, Index `0`. Die Ph
 können einen anderen Startpfad bzw. Main-Build benötigen; deren bereitgestellte Definition ist
 maßgeblich und darf nicht aus den normalen Image-MGLs abgeleitet werden.
 
-Die Untersuchung in [`docs/POC.md`](docs/POC.md) nennt zwei voneinander unabhängige Ansätze:
-
-- [Main_MiSTer_Physical_Disc](https://github.com/Anime0t4ku/Main_MiSTer_Physical_Disc)
-- [MiSTer USB CDROM Loader](https://github.com/theshaneobrien/mister-disc-drive-support)
-
-Beide Projekte haben eigene Main-Binaries, INI-Abschnitte und MGL-Layouts. Vor Implementierung
-muss eines davon als Quelle gewählt werden; Dateien und Konfigurationsschema der Projekte dürfen
-nicht vermischt werden. Die Main-Auswahl bleibt auf die Physical-Disc-Cores begrenzt. Insbesondere
-darf die GUI nicht `[MiSTer] main=` global ändern, da dies MiSTer Main für alle Cores ersetzen
-würde. Bestehende Core-spezifische `main=`-Abschnitte sind nur nach Prüfung der gewählten Quelle
-zu verwenden.
+Die Implementierung verwendet ausschließlich den [MiSTer USB CDROM Loader](https://github.com/theshaneobrien/mister-disc-drive-support):
+sein gepinntes `MiSTer-disc`-Binary, `_Disc_Cores/PlayStation.mgl`,
+`_Disc_Cores/Saturn.mgl` und `[CD-*] main=MiSTer-disc`. Die GUI startet das zum erkannten System
+gehörende MGL über `load_core`. `[MiSTer] main=` wird nicht geändert. Das alternative
+Main-Binary gilt nur für die durch `[CD-*]` gerouteten Sessions.
 
 Startfehler (Disc entfernt, Lesefehler, Core nicht mehr vorhanden, FIFO-Fehler) werden angezeigt;
 ein erfolgreich gestarteter Core beendet wie bei anderen Spielen die GUI-Eingabeübernahme.
 
-## Vorschlag für Aufbau und Performance
+## Implementierte Komponenten
 
-- `DiscDriveService`: Laufwerk-/Disc-Status und Hardwareabfrage im Worker; keine Abfrage pro Frame.
-- `DiscMetadataReader`: begrenztes Lesen von TOC, PS1-Kennung und Saturn-Headerdaten.
+- `DiscDriveService`: Laufwerk-/Disc-Status und Hardwareabfrage alle vier Sekunden im Worker;
+  keine Abfrage pro Frame.
+- Lokaler Disc-Index: eingebetteter PS1-/Saturn-Titelbestand mit optionaler externer TSV-Datei.
 - `TheGamesDBClient`: Key-Konfiguration, API-Key-Test, Suche und optionale Image-Metadaten.
 - `ArtworkProvider`/`DiscArtworkService`: provider-neutrale Disc-Suche, lokaler Cache und
   Quellen-Priorität TheGamesDB → bestehende Libretro.com-Variante. Die Disc-Ansicht kennt keine
@@ -331,35 +320,25 @@ ein erfolgreich gestarteter Core beendet wie bei anderen Spielen die GUI-Eingabe
 - `TopBar`/`TabIcons`: Disc-Tab ganz links, nur sichtbar, solange das Laufwerk verfügbar ist.
 
 Polling, Netzwerkzugriffe, JSON-Auswertung, Disc-Reads und Core-Installationen laufen nicht im
-Render-Loop. Ereignisse werden gedrosselt; Disc-Metadaten werden nur bei erkanntem Wechsel oder
-beim Öffnen des Tabs erneut gelesen. Artwork- und Metadaten-Lookups laufen asynchron, Ergebnisse
-werden zwischengespeichert und nur bei Disc-Wechsel oder expliziter Aktualisierung neu angefordert.
+Render-Loop. Disc-Metadaten werden nur bei erkanntem Wechsel erneut gelesen. Artwork- und
+Metadaten-Lookups laufen asynchron, Ergebnisse werden zwischengespeichert und nur bei Disc-Wechsel
+oder expliziter Aktualisierung neu angefordert.
 Bildsuche greift nicht auf den ROM-Scan zu. Das Einlesen der vorhandenen Spiele-Datenbank wird
 für den Disc-Tab nicht neu gestartet.
 
-Der `DiscArtworkService` soll einen gemeinsamen Provider-Vertrag verwenden. In 0.8.0 genügen
-TheGamesDB für Disc-Metadaten und -Bilder sowie ein Adapter auf die vorhandene Libretro.com-
-Suche als Fallback. Für eine spätere Version kann derselbe TheGamesDB-Client als Quelle eines
-allgemeinen Bibliotheks-Scrapers erweitert werden, der ROMs und Metadaten der Spielebibliothek
-verarbeitet und Libretro.com ergänzen oder ersetzen kann. Bulk-Scraping der Bibliothek gehört
-nicht zum Disc-Drive-Umfang von 0.8.0.
+Der `DiscArtworkService` verwendet einen gemeinsamen Provider-Vertrag. TheGamesDB liefert optionale
+Disc-Metadaten und -Bilder; die vorhandene Libretro.com-Suche dient als Fallback. Der Client kann
+später als Quelle für einen allgemeinen Bibliotheks-Scraper erweitert werden. Bulk-Scraping der
+ROM-Bibliothek gehört nicht zum Disc-Drive-Umfang von 0.8.0.
 
-## Abhängigkeiten und offene Entscheidungen
+## Noch offene Abnahme
 
-- Auf dem konkreten SuperStation Dock Laufwerkserkennung, Stromversorgung und Disc-Reads testen.
-- Einen der zwei Physical-Disc-Ansätze auswählen und Version/Kompatibilität zu PSX- und
-  Saturn-Cores verbindlich festlegen.
-- Installationsquelle, Manifest, Prüfsummen und Update-/Rollback-Strategie festlegen.
-- Verifizieren, ob die benötigten MGL-/Core-Dateien legal und technisch direkt durch die GUI
-  installiert bzw. aktualisiert werden können; BIOS bleibt Nutzerinstallation.
-- API-Plattform-IDs, Image-Nutzung, API-Antworten, Allowance-Verhalten und Fehlertexte mit einem
-  echten TheGamesDB-Key prüfen. Der API-Key wird als Query-Parameter übertragen; URLs dürfen
-  daher nicht geloggt werden.
-- TheGamesDB-Bildtypen und Bildgrößen für Boxart und Screenshots sowie Metadatenfelder für PS1
-  und Saturn verifizieren; Cache-Verfalls- und Größenlimit festlegen.
-- Tastensteuerung und Fokus für **Start game**, Netzwerkdialog und Disc-Core-Verwaltung
-  definieren.
-- Verhalten festlegen, wenn die Disc während Abfrage oder Start entfernt wird.
+- PS1- und Saturn-MGL-Start sowie Disc-Wechsel auf echtem Dock abnehmen; bisher sind dort nur
+  Laufwerk und lesbare Disc-Metadaten bestätigt.
+- Einen nicht reagierenden Laufwerkstreiber prüfen und sicherstellen, dass das Zeitlimit keine
+  Probeprozesse anhäuft und die UI weiterhin keinen alten Start anbietet.
+- TheGamesDB mit einem echten Key und tatsächlichen Bildantworten prüfen; URLs mit Key dürfen
+  dabei nicht protokolliert werden.
 
 ## Abnahmekriterien
 
@@ -384,8 +363,8 @@ nicht zum Disc-Drive-Umfang von 0.8.0.
 - Start game verwendet das passende Physical-Disc-MGL. Die globale `[MiSTer] main=`-Einstellung
   bleibt unverändert.
 - Kein Disc-, API- oder Installationszugriff blockiert Render-Loop oder Navigation.
-- Auf echtem SuperStation Dock wurden Laufwerk, mindestens eine PS1-Disc und eine Saturn-Disc
-  samt Start über die installierten MGLs überprüft.
+- Auf echtem SuperStation Dock wurden Laufwerk und Disc-Metadaten für PS1 und Saturn gelesen.
+  Der Start über die installierten MGLs sowie Disc-Wechsel sind noch nicht bestätigt.
 
 ## Referenzen
 

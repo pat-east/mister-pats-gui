@@ -288,7 +288,7 @@ bool LibretroIndex::parse(const std::string &htmlPath) {
 }
 
 bool LibretroIndex::open(const std::string &platform, Downloader &downloader,
-                         const std::string &cacheDir) {
+                         const std::string &cacheDir, const std::string &mediaFolder) {
     error_.clear();
     platform_ = platform;
     byKey_.clear();
@@ -305,11 +305,11 @@ bool LibretroIndex::open(const std::string &platform, Downloader &downloader,
     // it is what makes a second scrape run cost nothing but the images that are missing.
     std::string cacheName;
     for (char c : platform) cacheName.push_back((c == '/' || c == ' ') ? '_' : c);
-    const std::string cached = cacheDir + "/" + cacheName + ".html";
+    const std::string cached = cacheDir + "/" + cacheName + "-" + mediaFolder + ".html";
 
     if (!nonEmptyFile(cached)) {
         const std::string url = std::string(kHost) + "/" +
-                                Downloader::encodeComponent(platform) + "/Named_Boxarts/";
+                                Downloader::encodeComponent(platform) + "/" + mediaFolder + "/";
         // Generous: this is 2.5 MB of directory listing for a big platform, once.
         if (!downloader.fetch(url, cached, 120)) {
             error_ = "could not fetch the index: " + downloader.lastError();

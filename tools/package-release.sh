@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build the five immutable assets for one stable GitHub release.
+# Build the binaries and metadata assets for one stable GitHub release.
 set -eu
 cd "$(dirname "$0")/.."
 VERSION=$(sed -n 's/^VERSION[[:space:]]*:=[[:space:]]*//p' release.mk)
@@ -19,10 +19,12 @@ for file in build/mister-gui "build/$LIB" "$MAIN"; do
     arm-unknown-linux-gnueabihf-readelf -h "$file" | grep -q 'Flags:.*hard-float ABI' || exit 1
     arm-unknown-linux-gnueabihf-readelf -V "$file" | awk '/Name: GLIBC_/{for(i=1;i<=NF;i++) if($i=="Name:"){split($(i+1),v,"_"); split(v[2],n,"."); if(n[1]>2 || (n[1]==2 && n[2]>31)) exit 1}} /Name: GLIBCXX_/{for(i=1;i<=NF;i++) if($i=="Name:"){split($(i+1),v,"_"); split(v[2],n,"."); if(n[1]>3 || (n[1]==3 && (n[2]>4 || (n[2]==4 && n[3]>28)))) exit 1}}' || exit 1
 done
+[ -s assets/disc-index.tsv ] || { echo 'missing assets/disc-index.tsv' >&2; exit 1; }
 strings "$MAIN" | grep -Fq '/media/fat/mister-pat/logs/loader.log' || {
     echo 'patched MiSTer_gui has not been rebuilt with loader error handling' >&2; exit 1;
 }
 arm-unknown-linux-gnueabihf-nm -D "build/$LIB" | grep -Eq '[[:space:]]mister_gui_main_v1$' || { echo 'missing GUI entry point' >&2; exit 1; }
+arm-unknown-linux-gnueabihf-nm -D "build/$LIB" | grep -Eq '[[:space:]]mister_gui_disc_probe_v1$' || { echo 'missing bounded disc-probe entry point' >&2; exit 1; }
 if arm-unknown-linux-gnueabihf-readelf -d "build/$LIB" | grep -q 'Shared library: \[libstdc++'; then
     echo 'libstdc++ must not be a dynamic dependency' >&2; exit 1
 fi
@@ -32,6 +34,8 @@ mkdir -p "$OUT"
 cp build/mister-gui "$OUT/mister-gui"
 cp "build/$LIB" "$OUT/$LIB"
 cp "$MAIN" "$OUT/MiSTer_gui"
+cp assets/disc-index.tsv "$OUT/disc-index.tsv"
+cp assets/DISC-INDEX-SOURCE.txt "$OUT/DISC-INDEX-SOURCE.txt"
 printf 'version=%s\nloader_abi=1\ngamesdb_format=%s\n' "$VERSION" "$GAMESDB_FORMAT" > "$OUT/release-info.txt"
-(cd "$OUT" && sha256sum mister-gui MiSTer_gui "$LIB" release-info.txt > SHA256SUMS)
+(cd "$OUT" && sha256sum mister-gui MiSTer_gui "$LIB" release-info.txt > SHA256SUMS && sha256sum disc-index.tsv DISC-INDEX-SOURCE.txt > disc-index.sha256)
 printf 'Release package: %s\n' "$OUT"

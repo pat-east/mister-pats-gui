@@ -10,6 +10,11 @@
 #include "Canvas.h"
 #include "Console.h"
 #include "ControllersScreen.h"
+#include "DiscScreen.h"
+#include "DiscArtworkService.h"
+#include "TheGamesDBClient.h"
+#include "DiscCoreManager.h"
+#include "DiscCoreInstaller.h"
 #include "Framebuffer.h"
 #include "GamesScreen.h"
 #include "HiddenSystems.h"
@@ -65,6 +70,7 @@ public:
         int splashMs = 0;
     };
 
+    App();
     bool initialize(const Options &options);
     int run();
     void stop() { running_ = false; }
@@ -131,6 +137,13 @@ private:
     Library library_;
     Favorites favorites_;
     Launcher launcher_;
+    DiscDriveService discDrive_;
+    DiscCoreManager discCores_;
+    TheGamesDBClient theGamesDB_;
+    DiscArtworkService discArtwork_;
+    DiscCoreInstaller discCoreInstaller_;
+    DiscCoreManager::Status discCoreStatus_;
+    float discCoreRefreshTimer_ = 0.0f;
     ImageCache images_;
     Icons icons_;
     std::unique_ptr<SystemIconDownload> systemIconDownload_;
@@ -157,6 +170,7 @@ private:
     bool arcadeScreenDirty_ = true;
     std::unique_ptr<GamesScreen> favoritesScreen_;
     std::unique_ptr<SettingsScreen> settingsScreen_;
+    std::unique_ptr<DiscScreen> discScreen_;
     std::unique_ptr<ScanScreen> scanScreen_;
     std::unique_ptr<SystemVisibilityScreen> visibilityScreen_;
     std::unique_ptr<ControllersScreen> controllersScreen_;

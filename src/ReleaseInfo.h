@@ -20,6 +20,7 @@ struct LatestRelease {
 struct ReleaseInfo {
     Version version;
     uint16_t gamesDbFormat = 0;
+    uint16_t discIndexFormat = 0;
 };
 
 struct ReleaseCandidate {
@@ -41,5 +42,7 @@ bool parseLibraryName(const std::string &name, Version &out);
 bool parseLatestReleaseJson(const std::string &json, LatestRelease &out, std::string &error);
 bool releaseHasAssets(const LatestRelease &release, const Version &version, std::string &error);
 bool parseReleaseInfo(const std::string &text, ReleaseInfo &out, std::string &error);
+bool parseDiscIndexManifest(const std::string &text, std::map<std::string, std::string> &hashes,
+                            std::string &error);
 bool parseSha256Sums(const std::string &text, const Version &version,
                      std::map<std::string, std::string> &out, std::string &error);

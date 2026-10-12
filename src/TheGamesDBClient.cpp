@@ -1,0 +1,187 @@
+#include "TheGamesDBClient.h"
+
+#include <cctype>
+#include <cstdio>
+#include <cerrno>
+#include <cstring>
+#include <fcntl.h>
+#include <fstream>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#include "Downloader.h"
+#include "Paths.h"
+
+namespace {
+
+std::string trim(const std::string &text) {
+    size_t first = 0, last = text.size();
+    while (first < last && std::isspace(static_cast<unsigned char>(text[first]))) ++first;
+    while (last > first && std::isspace(static_cast<unsigned char>(text[last - 1]))) --last;
+    return text.substr(first, last - first);
+}
+
+std::string jsonString(const std::string &json, const std::string &key) {
+    const std::string needle = "\"" + key + "\"";
+    const size_t keyPos = json.find(needle);
+    if (keyPos == std::string::npos) return std::string();
+    const size_t colon = json.find(':', keyPos + needle.size());
+    if (colon == std::string::npos) return std::string();
+    const size_t quote = json.find('"', colon + 1);
+    if (quote == std::string::npos) return std::string();
+    std::string value;
+    bool escaped = false;
+    for (size_t i = quote + 1; i < json.size(); ++i) {
+        const char ch = json[i];
+        if (escaped) { value.push_back(ch); escaped = false; continue; }
+        if (ch == '\\') { escaped = true; continue; }
+        if (ch == '"') return value;
+        value.push_back(ch);
+    }
+    return std::string();
+}
+
+std::string jsonNumber(const std::string &json, const std::string &key) {
+    const std::string needle = "\"" + key + "\"";
+    const size_t keyPos = json.find(needle);
+    if (keyPos == std::string::npos) return std::string();
+    const size_t colon = json.find(':', keyPos + needle.size());
+    if (colon == std::string::npos) return std::string();
+    size_t start = colon + 1;
+    while (start < json.size() && std::isspace(static_cast<unsigned char>(json[start]))) ++start;
+    size_t end = start;
+    while (end < json.size() && json[end] >= '0' && json[end] <= '9') ++end;
+    return json.substr(start, end - start);
+}
+
+} // namespace
+
+TheGamesDBClient::TheGamesDBClient() {
+    ensureSettingsFile();
+    worker_ = std::thread(&TheGamesDBClient::workerLoop, this);
+}
+
+TheGamesDBClient::~TheGamesDBClient() {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        stopping_ = true;
+    }
+    wake_.notify_all();
+    if (worker_.joinable()) worker_.join();
+}
+
+const char *TheGamesDBClient::settingsPath() {
+    return MISTER_PAT_ROOT "/thegamesdb-settings.ini";
+}
+
+void TheGamesDBClient::ensureSettingsFile() const {
+    struct stat info {};
+    if (lstat(settingsPath(), &info) == 0) return;
+    if (errno != ENOENT) return;
+    if (mkdir(MISTER_PAT_ROOT, 0755) != 0 && errno != EEXIST) return;
+    if (lstat(MISTER_PAT_ROOT, &info) != 0 || !S_ISDIR(info.st_mode)) return;
+    const int fd = open(settingsPath(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
+    if (fd < 0) return;
+    const char initial[] = "apikey=\"\"\n";
+    size_t offset = 0;
+    while (offset < sizeof(initial) - 1) {
+        const ssize_t written = write(fd, initial + offset, sizeof(initial) - 1 - offset);
+        if (written < 0 && errno == EINTR) continue;
+        if (written <= 0) break;
+        offset += size_t(written);
+    }
+    if (offset != sizeof(initial) - 1 || fsync(fd) != 0) unlink(settingsPath());
+    close(fd);
+}
+
+std::string TheGamesDBClient::readKey() const {
+    ensureSettingsFile();
+    struct stat info {};
+    if (lstat(settingsPath(), &info) != 0 || !S_ISREG(info.st_mode)) return std::string();
+    std::ifstream input(settingsPath());
+    std::string line;
+    while (std::getline(input, line)) {
+        line = trim(line);
+        if (line.empty() || line[0] == '#' || line[0] == ';') continue;
+        const size_t equals = line.find('=');
+        if (equals == std::string::npos || trim(line.substr(0, equals)) != "apikey") continue;
+        std::string key = trim(line.substr(equals + 1));
+        if (key.size() >= 2 && key.front() == '"' && key.back() == '"')
+            key = key.substr(1, key.size() - 2);
+        return trim(key);
+    }
+    return std::string();
+}
+
+bool TheGamesDBClient::configured() const { return !readKey().empty(); }
+
+bool TheGamesDBClient::startApiKeyCheck() {
+    if (readKey().empty()) return false;
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (state_ == CheckState::Checking || pending_) return false;
+    state_ = CheckState::Checking;
+    pending_ = true;
+    wake_.notify_one();
+    return true;
+}
+
+bool TheGamesDBClient::checking() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return state_ == CheckState::Checking;
+}
+
+TheGamesDBClient::CheckState TheGamesDBClient::checkState() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return state_;
+}
+
+std::string TheGamesDBClient::checkStatus() const {
+    if (!configured()) return "Not configured";
+    std::lock_guard<std::mutex> lock(mutex_);
+    switch (state_) {
+    case CheckState::NotChecked: return "Configured";
+    case CheckState::Checking: return "Checking API key…";
+    case CheckState::Success: return "API key works";
+    case CheckState::InvalidOrLimited: return "Key invalid or allowance reached";
+    case CheckState::NetworkError: return "Network/HTTP error; try again";
+    case CheckState::InvalidResponse: return "Unexpected API response";
+    }
+    return "Configured";
+}
+
+void TheGamesDBClient::workerLoop() {
+    for (;;) {
+        {
+            std::unique_lock<std::mutex> lock(mutex_);
+            wake_.wait(lock, [this] { return stopping_ || pending_; });
+            if (stopping_) return;
+            pending_ = false;
+        }
+        const std::string key = readKey();
+        const std::string target = std::string(MISTER_PAT_ROOT) + "/thegamesdb-check.json";
+        unlink(target.c_str());
+        Downloader downloader;
+        const std::string url = "https://api.thegamesdb.net/v1/API/Limit?apikey=" +
+                                Downloader::encodeComponent(key);
+        CheckState result = CheckState::NetworkError;
+        int httpStatus = 0;
+        if (downloader.fetchWithStatus(url, target, httpStatus, 20)) {
+            std::ifstream input(target.c_str(), std::ios::binary);
+            const std::string json((std::istreambuf_iterator<char>(input)),
+                                   std::istreambuf_iterator<char>());
+            const std::string code = jsonNumber(json, "code");
+            const std::string status = jsonString(json, "status");
+            if (httpStatus == 403 || httpStatus == 401 || code == "403" || code == "401")
+                result = CheckState::InvalidOrLimited;
+            else if (httpStatus != 200) result = CheckState::NetworkError;
+            else if (code == "200" && status == "Success") result = CheckState::Success;
+            else if (code.empty() || status.empty()) result = CheckState::InvalidResponse;
+            else result = CheckState::InvalidOrLimited;
+        }
+        unlink(target.c_str());
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (stopping_) return;
+        state_ = result;
+    }
+}

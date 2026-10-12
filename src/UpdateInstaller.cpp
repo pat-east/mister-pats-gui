@@ -4,6 +4,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <fstream>
+#include <sstream>
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
@@ -99,6 +101,8 @@ public:
     ~Stage() {
         if (path_.empty()) return;
         unlink((path_ + "/library.so").c_str());
+        unlink((path_ + "/disc-index.tsv").c_str());
+        unlink((path_ + "/DISC-INDEX-SOURCE.txt").c_str());
         rmdir(path_.c_str());
     }
     bool create(std::string &error) {
@@ -120,6 +124,8 @@ public:
         return true;
     }
     std::string library() const { return path_ + "/library.so"; }
+    std::string discIndex() const { return path_ + "/disc-index.tsv"; }
+    std::string discIndexSource() const { return path_ + "/DISC-INDEX-SOURCE.txt"; }
 private:
     std::string path_;
 };
@@ -127,6 +133,25 @@ private:
 bool retryable(const DownloadResult &download) {
     return download.code == DownloadResult::Code::Network ||
            download.code == DownloadResult::Code::Timeout;
+}
+
+bool validDiscIndex(const std::string &path) {
+    std::ifstream input(path.c_str(), std::ios::binary);
+    if (!input) return false;
+    std::string line;
+    size_t entries = 0;
+    while (std::getline(input, line)) {
+        if (!line.empty() && line.back() == '\r') return false;
+        if (line.empty() || line[0] == '#') continue;
+        const size_t first = line.find('\t');
+        const size_t second = first == std::string::npos ? first : line.find('\t', first + 1);
+        if (first == std::string::npos || second == std::string::npos ||
+            line.find('\t', second + 1) != std::string::npos ||
+            (line.compare(0, first, "PSX") != 0 && line.compare(0, first, "SATURN") != 0) ||
+            second == first + 1 || second + 1 == line.size()) return false;
+        if (++entries > 100000) return false;
+    }
+    return input.eof() && entries > 0;
 }
 
 } // namespace
@@ -158,20 +183,82 @@ InstallResult UpdateInstaller::install(const ReleaseCandidate &candidate,
     if (hash == candidate.hashes.end())
         return result(InstallResult::Code::RepairRequired, "missing library hash");
     const std::string destination = kRoot + "/" + name;
+    bool libraryAlreadyInstalled = false;
     if (lstat(destination.c_str(), &st) == 0) {
         if (!S_ISREG(st.st_mode) || !UpdateFiles::sameHash(destination, hash->second, error))
             return result(InstallResult::Code::RepairRequired,
                           error.empty() ? "installed library differs: " + destination : error,
                           {destination});
-        return result(InstallResult::Code::Installed,
-                      "v" + versionText(candidate.version) + " already installed" +
-                          (selection.pinned ? "; version pin remains active" : "; restart MiSTer"));
+        libraryAlreadyInstalled = true;
     }
-    if (errno != ENOENT)
+    if (!libraryAlreadyInstalled && errno != ENOENT)
         return result(InstallResult::Code::RepairRequired,
                       "cannot inspect " + destination, {destination});
+    const auto indexHash = candidate.hashes.find("disc-index.tsv");
+    const auto sourceHash = candidate.hashes.find("DISC-INDEX-SOURCE.txt");
+    if (indexHash == candidate.hashes.end() || sourceHash == candidate.hashes.end())
+        return result(InstallResult::Code::RepairRequired, "missing disc index or attribution hash");
     Stage stage;
     if (!stage.create(error)) return result(InstallResult::Code::RetryableError, error);
+    DownloadResult indexTransfer;
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        indexTransfer = downloader.fetch(
+            releaseAssetUrl(candidate.tag, "disc-index.tsv"), stage.discIndex(),
+            2u * 1024u * 1024u, 30, cancel,
+            [&](uint64_t bytes) {
+                if (progress) progress(InstallStep::Downloading, bytes);
+            });
+        if (indexTransfer.ok() || !retryable(indexTransfer)) break;
+    }
+    if (!indexTransfer.ok())
+        return result(indexTransfer.code == DownloadResult::Code::Cancelled
+                          ? InstallResult::Code::Cancelled
+                          : InstallResult::Code::RetryableError, indexTransfer.error);
+    if (!validDiscIndex(stage.discIndex()) ||
+        !UpdateFiles::sameHash(stage.discIndex(), indexHash->second, error, &cancel))
+        return result(cancel.load() ? InstallResult::Code::Cancelled
+                                    : InstallResult::Code::RetryableError,
+                      error.empty() ? "invalid or unverifiable disc index" : error);
+    DownloadResult sourceTransfer = downloader.fetch(
+        releaseAssetUrl(candidate.tag, "DISC-INDEX-SOURCE.txt"), stage.discIndexSource(),
+        16u * 1024u, 20, cancel, {});
+    if (!sourceTransfer.ok() || !UpdateFiles::sameHash(stage.discIndexSource(), sourceHash->second,
+                                                       error, &cancel))
+        return result(cancel.load() ? InstallResult::Code::Cancelled
+                                   : InstallResult::Code::RetryableError,
+                      error.empty() ? sourceTransfer.error : error);
+    if (cancel.load()) return result(InstallResult::Code::Cancelled, "cancelled");
+    const auto installDiscAssets = [&]() {
+        const std::string installedSource = std::string(kRoot) + "/DISC-INDEX-SOURCE.txt";
+        const std::string sourceTemporary = installedSource + ".new-" + std::to_string(getpid());
+        unlink(sourceTemporary.c_str());
+        if (!UpdateFiles::copyFile(stage.discIndexSource(), sourceTemporary, 0644, error) ||
+            !UpdateFiles::sameHash(sourceTemporary, sourceHash->second, error) ||
+            rename(sourceTemporary.c_str(), installedSource.c_str()) != 0) {
+            unlink(sourceTemporary.c_str());
+            if (error.empty()) error = "cannot install disc index attribution";
+            return false;
+        }
+        const std::string installedIndex = std::string(kRoot) + "/disc-index.tsv";
+        const std::string indexTemporary = installedIndex + ".new-" + std::to_string(getpid());
+        unlink(indexTemporary.c_str());
+        if (!UpdateFiles::copyFile(stage.discIndex(), indexTemporary, 0644, error) ||
+            !UpdateFiles::sameHash(indexTemporary, indexHash->second, error) ||
+            rename(indexTemporary.c_str(), installedIndex.c_str()) != 0) {
+            unlink(indexTemporary.c_str());
+            if (error.empty()) error = "cannot install disc index";
+            return false;
+        }
+        return true;
+    };
+    if (libraryAlreadyInstalled) {
+        if (!installDiscAssets())
+            return result(cancel.load() ? InstallResult::Code::Cancelled
+                                        : InstallResult::Code::RetryableError, error);
+        return result(InstallResult::Code::Installed,
+                      "v" + versionText(candidate.version) + " already installed; disc index refreshed" +
+                          (selection.pinned ? "; version pin remains active" : "; restart MiSTer"));
+    }
     DownloadResult transfer;
     for (int attempt = 0; attempt < 2; ++attempt) {
         transfer = downloader.fetch(releaseAssetUrl(candidate.tag, name), stage.library(),
@@ -212,6 +299,11 @@ InstallResult UpdateInstaller::install(const ReleaseCandidate &candidate,
         unlink(temporary.c_str());
         return result(InstallResult::Code::RepairRequired,
                       "library name became occupied: " + destination, {destination});
+    }
+    if (!installDiscAssets()) {
+        unlink(temporary.c_str());
+        return result(cancel.load() ? InstallResult::Code::Cancelled
+                                    : InstallResult::Code::RetryableError, error);
     }
     if (rename(temporary.c_str(), destination.c_str()) != 0) {
         unlink(temporary.c_str());

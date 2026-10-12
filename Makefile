@@ -20,6 +20,9 @@ LIBRARY := $(OUT)/mister-pats-gui-$(VERSION).so
 LOADER_OBJ := build/obj/$(FLAVOR)/Loader.o
 APP_SOURCES := $(wildcard src/*.cpp)
 APP_OBJECTS := $(patsubst src/%.cpp,build/obj/$(FLAVOR)/%.o,$(APP_SOURCES))
+EMBED_INDEX_CPP := build/$(FLAVOR)/DiscIndexData.cpp
+EMBED_INDEX_OBJ := build/obj/$(FLAVOR)/DiscIndexData.o
+APP_OBJECTS += $(EMBED_INDEX_OBJ)
 DEPS := $(APP_OBJECTS:.o=.d) $(LOADER_OBJ:.o=.d)
 BUILD_CONFIG := $(CONFIG_DIR)/.build-config
 ICON_BENCH := build/icon-bench
@@ -27,7 +30,7 @@ ICON_BENCH := build/icon-bench
 ARCH_FLAGS := -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard -mthumb
 COMMON_FLAGS := -O2 -g -fno-omit-frame-pointer -Wall -Wextra $(ARCH_FLAGS)
 CXXFLAGS := -std=gnu++14 $(COMMON_FLAGS) -fPIC -fvisibility=hidden -pthread \
-            -I$(CONFIG_DIR) -I$(SYSROOT)/include -I$(SYSROOT)/include/freetype2
+            -I$(CONFIG_DIR) -Isrc -I$(SYSROOT)/include -I$(SYSROOT)/include/freetype2
 CFLAGS := -std=c11 $(COMMON_FLAGS) -Isrc
 LIBRARY_LDFLAGS := -shared -static-libstdc++ -static-libgcc -Wl,--build-id=sha1 \
                    -Wl,--no-undefined -L$(SYSROOT)/lib
@@ -55,6 +58,14 @@ $(BUILD_CONFIG): FORCE
 
 $(APP_OBJECTS): $(CONFIG_HEADER) $(BUILD_CONFIG)
 $(LOADER_OBJ): $(BUILD_CONFIG)
+
+$(EMBED_INDEX_CPP): assets/disc-index.tsv tools/embed-disc-index.py
+	@mkdir -p $(dir $@)
+	python3 tools/embed-disc-index.py assets/disc-index.tsv $@
+
+$(EMBED_INDEX_OBJ): $(EMBED_INDEX_CPP) src/DiscIndexData.h $(CONFIG_HEADER) $(BUILD_CONFIG)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -MMD -MP -c $(EMBED_INDEX_CPP) -o $@
 
 build/obj/$(FLAVOR)/%.o: src/%.cpp
 	@mkdir -p $(dir $@)

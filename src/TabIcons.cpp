@@ -25,7 +25,8 @@ bool expectedBmp(const std::string &path) {
 
 const std::vector<std::string> &TabIcons::files() {
     static const std::vector<std::string> names = {
-        "home.bmp", "favorites.bmp", "consoles.bmp", "arcade.bmp", "games.bmp", "settings.bmp"};
+        "disc.bmp", "home.bmp", "favorites.bmp", "consoles.bmp", "arcade.bmp", "games.bmp",
+        "settings.bmp"};
     return names;
 }
 
@@ -37,6 +38,7 @@ bool TabIcons::knownFile(const std::string &filename) {
 
 bool TabIcons::refresh() {
     static const std::pair<Tab, const char *> mapping[] = {
+        {Tab::Disc, "disc.bmp"},
         {Tab::Home, "home.bmp"}, {Tab::Favorites, "favorites.bmp"},
         {Tab::Systems, "consoles.bmp"}, {Tab::Arcade, "arcade.bmp"},
         {Tab::Games, "games.bmp"}, {Tab::Settings, "settings.bmp"},

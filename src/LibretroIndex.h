@@ -29,7 +29,8 @@ public:
     // Fetches and parses the platform's box art listing, using the cached copy when one is
     // there. Roughly 9000 names and 2.5 MB over the wire for a big platform, which is why it
     // is cached on the card rather than fetched per game.
-    bool open(const std::string &platform, Downloader &downloader, const std::string &cacheDir);
+    bool open(const std::string &platform, Downloader &downloader, const std::string &cacheDir,
+              const std::string &mediaFolder = "Named_Boxarts");
 
     // The server's filename for a title, or empty when no exact or known variant matches.
     std::string match(const std::string &title) const;

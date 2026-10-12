@@ -26,17 +26,19 @@ struct TabEntry {
 };
 
 const TabEntry kAllTabs[] = {
-    {Tab::Home, "Home"},       {Tab::Favorites, "Favorites"}, {Tab::Systems, "Consoles"},
+    {Tab::Disc, "Disc"},        {Tab::Home, "Home"},          {Tab::Favorites, "Favorites"},
+    {Tab::Systems, "Consoles"},
     {Tab::Arcade, "Arcade"},   {Tab::Games, "Games"},         {Tab::Settings, "Settings"},
 };
 
 } // namespace
 
-std::vector<Tab> TopBar::visibleTabs(bool showGames, bool showArcade) {
+std::vector<Tab> TopBar::visibleTabs(bool showGames, bool showArcade, bool showDisc) {
     std::vector<Tab> out;
     for (const TabEntry &entry : kAllTabs) {
         if (entry.tab == Tab::Games && !showGames) continue;
         if (entry.tab == Tab::Arcade && !showArcade) continue;
+        if (entry.tab == Tab::Disc && !showDisc) continue;
         out.push_back(entry.tab);
     }
     return out;
@@ -119,7 +121,7 @@ void TopBar::update(float deltaSeconds, bool use24HourClock) {
 }
 
 void TopBar::render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, bool showGames,
-                    bool showArcade, bool tabsEnabled, TabDisplay display,
+                    bool showArcade, bool showDisc, bool tabsEnabled, TabDisplay display,
                     const TabIcons &icons) {
     Font &bold = theme.bold();
     Font &regular = theme.regular();
@@ -133,7 +135,7 @@ void TopBar::render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, 
                  theme.textMuted.withAlpha(205));
 
     // Centre: tabs.
-    const std::vector<Tab> tabs = visibleTabs(showGames, showArcade);
+    const std::vector<Tab> tabs = visibleTabs(showGames, showArcade, showDisc);
     if (!indicatorTabSet_) {
         indicatorTab_ = active;
         indicatorTabSet_ = true;

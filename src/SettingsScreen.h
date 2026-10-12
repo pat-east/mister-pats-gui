@@ -42,7 +42,8 @@ public:
     void setUpdateSnapshot(const UpdateSnapshot &snapshot);
     bool wantsBack() const {
         return optionsFocused_ || wifiStep_ != WifiStep::None || timeZoneChooserActive_ ||
-               rebootConfirmationActive_ || changelogActive_ || infoModalActive_;
+               rebootConfirmationActive_ || changelogActive_ || infoModalActive_ ||
+               discDriveSettingsActive_ || discCoreInstallConfirmationActive_;
     }
     bool wantsStartForWifiPassword() const { return wifiStep_ == WifiStep::PasswordEntry; }
 
@@ -93,6 +94,8 @@ private:
     void renderOptions(Canvas &canvas, const Rect &area);
     void renderSettingHelp(Canvas &canvas, const Rect &area);
     void renderInfo(Canvas &canvas, const Rect &area);
+    void renderDiscDriveSettings(Canvas &canvas, const Rect &area);
+    void renderDiscCoreInstallConfirmation(Canvas &canvas, const Rect &area);
 
     Context &context_;
     std::function<void()> onReload_;
@@ -136,6 +139,8 @@ private:
     bool rebootConfirmationActive_ = false;
     bool changelogActive_ = false;
     bool infoModalActive_ = false;
+    bool discDriveSettingsActive_ = false;
+    bool discCoreInstallConfirmationActive_ = false;
     enum class WifiStep { None, Scanning, Networks, SsidEntry, PasswordEntry, CountryEntry,
                           TestPrompt, Testing, TestReview, TestFailed };
     Wifi wifi_;

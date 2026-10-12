@@ -1,6 +1,7 @@
 #include "Launcher.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <dirent.h>
@@ -202,4 +203,40 @@ bool Launcher::launchCore(const GameSystem &system) {
 
     if (!writeMgl(system.core, std::string(), system.fileIndex, system.fileType)) return false;
     return sendCommand(std::string("load_core ") + kMglPath);
+}
+
+bool Launcher::launchPhysicalDisc(const std::string &mglPath) {
+    error_.clear();
+    mgl_.clear();
+    const std::string root = "/media/fat/_Disc_Cores/";
+    const std::string nestedRoot = "/media/fat/mgl/_Disc_Cores/";
+    if (mglPath.compare(0, root.size(), root) != 0 &&
+        mglPath.compare(0, nestedRoot.size(), nestedRoot) != 0) {
+        error_ = "physical-disc MGL is outside the installed disc-core folder";
+        return false;
+    }
+    for (unsigned char ch : mglPath) {
+        if (std::isspace(ch)) {
+            error_ = "physical-disc MGL path contains whitespace";
+            return false;
+        }
+    }
+    struct stat info {};
+    if (stat(mglPath.c_str(), &info) != 0 || !S_ISREG(info.st_mode)) {
+        error_ = "physical-disc MGL is missing: " + mglPath;
+        return false;
+    }
+    std::ifstream input(mglPath.c_str(), std::ios::binary);
+    if (!input) {
+        error_ = "cannot read physical-disc MGL: " + mglPath;
+        return false;
+    }
+    mgl_.assign(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+    if (mgl_.empty() || mgl_.find("<mistergamedescription") == std::string::npos ||
+        mgl_.find("<rbf>") == std::string::npos || mgl_.find("</rbf>") == std::string::npos) {
+        error_ = "physical-disc MGL is invalid: " + mglPath;
+        mgl_.clear();
+        return false;
+    }
+    return sendCommand(std::string("load_core ") + mglPath);
 }

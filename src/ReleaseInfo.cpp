@@ -315,7 +315,8 @@ bool parseLatestReleaseJson(const std::string &json, LatestRelease &out, std::st
 }
 
 bool releaseHasAssets(const LatestRelease &release, const Version &version, std::string &error) {
-    const char *required[] = {"release-info.txt", "SHA256SUMS"};
+    const char *required[] = {"release-info.txt", "SHA256SUMS", "disc-index.tsv",
+                              "DISC-INDEX-SOURCE.txt", "disc-index.sha256"};
     for (const char *name : required) {
         if (!release.assets.count(name)) { error = std::string("missing asset ") + name; return false; }
     }
@@ -345,6 +346,32 @@ bool parseReleaseInfo(const std::string &text, ReleaseInfo &out, std::string &er
         !decimal(text.substr(b + 16, text.size() - b - 17), out.gamesDbFormat)) {
         error = "invalid release-info.txt values"; return false;
     }
+    out.discIndexFormat = 1;
+    return true;
+}
+
+bool parseDiscIndexManifest(const std::string &text, std::map<std::string, std::string> &hashes,
+                            std::string &error) {
+    const std::string names[] = {"disc-index.tsv", "DISC-INDEX-SOURCE.txt"};
+    hashes.clear();
+    size_t start = 0;
+    for (const std::string &name : names) {
+        const size_t end = text.find('\n', start);
+        if (end == std::string::npos || end - start != 66 + name.size() ||
+            text.compare(start + 64, 2, "  ") != 0 ||
+            text.compare(start + 66, name.size(), name) != 0) {
+            error = "invalid disc-index.sha256 entry"; return false;
+        }
+        for (size_t i = start; i < start + 64; ++i) {
+            const char ch = text[i];
+            if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'))) {
+                error = "invalid disc-index hash"; return false;
+            }
+        }
+        hashes[name] = text.substr(start, 64);
+        start = end + 1;
+    }
+    if (start != text.size()) { error = "extra disc-index.sha256 entries"; return false; }
     return true;
 }
 

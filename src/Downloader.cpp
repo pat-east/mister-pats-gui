@@ -4,8 +4,20 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <cerrno>
+#include <algorithm>
+#include <chrono>
+#include <fcntl.h>
+#include <poll.h>
+#include <spawn.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <signal.h>
 #include <unistd.h>
+#include <vector>
+
+extern char **environ;
 
 namespace {
 
@@ -88,6 +100,116 @@ std::string Downloader::command(Tool tool, const std::string &url,
     }
 }
 
+
+bool Downloader::fetchWithStatus(const std::string &url, const std::string &destination,
+                                 int &httpStatus, int timeoutSeconds,
+                                 const std::atomic<bool> *cancel) {
+    error_.clear();
+    httpStatus = 0;
+    if (cancel && cancel->load()) {
+        error_ = "cancelled";
+        return false;
+    }
+    if (url.compare(0, 8, "https://") != 0 || url.size() > 512 ||
+        !safeUrl(url) || timeoutSeconds < 1) {
+        error_ = "refused an unsafe request";
+        return false;
+    }
+
+    int configPipe[2] = {-1, -1}, statusPipe[2] = {-1, -1};
+    if (pipe(configPipe) != 0) {
+        error_ = "cannot create API request pipes";
+        return false;
+    }
+    if (pipe(statusPipe) != 0) {
+        close(configPipe[0]); close(configPipe[1]);
+        error_ = "cannot create API request pipes";
+        return false;
+    }
+    const std::string config = "url = \"" + url + "\"\n";
+    size_t written = 0;
+    while (written < config.size()) {
+        const ssize_t n = write(configPipe[1], config.data() + written, config.size() - written);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) break;
+        written += size_t(n);
+    }
+    close(configPipe[1]);
+    if (written != config.size()) {
+        close(configPipe[0]); close(statusPipe[0]); close(statusPipe[1]);
+        error_ = "cannot prepare API request";
+        return false;
+    }
+    unlink(destination.c_str());
+    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_init(&actions);
+    posix_spawn_file_actions_adddup2(&actions, configPipe[0], STDIN_FILENO);
+    posix_spawn_file_actions_adddup2(&actions, statusPipe[1], STDOUT_FILENO);
+    posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+    posix_spawn_file_actions_addclose(&actions, configPipe[0]);
+    posix_spawn_file_actions_addclose(&actions, statusPipe[0]);
+    posix_spawn_file_actions_addclose(&actions, statusPipe[1]);
+    std::vector<std::string> args = {"curl", "-4", "-sS", "-L", "--proto", "=https",
+        "--proto-redir", "=https", "--connect-timeout", "12", "--max-time",
+        std::to_string(timeoutSeconds), "--max-filesize", "65536", "-w", "%{http_code}",
+        "-o", destination, "--config", "-"};
+    for (const char *path : kCertificates) {
+        if (!fileExists(path)) continue;
+        args.insert(args.end() - 2, {"--cacert", path});
+        break;
+    }
+    std::vector<char *> argv;
+    for (std::string &arg : args) argv.push_back(&arg[0]);
+    argv.push_back(nullptr);
+    pid_t child = -1;
+    const int spawnError = posix_spawnp(&child, "curl", &actions, nullptr, argv.data(), environ);
+    posix_spawn_file_actions_destroy(&actions);
+    close(configPipe[0]);
+    close(statusPipe[1]);
+    if (spawnError != 0) {
+        close(statusPipe[0]);
+        error_ = "cannot start curl";
+        return false;
+    }
+    char output[16] = {};
+    size_t count = 0;
+    bool timedOut = false;
+    bool cancelled = false;
+    const auto deadline = std::chrono::steady_clock::now() +
+                          std::chrono::seconds(timeoutSeconds + 5);
+    while (count < sizeof(output) - 1) {
+        if (cancel && cancel->load()) { cancelled = true; break; }
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(
+            deadline - std::chrono::steady_clock::now()).count();
+        if (remaining <= 0) { timedOut = true; break; }
+        struct pollfd pfd {statusPipe[0], POLLIN | POLLHUP, 0};
+        const int ready = poll(&pfd, 1, int(std::min<long long>(200, remaining)));
+        if (ready < 0 && errno == EINTR) continue;
+        if (ready <= 0) { timedOut = ready == 0; break; }
+        const ssize_t n = read(statusPipe[0], output + count, sizeof(output) - 1 - count);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) break;
+        count += size_t(n);
+    }
+    close(statusPipe[0]);
+    if (timedOut || cancelled) kill(child, SIGTERM);
+    int childStatus = 0;
+    while (waitpid(child, &childStatus, 0) < 0 && errno == EINTR) {}
+    if (cancelled || timedOut || written != config.size() || !WIFEXITED(childStatus) ||
+        WEXITSTATUS(childStatus) != 0 || count < 3) {
+        unlink(destination.c_str());
+        error_ = cancelled ? "cancelled" : timedOut ? "request timed out" : "request failed";
+        return false;
+    }
+    output[count] = '\0';
+    httpStatus = std::atoi(output);
+    if (!nonEmptyFile(destination)) {
+        error_ = "empty response";
+        return false;
+    }
+    return true;
+}
+
 bool Downloader::fetch(const std::string &url, const std::string &destination,
                        int timeoutSeconds) {
     error_.clear();
@@ -96,7 +218,7 @@ bool Downloader::fetch(const std::string &url, const std::string &destination,
         error_ = "refused an unsafe URL";
         return false;
     }
-    if (destination.find('\'') != std::string::npos) {
+    if (!safeUrl(url) || destination.find("'") != std::string::npos) {
         error_ = "refused an unsafe destination";
         return false;
     }

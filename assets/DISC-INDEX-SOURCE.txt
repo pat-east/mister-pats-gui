@@ -1,0 +1,19 @@
+Disc title index
+================
+
+assets/disc-index.tsv is a derived index containing titles and serials from the Redump
+metadata DAT files in libretro/libretro-database:
+
+- metadat/redump/Sony - PlayStation.dat
+- metadat/redump/Sega - Saturn.dat
+
+Source: https://github.com/libretro/libretro-database
+The upstream repository identifies these datasets as Redump > TOSEC sources.
+The database is licensed under Creative Commons Attribution-ShareAlike 4.0 International
+(CC BY-SA 4.0): https://creativecommons.org/licenses/by-sa/4.0/ .
+The TSV is a transformed selection of title and serial fields, and is provided under the
+same license. It contains no game images or disc contents.
+
+To refresh it, download those two DAT files and run:
+
+  tools/generate-disc-index.py 'Sony - PlayStation.dat' 'Sega - Saturn.dat' assets/disc-index.tsv

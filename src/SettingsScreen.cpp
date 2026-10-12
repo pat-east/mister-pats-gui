@@ -87,6 +87,10 @@ std::string settingHelp(const std::string &label) {
         return "Shows how much of the update has downloaded or been installed.";
     if (label == "Restart options")
         return "Choose whether to restart now or keep using the current version for now.";
+    if (label == "Disc drive")
+        return "Show the optical drive, disc status and detected PlayStation and Saturn discs.";
+    if (label == "Install/update Disc cores")
+        return "Download the pinned Physical Disc package, verify its checksums, back up managed files and MiSTer.ini, then configure only [CD-*]. Press again during download to cancel.";
     return {};
 }
 
@@ -176,6 +180,19 @@ void SettingsScreen::buildRows() {
     // together and in this order because that is the order they actually depend on each
     // other: a database has to exist before its art can be fetched/prepared or systems can be
     // hidden, and "Reload" only ever re-reads what the other two just produced.
+    library.push_back({"TheGamesDB",
+                     [this] { return context_.theGamesDB.checkStatus(); },
+                     [this] {
+                         if (!context_.theGamesDB.configured()) {
+                             context_.notify(std::string("Add your key to ") +
+                                             TheGamesDBClient::settingsPath(), 8.0f);
+                         } else if (!context_.theGamesDB.startApiKeyCheck()) {
+                             context_.notify(context_.theGamesDB.checkStatus(), 5.0f);
+                         } else {
+                             context_.notify("Checking TheGamesDB API key…", 4.0f);
+                         }
+                     }});
+
     library.push_back({"Build game list", [] { return std::string("A"); },
                      [this] { onBuildDatabase_(); }});
 
@@ -329,6 +346,41 @@ void SettingsScreen::buildRows() {
 
     // Time display is part of system configuration, next to the operating system actions.
     auto &system = categories_[5].rows;
+    system.push_back({"Disc drive",
+                     [this] {
+                         const auto drive = context_.discDrive.snapshot();
+                         return drive.state == DiscDriveService::MediaState::NoDrive
+                             ? std::string("No drive") : std::string("A Status");
+                     },
+                     [this] { discDriveSettingsActive_ = true; }, false});
+    system.push_back({"Install/update Disc cores",
+                     [this] {
+                         const auto state = context_.discInstaller.snapshot();
+                         if (state.state == DiscCoreInstaller::State::Installing)
+                             return std::string("Installing — finishing safely");
+                         if (state.state == DiscCoreInstaller::State::Downloading ||
+                             state.state == DiscCoreInstaller::State::Verifying)
+                             return std::string("Working — ") +
+                                 std::to_string(state.bytes / 1024) + " KB — A cancel";
+                         if (!state.message.empty()) return state.message;
+                         const auto cores = context_.discCores.inspect();
+                         if (cores.packageReady()) return std::string("Installed v0.7.0");
+                         return cores.alternateMainInstalled || cores.psxMglInstalled ||
+                                cores.saturnMglInstalled
+                             ? std::string("Repair/update v0.7.0") : std::string("Install v0.7.0");
+                     },
+                     [this] {
+                         if (context_.discInstaller.busy()) {
+                             if (context_.discInstaller.snapshot().state == DiscCoreInstaller::State::Installing) {
+                                 context_.notify("Installation is finishing safely; please wait.", 5.0f);
+                             } else {
+                                 context_.discInstaller.cancel();
+                                 context_.notify("Cancelling disc package download…", 5.0f);
+                             }
+                         } else {
+                             discCoreInstallConfirmationActive_ = true;
+                         }
+                     }});
     system.push_back({"Info", [] { return std::string("A"); },
                      [this] { infoModalActive_ = true; }});
     system.push_back({"Time format",
@@ -569,6 +621,11 @@ void SettingsScreen::update(float deltaSeconds) {
         const auto wifiRow = std::find_if(systemRows.begin(), systemRows.end(),
             [](const Row &row) { return row.label == "Connect to Wi-Fi…"; });
         if (wifiRow != systemRows.end()) wifiRow->enabled = wifi_.available();
+        const auto discRow = std::find_if(systemRows.begin(), systemRows.end(),
+            [](const Row &row) { return row.label == "Disc drive"; });
+        if (discRow != systemRows.end())
+            discRow->enabled = context_.discDrive.snapshot().state !=
+                               DiscDriveService::MediaState::NoDrive;
     }
 
     if (wifiStep_ == WifiStep::Scanning && wifi_.scanComplete()) {
@@ -588,6 +645,23 @@ void SettingsScreen::update(float deltaSeconds) {
 }
 
 void SettingsScreen::handle(Action action) {
+    if (discCoreInstallConfirmationActive_) {
+        if (action == Action::Confirm) {
+            discCoreInstallConfirmationActive_ = false;
+            if (context_.discInstaller.start())
+                context_.notify("Installing verified Disc Drive package…", 5.0f);
+            else
+                context_.notify(context_.discInstaller.snapshot().message, 5.0f);
+        } else if (action == Action::Back) {
+            discCoreInstallConfirmationActive_ = false;
+        }
+        return;
+    }
+    if (discDriveSettingsActive_) {
+        if (action == Action::Back || action == Action::Confirm)
+            discDriveSettingsActive_ = false;
+        return;
+    }
     if (infoModalActive_) {
         if (action == Action::Back || action == Action::Confirm)
             infoModalActive_ = false;
@@ -1471,6 +1545,83 @@ void SettingsScreen::renderInfo(Canvas &canvas, const Rect &area) {
     }
 }
 
+void SettingsScreen::renderDiscDriveSettings(Canvas &canvas, const Rect &area) {
+    Theme &theme = context_.theme;
+    canvas.fillRect(area, theme.shadow.withAlpha(210));
+    const int width = std::min(area.w - theme.px(48), theme.px(980));
+    const int height = std::min(area.h - theme.px(48), theme.px(650));
+    const Rect panel{area.x + (area.w - width) / 2, area.y + (area.h - height) / 2,
+                     width, height};
+    canvas.fillRoundedRect(panel, theme.radius(), theme.surfaceHi);
+    const int margin = theme.px(30);
+    int y = panel.y + margin;
+    theme.bold().draw(canvas, panel.x + margin, y, "Disc drive", theme.sizeHeading(),
+                      theme.textPrimary);
+    y += theme.px(58);
+
+    const auto drive = context_.discDrive.snapshot();
+    const auto cores = context_.discCores.inspect();
+    const auto line = [&](const std::string &label, const std::string &value, Color color) {
+        theme.bold().draw(canvas, panel.x + margin, y, label, theme.sizeBody(), theme.textPrimary);
+        theme.regular().draw(canvas, panel.x + margin + theme.px(330), y, value,
+                             theme.sizeBody(), color);
+        y += theme.px(38);
+    };
+    line("Drive", drive.device.empty() ? "Not available" : drive.device + "  " + drive.model,
+         drive.device.empty() ? theme.warning : theme.accent);
+    line("Disc status", DiscDriveService::stateName(drive.state), theme.textMuted);
+    line("Physical-Disc Main", cores.alternateMainInstalled ? "MiSTer-disc installed" : "Missing",
+         cores.alternateMainInstalled ? theme.accent : theme.warning);
+    line("Scoped [CD-*] setting", cores.scopedMainConfigured ? "Configured" : "Missing",
+         cores.scopedMainConfigured ? theme.accent : theme.warning);
+    line("PlayStation MGL", !cores.psxMglInstalled ? "Missing" :
+             cores.psxMglCompatible ? cores.psxMgl : "Incompatible",
+         cores.psxMglCompatible ? theme.accent : theme.warning);
+    line("PlayStation RBF", cores.psxCoreInstalled ? "Installed" : "Missing",
+         cores.psxCoreInstalled ? theme.accent : theme.warning);
+    line("Saturn MGL", !cores.saturnMglInstalled ? "Missing" :
+             cores.saturnMglCompatible ? cores.saturnMgl : "Incompatible",
+         cores.saturnMglCompatible ? theme.accent : theme.warning);
+    line("Saturn RBF", cores.saturnCoreInstalled ? "Installed" : "Missing",
+         cores.saturnCoreInstalled ? theme.accent : theme.warning);
+    y += theme.px(12);
+    theme.regular().draw(canvas, panel.x + margin, y,
+        "Use Install/update Disc cores in Settings to install or repair the scoped package. Global [MiSTer] main stays untouched.",
+        theme.sizeSmall(), theme.textMuted);
+    theme.regular().draw(canvas, panel.x + margin,
+        panel.bottom() - margin - theme.regular().lineHeight(theme.sizeSmall()),
+        DiscCoreManager::projectUrl(), theme.sizeSmall(), theme.accent);
+}
+
+void SettingsScreen::renderDiscCoreInstallConfirmation(Canvas &canvas, const Rect &area) {
+    Theme &theme = context_.theme;
+    canvas.fillRect(area, theme.shadow.withAlpha(220));
+    const int width = std::min(area.w - theme.px(48), theme.px(850));
+    const int height = std::min(area.h - theme.px(48), theme.px(340));
+    const Rect panel{area.x + (area.w - width) / 2, area.y + (area.h - height) / 2,
+                     width, height};
+    canvas.fillRoundedRect(panel, theme.radius(), theme.surfaceHi);
+    const int margin = theme.px(30);
+    const int left = panel.x + margin;
+    int y = panel.y + margin;
+    theme.bold().draw(canvas, left, y, "Install USB CDROM Loader v0.7.0?",
+                      theme.sizeHeading(), theme.textPrimary);
+    y += theme.bold().lineHeight(theme.sizeHeading()) + theme.px(18);
+    const std::vector<std::string> lines = wrapHelp(
+        theme.regular(),
+        "This downloads and verifies the official package, backs up managed files and MiSTer.ini, and changes only [CD-*] main. Existing PlayStation or Saturn MGLs at the managed paths will be replaced.",
+        theme.sizeBody(), panel.w - margin * 2);
+    const int lineStep = theme.regular().lineHeight(theme.sizeBody()) + theme.px(8);
+    for (const std::string &line : lines) {
+        if (y + lineStep > panel.bottom() - margin - theme.px(32)) break;
+        theme.regular().draw(canvas, left, y, line, theme.sizeBody(), theme.textPrimary);
+        y += lineStep;
+    }
+    theme.bold().draw(canvas, left,
+        panel.bottom() - margin - theme.bold().lineHeight(theme.sizeBody()),
+        formatButtonLabels("A Install   B Cancel"), theme.sizeBody(), theme.accent);
+}
+
 void SettingsScreen::renderUpdateConfirmation(Canvas &canvas, const Rect &area) {
     Theme &theme = context_.theme;
     canvas.fillRect(area, theme.shadow.withAlpha(205));
@@ -1702,6 +1853,9 @@ void SettingsScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*
     }
     if (wifiStep_ != WifiStep::None) renderWifiFlow(canvas, area);
     if (changelogActive_) renderChangelog(canvas, area);
+    if (discDriveSettingsActive_) renderDiscDriveSettings(canvas, area);
+    if (discCoreInstallConfirmationActive_)
+        renderDiscCoreInstallConfirmation(canvas, area);
     if (infoModalActive_) {
         canvas.fillRect(area, theme.shadow.withAlpha(205));
         const int width = std::min(area.w - theme.px(48), theme.px(960));
@@ -1725,6 +1879,8 @@ void SettingsScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*
 }
 
 std::string SettingsScreen::hints() const {
+    if (discCoreInstallConfirmationActive_) return "A Install package   B Cancel";
+    if (discDriveSettingsActive_) return "A/B Back";
     if (infoModalActive_) return "B Close";
     if (changelogActive_) {
         if (!updateSnapshot_.changelogError.empty()) return "A Try again   B Close";

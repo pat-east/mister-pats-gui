@@ -33,7 +33,8 @@ public:
     }
     ~CheckStaging() {
         if (path_.empty()) return;
-        for (const char *name : {"release.json", "release-info.txt", "SHA256SUMS"})
+        for (const char *name : {"release.json", "release-info.txt", "SHA256SUMS",
+                                 "disc-index.sha256"})
             unlink((path_ + "/" + name).c_str());
         rmdir(path_.c_str());
     }
@@ -488,20 +489,25 @@ void UpdateService::check(bool automatic) {
     }
     if (!releaseHasAssets(latest, tagVersion, error)) { publishError(error); return; }
     if (!fetch(releaseAssetUrl(latest.tag, "release-info.txt"), "release-info.txt", 1024) ||
-        !fetch(releaseAssetUrl(latest.tag, "SHA256SUMS"), "SHA256SUMS", 4096)) return;
+        !fetch(releaseAssetUrl(latest.tag, "SHA256SUMS"), "SHA256SUMS", 4096) ||
+        !fetch(releaseAssetUrl(latest.tag, "disc-index.sha256"), "disc-index.sha256", 256)) return;
     std::string infoText;
     std::string manifestText;
+    std::string indexHashText;
     if (!UpdateFiles::readLimited(staging.path() + "/release-info.txt", 1024, infoText) ||
-        !UpdateFiles::readLimited(staging.path() + "/SHA256SUMS", 4096, manifestText)) {
+        !UpdateFiles::readLimited(staging.path() + "/SHA256SUMS", 4096, manifestText) ||
+        !UpdateFiles::readLimited(staging.path() + "/disc-index.sha256", 256, indexHashText)) {
         publishError("cannot read release metadata");
         return;
     }
     ReleaseInfo info;
     std::map<std::string, std::string> hashes;
+    std::map<std::string, std::string> indexHashes;
     if (!parseReleaseInfo(infoText, info, error) ||
         !parseVersion(latest.tag.substr(1), tagVersion) ||
         compareVersions(info.version, tagVersion) != 0 ||
-        !parseSha256Sums(manifestText, info.version, hashes, error)) {
+        !parseSha256Sums(manifestText, info.version, hashes, error) ||
+        !parseDiscIndexManifest(indexHashText, indexHashes, error)) {
         publishError(error.empty() ? "release versions do not match" : error);
         return;
     }
@@ -510,6 +516,7 @@ void UpdateService::check(bool automatic) {
         publishError(error);
         return;
     }
+    hashes.insert(indexHashes.begin(), indexHashes.end());
     const std::string installedPath = std::string(UpdateFiles::kRoot) + "/" +
                                       libraryName(tagVersion);
     if (pathExists(installedPath)) {

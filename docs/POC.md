@@ -348,7 +348,9 @@ projects currently document a path for physical discs:
   configured separately in `MiSTer.ini`.
 - [MiSTer USB CDROM Loader](https://github.com/theshaneobrien/mister-disc-drive-support) is a
   separate Main fork with PSX and Saturn support. It documents both a menu Play row and a scoped
-  mode in which only the physical-disc MGLs use its alternate Main. These are distinct projects;
+  mode in which only the physical-disc MGLs use its alternate Main. Its repository is GPL-3.0;
+  the installer downloads the upstream v0.7.0 release and does not redistribute a modified build.
+  These are distinct projects;
   their binary names, INI sections and MGL layouts must not be mixed.
 
 For an initial test, use the manual launch path and one disc per system. This avoids changing the
@@ -357,6 +359,18 @@ before we add GUI support. The drive must be a USB optical drive recognized by L
 project provides `physcd_probe` to check this. Drive compatibility varies. Optical drives can
 draw a large current while spinning up, so a powered USB hub or separate drive power supply may
 be needed if the drive disconnects or controllers drop off the bus.
+
+The SuperStation test has now confirmed the first two parts of that path. Linux exposes `/dev/sr0`
+as model `DVDRAM GUD1N`; `/proc/sys/dev/cdrom/info` reports CD read support. A Saturn disc's first
+2048-byte sector contains the Sega Saturn boot header, title `DISCWORLD` and identifier
+`T-11302H`. A PlayStation disc has an ISO-9660 primary volume descriptor at LBA 16 (`CD001`,
+`PLAYSTATION`); mounting read-only exposed `system.cnf`, whose `BOOT` entry is `SLES-01507`.
+Reading Saturn sectors through the block device also produced I/O errors near the end of the
+disc, so the GUI treats incomplete reads as errors and does not scan the full disc. The selected
+implementation is the USB CDROM Loader's scoped `[CD-*] main=MiSTer-disc` method and its
+`_Disc_Cores/PlayStation.mgl` and `_Disc_Cores/Saturn.mgl` entries. Starting both discs through
+those MGLs on the SuperStation is still an acceptance check; drive enumeration and metadata
+reading alone do not prove core compatibility.
 
 The normal core BIOS setup still applies. The PSX core expects BIOS images under `games/PSX/`:
 `boot.rom` for US, `boot1.rom` for Japan and `boot2.rom` for Europe. The Saturn core expects its
@@ -376,11 +390,11 @@ the global `[MiSTer]` setting: that would replace the normal Main for every core
 Console Mode menu remains a practical way to validate the hardware setup before changing the
 GUI.
 
-This has not yet been tested on our device. The open implementation question is whether the
-specific drive in the SuperStation Dock (or attached USB drive) enumerates reliably and whether
-the chosen physical-disc MGLs work with the installed PSX and Saturn core versions. Once those
-two cases are verified, the GUI work can stay narrowly scoped to PlayStation and Saturn; automatic
-disc detection and other CD systems can follow later.
+The device check confirms drive enumeration and metadata reads, but does not yet confirm repeated
+tray/media-change behavior or actual gameplay launch with both MGLs. The remaining hardware
+acceptance work is to check PSX and Saturn core compatibility, disc swaps, unreadable media, and
+recovery after a launch failure. The GUI scope stays limited to PlayStation and Saturn; automatic
+launch and other CD systems can follow later.
 
 ### The stock binary's CLI
 

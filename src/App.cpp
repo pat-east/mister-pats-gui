@@ -65,8 +65,11 @@ void drawHintText(Canvas &canvas, Theme &theme, Font &font, int x, int y, int si
 
 } // namespace
 
+App::App() : discArtwork_(theGamesDB_) {}
+
 bool App::initialize(const Options &options) {
     options_ = options;
+    discDrive_.start();
 
     DebugLog::info(std::string("starting mister-gui v") + kAppVersion);
 
@@ -122,7 +125,8 @@ bool App::initialize(const Options &options) {
     updateSnapshot_ = updateService_.snapshot();
 
     context_ = std::make_unique<Context>(*theme_, library_, favorites_, launcher_, images_,
-                                        icons_, history_, hiddenSystems_, preferences_);
+                                        icons_, history_, hiddenSystems_, preferences_, discDrive_,
+                                        discCores_, discArtwork_, theGamesDB_, discCoreInstaller_);
     context_->background = background_.get();
     context_->onChooseGameVersion = [this](const GameSystem &system, const Game &game) {
         openGameVersionChooser(system, game);
@@ -215,6 +219,15 @@ bool App::initialize(const Options &options) {
         [this] { rebootMister(); });
     settingsScreen_->setFramebufferInfo(framebuffer_.describe());
     settingsScreen_->setUpdateSnapshot(updateSnapshot_);
+
+    discScreen_ = std::make_unique<DiscScreen>(*context_, discCores_, [this](const std::string &mgl) {
+        if (!launcher_.launchPhysicalDisc(mgl)) {
+            context_->showError("Could not start Physical Disc", launcher_.lastError());
+            return;
+        }
+        context_->standDown = true;
+    });
+    discCoreStatus_ = discCores_.inspect();
 
     scanScreen_ = std::make_unique<ScanScreen>(
         *context_, scan_, scraper_, [this] { reloadLibrary(); }, [this] { closeScan(); });
@@ -438,7 +451,12 @@ bool App::tabNavigationAvailable() const {
 }
 
 std::vector<Tab> App::visibleTabs() const {
-    return TopBar::visibleTabs(preferences_.showGamesTab(), arcadeTabShown());
+    const auto drive = discDrive_.snapshot();
+    const bool hasDrive = drive.state != DiscDriveService::MediaState::NoDrive;
+    const auto &cores = discCoreStatus_;
+    return TopBar::visibleTabs(preferences_.showGamesTab(), arcadeTabShown(),
+                               hasDrive && cores.alternateMainInstalled &&
+                               cores.scopedMainConfigured && cores.hasAnyCore());
 }
 
 void App::toggleArcadeTab() {
@@ -510,6 +528,7 @@ Screen *App::activeScreen() {
     if (detailActive_) return gamesScreen_.get();
 
     switch (tab_) {
+    case Tab::Disc:     return discScreen_.get();
     case Tab::Home:      return homeScreen_.get();
     case Tab::Favorites: return favoritesScreen_.get();
     case Tab::Systems:   return systemsScreen_.get();
@@ -1151,6 +1170,28 @@ int App::run() {
             !arcadeGamesActive_ && !arcadeSettingsActive_ && tab_ != Tab::Settings)
             selectTab(Tab::Settings);
 
+        discCoreRefreshTimer_ -= dt;
+        if (discCoreRefreshTimer_ <= 0.0f) {
+            discCoreRefreshTimer_ = 3.0f;
+            const auto current = discCores_.inspect();
+            if (current.alternateMainInstalled != discCoreStatus_.alternateMainInstalled ||
+                current.psxMglInstalled != discCoreStatus_.psxMglInstalled ||
+                current.saturnMglInstalled != discCoreStatus_.saturnMglInstalled ||
+                current.psxMglCompatible != discCoreStatus_.psxMglCompatible ||
+                current.saturnMglCompatible != discCoreStatus_.saturnMglCompatible ||
+                current.psxCoreInstalled != discCoreStatus_.psxCoreInstalled ||
+                current.saturnCoreInstalled != discCoreStatus_.saturnCoreInstalled ||
+                current.scopedMainConfigured != discCoreStatus_.scopedMainConfigured) {
+                discCoreStatus_ = current;
+                needsFullRedraw_ = true;
+            }
+        }
+        if (tab_ == Tab::Disc) {
+            const std::vector<Tab> tabs = visibleTabs();
+            if (std::find(tabs.begin(), tabs.end(), Tab::Disc) == tabs.end())
+                selectTab(Tab::Home);
+        }
+
         Theme &theme = *theme_;
         topBar_.update(dt, preferences_.use24HourClock());
         activeScreen()->update(dt);
@@ -1204,8 +1245,13 @@ int App::run() {
             canvas_->restoreFrom(*background_, top);
             canvas_->restoreFrom(*background_, bottom);
         }
+        const auto drive = discDrive_.snapshot();
+        const auto &cores = discCoreStatus_;
+        const bool showDisc = drive.state != DiscDriveService::MediaState::NoDrive &&
+                              cores.alternateMainInstalled && cores.scopedMainConfigured &&
+                              cores.hasAnyCore();
         topBar_.render(*canvas_, theme, top, tab_, preferences_.showGamesTab(), arcadeTabShown(),
-                       tabNavigationAvailable(), preferences_.tabDisplay(), tabIcons_);
+                       showDisc, tabNavigationAvailable(), preferences_.tabDisplay(), tabIcons_);
         renderBottomBar(bottom);
         const int64_t t2 = nowMs();
 

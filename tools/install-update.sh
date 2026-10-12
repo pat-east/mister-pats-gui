@@ -240,9 +240,9 @@ if [ "$ROUTINE" -eq 1 ]; then
         echo "No newer release (selected v$selected_version; GitHub v$VERSION)."
         exit 0
     fi
-    required_assets="$LIB release-info.txt SHA256SUMS"
+    required_assets="$LIB disc-index.tsv DISC-INDEX-SOURCE.txt disc-index.sha256 release-info.txt SHA256SUMS"
 else
-    required_assets="mister-gui MiSTer_gui $LIB release-info.txt SHA256SUMS"
+    required_assets="mister-gui MiSTer_gui $LIB disc-index.tsv DISC-INDEX-SOURCE.txt disc-index.sha256 release-info.txt SHA256SUMS"
 fi
 for name in $required_assets; do
     grep -Fx "asset=$name" "$STAGE/fields" >/dev/null || fail "missing release asset $name"
@@ -261,6 +261,23 @@ case "$format" in ''|*[!0-9]*) fail 'invalid gamesdb format';; esac
 awk -v lib="$LIB" 'BEGIN {names[1]="mister-gui";names[2]="MiSTer_gui";names[3]=lib;names[4]="release-info.txt"} {if(length($0)!=66+length(names[NR]) || substr($0,65,2)!="  " || substr($0,67)!=names[NR] || substr($0,1,64) ~ /[^0-9a-f]/) exit 1} END {if(NR!=4) exit 1}' "$STAGE/SHA256SUMS" || fail 'invalid SHA256SUMS format'
 expected=$(awk '$2=="release-info.txt" {print $1}' "$STAGE/SHA256SUMS")
 [ "$(sha "$STAGE/release-info.txt")" = "$expected" ] || fail 'release-info hash mismatch'
+fetch "$url/disc-index.sha256" "$STAGE/disc-index.sha256" 256 15
+awk 'BEGIN {names[1]="disc-index.tsv";names[2]="DISC-INDEX-SOURCE.txt"} {if(length($0)!=66+length(names[NR]) || substr($0,65,2)!="  " || substr($0,67)!=names[NR] || substr($0,1,64) ~ /[^0-9a-f]/) exit 1} END {if(NR!=2) exit 1}' "$STAGE/disc-index.sha256" || fail 'invalid disc-index.sha256'
+fetch "$url/disc-index.tsv" "$STAGE/disc-index.tsv" 2097152 30
+expected=$(awk '$2=="disc-index.tsv" {print $1}' "$STAGE/disc-index.sha256")
+[ "$(sha "$STAGE/disc-index.tsv")" = "$expected" ] || fail 'disc-index hash mismatch'
+fetch "$url/DISC-INDEX-SOURCE.txt" "$STAGE/DISC-INDEX-SOURCE.txt" 16384 15
+expected=$(awk '$2=="DISC-INDEX-SOURCE.txt" {print $1}' "$STAGE/disc-index.sha256")
+[ "$(sha "$STAGE/DISC-INDEX-SOURCE.txt")" = "$expected" ] || fail 'disc-index attribution hash mismatch'
+awk -F '\t' 'NR==1 && $0 !~ /^#/ && NF!=3 {exit 1} $0 !~ /^#/ && (NF!=3 || ($1!="PSX" && $1!="SATURN") || $2=="" || $3=="") {exit 1} END {if(NR<2) exit 1}' "$STAGE/disc-index.tsv" || fail 'invalid disc-index.tsv'
+install_disc_assets() {
+    index_hash=$(awk '$2=="disc-index.tsv" {print $1}' "$STAGE/disc-index.sha256")
+    source_hash=$(awk '$2=="DISC-INDEX-SOURCE.txt" {print $1}' "$STAGE/disc-index.sha256")
+    copy_checked "$STAGE/disc-index.tsv" "$ROOT/disc-index.tsv.new-$$" "$index_hash"
+    mv -f "$ROOT/disc-index.tsv.new-$$" "$ROOT/disc-index.tsv" || fail 'cannot install disc index'
+    copy_checked "$STAGE/DISC-INDEX-SOURCE.txt" "$ROOT/DISC-INDEX-SOURCE.txt.new-$$" "$source_hash"
+    mv -f "$ROOT/DISC-INDEX-SOURCE.txt.new-$$" "$ROOT/DISC-INDEX-SOURCE.txt" || fail 'cannot install disc index attribution'
+}
 if [ "$ROUTINE" -eq 1 ]; then
     fetch "$url/$LIB" "$STAGE/$LIB" 67108864 120
     elf "$STAGE/$LIB" || fail "not an ELF file: $LIB"
@@ -270,7 +287,8 @@ if [ "$ROUTINE" -eq 1 ]; then
     if [ -e "$destination" ] || [ -L "$destination" ]; then
         [ -f "$destination" ] && [ ! -L "$destination" ] &&
             [ "$(sha "$destination")" = "$expected" ] || fail "versioned library differs: $destination"
-        echo "v$VERSION already installed."
+        install_disc_assets
+        echo "v$VERSION already installed; disc index refreshed."
         exit 0
     fi
     free_kb=$(df -Pk "$ROOT" | awk 'NR==2 {print $4}')
@@ -278,6 +296,7 @@ if [ "$ROUTINE" -eq 1 ]; then
     [ "$free_kb" -ge $((needed_kb+1024)) ] || fail 'not enough free space'
     copy_checked "$STAGE/$LIB" "$destination.new-$$" "$expected"
     mv "$destination.new-$$" "$destination" || fail "cannot install $destination"
+    install_disc_assets
     sync
     if [ -L "$LINK" ]; then
         echo "v$VERSION installed. Version pin $(readlink "$LINK") remains active."
@@ -335,6 +354,7 @@ if [ "${partial:-0}" -eq 1 ]; then
         copy_checked "$STAGE/$name" "$ROOT/$name.new-$$" "$expected"
         mv -f "$ROOT/$name.new-$$" "$ROOT/$name" || fail "cannot complete interrupted first installation: $name"
     done
+    install_disc_assets
     sync
     echo "v$VERSION installed. Restart MiSTer to load the newest library."
     exit 0
@@ -344,6 +364,7 @@ if [ "${relation:--1}" -eq 0 ]; then
         expected=$(awk -v n="$name" '$2==n {print $1}' "$STAGE/SHA256SUMS")
         [ -f "$ROOT/$name" ] && [ ! -L "$ROOT/$name" ] && [ "$(sha "$ROOT/$name")" = "$expected" ] || fail "installed v$VERSION differs: $name"
     done
+    install_disc_assets
     echo 'Already up to date.'
     exit 0
 fi
@@ -365,6 +386,7 @@ for name in MiSTer_gui mister-gui; do
         fail "commit failed at $name"
     fi
 done
+install_disc_assets
 sync
 sync
 echo "v$VERSION installed. Newest library will load after a manual restart."

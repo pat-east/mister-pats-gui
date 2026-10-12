@@ -4,6 +4,11 @@
 #include <functional>
 
 #include "Favorites.h"
+#include "DiscDriveService.h"
+#include "DiscCoreManager.h"
+#include "DiscCoreInstaller.h"
+#include "DiscArtworkService.h"
+#include "TheGamesDBClient.h"
 #include "HiddenSystems.h"
 #include "History.h"
 #include "Icons.h"
@@ -19,9 +24,12 @@ class Canvas;
 // Shared services handed to every screen.
 struct Context {
     Context(Theme &t, Library &l, Favorites &f, Launcher &la, ImageCache &i, Icons &ic,
-            History &h, HiddenSystems &hs, Preferences &p)
+            History &h, HiddenSystems &hs, Preferences &p, DiscDriveService &dd,
+            DiscCoreManager &dc, DiscArtworkService &da, TheGamesDBClient &tgdb,
+            DiscCoreInstaller &di)
         : theme(t), library(l), favorites(f), launcher(la), images(i), icons(ic), history(h),
-          hiddenSystems(hs), preferences(p) {}
+          hiddenSystems(hs), preferences(p), discDrive(dd), discCores(dc), discArtwork(da),
+          theGamesDB(tgdb), discInstaller(di) {}
 
     Theme &theme;
     Library &library;
@@ -32,6 +40,11 @@ struct Context {
     History &history;
     HiddenSystems &hiddenSystems;
     Preferences &preferences;
+    DiscDriveService &discDrive;
+    DiscCoreManager &discCores;
+    DiscArtworkService &discArtwork;
+    TheGamesDBClient &theGamesDB;
+    DiscCoreInstaller &discInstaller;
     std::function<void()> onThemeChanged;
     std::function<void(const GameSystem &, const Game &)> onChooseGameVersion;
     std::function<void()> onGameVersionSettingChanged;

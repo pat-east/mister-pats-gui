@@ -14,6 +14,7 @@
 #include "App.h"
 #include "CrashScreen.h"
 #include "DebugLog.h"
+#include "DiscDriveService.h"
 #include "LibraryScan.h"
 
 namespace {
@@ -340,4 +341,14 @@ int mister_gui_main_v1(int argc, char **argv) noexcept {
         std::fprintf(stderr, "mister-gui: unhandled exception\n");
     }
     return 1;
+}
+
+extern "C" __attribute__((visibility("default")))
+int mister_gui_disc_probe_v1(int argc, char **argv) noexcept {
+    if (argc != 2 || std::strcmp(argv[1], "--disc-probe-once") != 0) return 64;
+    try {
+        return DiscDriveService::runProbeRequest(STDIN_FILENO, STDOUT_FILENO);
+    } catch (...) {
+        return 70;
+    }
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <string>
 
 // Fetches a URL to a local file by running curl or wget.
@@ -14,6 +15,9 @@ public:
     // whole transfer; the connect timeout is fixed and short, because an unreachable host
     // should fail fast rather than stall a scrape of several thousand files.
     bool fetch(const std::string &url, const std::string &destination, int timeoutSeconds = 25);
+    bool fetchWithStatus(const std::string &url, const std::string &destination,
+                         int &httpStatus, int timeoutSeconds = 25,
+                         const std::atomic<bool> *cancel = nullptr);
 
     // Whether any downloader could be found at all. Only meaningful after a fetch.
     bool available() const { return tool_ != Tool::None; }
