@@ -541,6 +541,8 @@ Screen *App::activeScreen() {
 
 void App::selectTab(Tab tab) {
     const bool changed = tab_ != tab;
+    if (changed && tab_ == Tab::Disc && tab != Tab::Disc)
+        discScreen_->cancelPendingLaunch();
     detailActive_ = false;
     needsFullRedraw_ = true;
     if (tab == Tab::Home) homeScreen_->refresh();

@@ -32,6 +32,7 @@ public:
     DiscDriveService &operator=(const DiscDriveService &) = delete;
 
     void start();
+    void requestProbe();
     Snapshot snapshot() const;
 
     static const char *stateName(MediaState state);
@@ -48,6 +49,7 @@ private:
     Snapshot snapshot_;
     bool stopping_ = false;
     bool probeActive_ = false;
+    bool probeRequested_ = false;
     std::chrono::steady_clock::time_point probeStarted_{};
     int outstandingProbePid_ = -1;
     std::thread worker_;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+
 #include "DiscCoreManager.h"
 #include "Screen.h"
 
@@ -11,6 +13,7 @@ public:
     void handle(Action action) override;
     std::string hints() const override;
     bool hasBackOverlay() const override { return screenshotOverlay_; }
+    void cancelPendingLaunch() { launchProbePending_ = false; }
 private:
     Context &context_;
     DiscCoreManager &cores_;
@@ -20,4 +23,7 @@ private:
     int cursor_ = 0;
     int overlayIndex_ = 0;
     bool screenshotOverlay_ = false;
+    bool launchProbePending_ = false;
+    uint64_t launchProbeGeneration_ = 0;
+    std::chrono::steady_clock::time_point launchProbeStarted_{};
 };

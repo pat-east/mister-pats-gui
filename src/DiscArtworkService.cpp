@@ -577,7 +577,8 @@ bool DiscArtworkService::fetchFromTheGamesDB(const Request &request, Downloader 
         const std::string temp = target + ".download";
         unlink(temp.c_str());
         int imageStatus = 0;
-        if (!downloader.fetchWithStatus(url, temp, imageStatus, 45, &cancel) ||
+        if (!downloader.fetchWithStatus(url, temp, imageStatus, 45, &cancel,
+                                       12u * 1024u * 1024u) ||
             imageStatus != 200) {
             unlink(temp.c_str());
             return false;

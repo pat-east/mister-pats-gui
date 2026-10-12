@@ -174,10 +174,17 @@ void TheGamesDBClient::workerLoop() {
                                    std::istreambuf_iterator<char>());
             const std::string code = jsonNumber(json, "code");
             const std::string status = jsonString(json, "status");
+            // The live allowance endpoint currently returns these numeric fields at the
+            // top level without the code/status envelope used by the other API endpoints.
+            const std::string remaining = jsonNumber(json, "remaining_monthly_allowance");
+            const std::string extra = jsonNumber(json, "extra_allowance");
+            const std::string refresh = jsonNumber(json, "allowance_refresh_timer");
             if (httpStatus == 403 || httpStatus == 401 || code == "403" || code == "401")
                 result = CheckState::InvalidOrLimited;
             else if (httpStatus != 200) result = CheckState::NetworkError;
-            else if (code == "200" && status == "Success") result = CheckState::Success;
+            else if ((code == "200" && status == "Success") ||
+                     (code.empty() && status.empty() && !remaining.empty() &&
+                      !extra.empty() && !refresh.empty())) result = CheckState::Success;
             else if (code.empty() || status.empty()) result = CheckState::InvalidResponse;
             else result = CheckState::InvalidOrLimited;
         }

@@ -489,6 +489,15 @@ void DiscDriveService::start() {
     worker_ = std::thread(&DiscDriveService::workerLoop, this);
 }
 
+void DiscDriveService::requestProbe() {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (stopping_) return;
+        probeRequested_ = true;
+    }
+    wake_.notify_one();
+}
+
 DiscDriveService::~DiscDriveService() {
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -505,7 +514,7 @@ DiscDriveService::~DiscDriveService() {
 
 DiscDriveService::Snapshot DiscDriveService::snapshot() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (probeActive_ && snapshot_.state != MediaState::NoDrive) {
+    if ((probeActive_ || probeRequested_) && snapshot_.state != MediaState::NoDrive) {
         Snapshot pending = snapshot_;
         pending.state = MediaState::Checking;
         pending.system = System::Unknown;
@@ -548,6 +557,7 @@ void DiscDriveService::workerLoop() {
             std::unique_lock<std::mutex> lock(mutex_);
             if (stopping_) return;
             previous = snapshot_;
+            probeRequested_ = false;
             probeActive_ = true;
             probeStarted_ = std::chrono::steady_clock::now();
         }
@@ -561,7 +571,8 @@ void DiscDriveService::workerLoop() {
             if (stopping_) return;
             snapshot_ = std::move(next);
             if (wake_.wait_for(lock, std::chrono::seconds(kPollSeconds),
-                               [this] { return stopping_; })) return;
+                               [this] { return stopping_ || probeRequested_; }) && stopping_)
+                return;
         }
     }
 }

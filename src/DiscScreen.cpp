@@ -16,6 +16,28 @@ void DiscScreen::update(float deltaSeconds) {
     context_.discArtwork.request(disc);
     coreStatus_ = cores_.snapshot();
     artStatus_ = context_.discArtwork.snapshot();
+
+    if (!launchProbePending_) return;
+    if (std::chrono::steady_clock::now() - launchProbeStarted_ > std::chrono::seconds(15)) {
+        launchProbePending_ = false;
+        context_.notify("Disc recheck timed out. Press Start game to try again.", 5.0f);
+        return;
+    }
+    if (disc.state == DiscDriveService::MediaState::Checking) return;
+    launchProbePending_ = false;
+    if (disc.generation != launchProbeGeneration_) {
+        context_.notify("Disc changed during the check. Press Start game again.", 5.0f);
+        return;
+    }
+    std::string mgl;
+    if (disc.system == DiscDriveService::System::PlayStation) mgl = coreStatus_.psxMgl;
+    if (disc.system == DiscDriveService::System::Saturn) mgl = coreStatus_.saturnMgl;
+    if (disc.state == DiscDriveService::MediaState::Readable &&
+        coreStatus_.readyFor(disc.system) && !mgl.empty() && launch_) {
+        launch_(mgl);
+    } else {
+        context_.notify("Disc or Physical Disc core is no longer ready. Check the status and retry.", 6.0f);
+    }
 }
 
 void DiscScreen::handle(Action action) {
@@ -35,12 +57,25 @@ void DiscScreen::handle(Action action) {
             return;
         }
         const auto disc = context_.discDrive.snapshot();
+        if (disc.state == DiscDriveService::MediaState::Checking) {
+            context_.notify("Reading disc. Wait for the check to finish.", 4.0f);
+            return;
+        }
         std::string mgl;
         if (disc.system == DiscDriveService::System::PlayStation) mgl = coreStatus_.psxMgl;
         if (disc.system == DiscDriveService::System::Saturn) mgl = coreStatus_.saturnMgl;
         if (disc.state == DiscDriveService::MediaState::Readable &&
-            coreStatus_.readyFor(disc.system) && !mgl.empty() && launch_)
-            launch_(mgl);
+            coreStatus_.readyFor(disc.system) && !mgl.empty() && launch_) {
+            if (launchProbePending_) {
+                context_.notify("Checking the disc before launch…", 4.0f);
+                return;
+            }
+            launchProbePending_ = true;
+            launchProbeGeneration_ = disc.generation;
+            launchProbeStarted_ = std::chrono::steady_clock::now();
+            context_.discDrive.requestProbe();
+            context_.notify("Rechecking disc before launch…", 4.0f);
+        }
         else if (disc.state != DiscDriveService::MediaState::Readable ||
                  disc.system == DiscDriveService::System::Unknown)
             context_.notify("Insert a supported PlayStation or Saturn disc.", 4.0f);

@@ -103,7 +103,7 @@ std::string Downloader::command(Tool tool, const std::string &url,
 
 bool Downloader::fetchWithStatus(const std::string &url, const std::string &destination,
                                  int &httpStatus, int timeoutSeconds,
-                                 const std::atomic<bool> *cancel) {
+                                 const std::atomic<bool> *cancel, size_t maxBytes) {
     error_.clear();
     httpStatus = 0;
     if (cancel && cancel->load()) {
@@ -111,7 +111,8 @@ bool Downloader::fetchWithStatus(const std::string &url, const std::string &dest
         return false;
     }
     if (url.compare(0, 8, "https://") != 0 || url.size() > 512 ||
-        !safeUrl(url) || timeoutSeconds < 1) {
+        !safeUrl(url) || timeoutSeconds < 1 || maxBytes == 0 ||
+        maxBytes > 16u * 1024u * 1024u) {
         error_ = "refused an unsafe request";
         return false;
     }
@@ -151,7 +152,8 @@ bool Downloader::fetchWithStatus(const std::string &url, const std::string &dest
     posix_spawn_file_actions_addclose(&actions, statusPipe[1]);
     std::vector<std::string> args = {"curl", "-4", "-sS", "-L", "--proto", "=https",
         "--proto-redir", "=https", "--connect-timeout", "12", "--max-time",
-        std::to_string(timeoutSeconds), "--max-filesize", "65536", "-w", "%{http_code}",
+        std::to_string(timeoutSeconds), "--max-filesize", std::to_string(maxBytes),
+        "-w", "%{http_code}",
         "-o", destination, "--config", "-"};
     for (const char *path : kCertificates) {
         if (!fileExists(path)) continue;

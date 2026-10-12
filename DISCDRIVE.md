@@ -48,11 +48,12 @@ https://api.thegamesdb.net/v1/API/Limit?apikey=<URL-encoded-key>
 ```
 
 Die API-Dokumentation nennt diesen Endpoint „Check API key allowance“ und verlangt `apikey` als
-Query-Parameter. Eine erfolgreiche Antwort enthält unter anderem `code`, `status`,
-`remaining_monthly_allowance` und `extra_allowance`. `403` kann laut API sowohl einen ungültigen
-Key als auch ein erreichtes Nutzungslimit bedeuten; die UI darf diesen Status daher nicht
-ausschließlich als „invalid key“ darstellen. Netzwerkfehler, HTTP-Fehler und ungültige JSON-
-Antworten erhalten verständliche Meldungen. Der Key wird nie ausgegeben.
+Query-Parameter. Der Live-Check am 12. Oktober 2026 lieferte HTTP 200 mit
+`remaining_monthly_allowance`, `extra_allowance` und `allowance_refresh_timer` direkt im JSON-Root,
+ohne `code`/`status`-Hülle. Beide dokumentierten Antwortformen werden akzeptiert. `403` kann laut
+API sowohl einen ungültigen Key als auch ein erreichtes Nutzungslimit bedeuten; die UI darf diesen
+Status daher nicht ausschließlich als „invalid key“ darstellen. Netzwerkfehler, HTTP-Fehler und
+ungültige JSON-Antworten erhalten verständliche Meldungen. Der Key wird nie ausgegeben.
 
 Der HTTP-Status und die API-Antwort werden ausgewertet; API-Key-Werte sind URL-kodiert. UI-Thread
 und Render-Loop warten nicht auf den Netzwerkzugriff. Der Key selbst wird weder angezeigt noch
@@ -64,6 +65,14 @@ ergänzen, ersetzt aber nicht das lokale Lesen der Disc. Die API-Plattform-IDs f
 müssen einmal explizit geprüft und festgelegt werden. Treffer werden anhand des Disc-Titels,
 der erkannten Plattform plausibilisiert. Mehrdeutige Titeltreffer werden verworfen. Die
 Plattform-IDs sind PS1 `10` und Saturn `17`.
+
+Der erlaubte Schnittstellentest bestätigte die Suche für Saturn **Discworld** (eindeutiger Treffer
+29884) und PS1 **Kula World** (eindeutiger Treffer 69028). Die PS1-Suche nach **Metal Gear Solid**
+lieferte mehrere passende Titel-IDs und wird daher korrekt als mehrdeutig behandelt. Für
+Discworld lieferte die Images-API Boxart; für Kula World Boxart und einen Screenshot. Beide
+Bilddateien wurden erfolgreich vom CDN geladen. Das getestete Cover war rund 200 KiB groß und
+der Screenshot 1920×1080; Artwork-Downloads haben deshalb ein eigenes 12-MiB-Limit, während
+JSON-Antworten klein begrenzt bleiben.
 
 ### Artwork-Auflösung und Fallback
 
@@ -286,6 +295,9 @@ Disc-Ansicht zurück.
 **Start game** ist nur deaktiviert, wenn Disc-Lesbarkeit, System/Core-Zuordnung oder kompatible
 Physical-Disc-Dateien den Start verhindern. Boxart, Metadaten, Internetverbindung und laufende
 Artwork-Suche sind keine Startvoraussetzungen.
+Beim Auslösen fordert die GUI eine frische Disc-Prüfung im Laufwerks-Worker an. Der Start erfolgt
+erst nach erfolgreicher Prüfung desselben Disc-Generationsstands und erneuter Core-Prüfung. Wird
+währenddessen der Tab verlassen, wird der ausstehende Start verworfen.
 
 ## Disc-Informationen ermitteln
 
@@ -362,8 +374,9 @@ ROM-Bibliothek gehört nicht zum Disc-Drive-Umfang von 0.8.0.
   Laufwerk und lesbare Disc-Metadaten bestätigt.
 - Einen nicht reagierenden Laufwerkstreiber prüfen und sicherstellen, dass das Zeitlimit keine
   Probeprozesse anhäuft und die UI weiterhin keinen alten Start anbietet.
-- TheGamesDB mit einem echten Key und tatsächlichen Bildantworten prüfen; URLs mit Key dürfen
-  dabei nicht protokolliert werden.
+- Einen ungültigen oder limitierten TheGamesDB-Key prüfen; URLs mit Key dürfen dabei nicht
+  protokolliert werden. Der erfolgreiche Live-Key-Check, Titelsuchen und echte Bildantworten sind
+  bereits bestätigt.
 
 ## Abnahmekriterien
 
