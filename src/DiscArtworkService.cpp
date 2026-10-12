@@ -105,11 +105,19 @@ std::string jsonNumberAt(const std::string &json, const std::string &key, size_t
 
 bool writeTextAtomically(const std::string &path, const std::string &text);
 
-bool theGamesDbCheckedRecently(const std::string &metadata) {
+bool theGamesDbCheckedRecently(const std::string &metadata, const std::string &metadataPath) {
     if (metadata.find("\"thegamesdb_checked\":true") == std::string::npos) return false;
     const std::string timestamp = jsonNumberAt(metadata, "thegamesdb_checked_at");
-    if (timestamp.empty()) return true; // Metadata written by earlier builds has no expiry.
-    const long long checkedAt = std::strtoll(timestamp.c_str(), nullptr, 10);
+    long long checkedAt = 0;
+    if (timestamp.empty()) {
+        // Older cache records had no explicit timestamp. Use the regular metadata file's
+        // mtime so those negative lookups expire instead of being permanent.
+        struct stat info {};
+        if (lstat(metadataPath.c_str(), &info) != 0 || !S_ISREG(info.st_mode)) return false;
+        checkedAt = static_cast<long long>(info.st_mtime);
+    } else {
+        checkedAt = std::strtoll(timestamp.c_str(), nullptr, 10);
+    }
     const long long now = static_cast<long long>(time(nullptr));
     constexpr long long kNegativeCacheSeconds = 30LL * 24 * 60 * 60;
     return checkedAt <= now ? now - checkedAt < kNegativeCacheSeconds : true;
@@ -482,7 +490,7 @@ bool DiscArtworkService::fetchFromTheGamesDB(const Request &request, Downloader 
     if (apiKey.empty()) return false;
     const std::string metadataPath = gameDir + "/metadata.json";
     const std::string existingMetadata = readText(metadataPath);
-    if (theGamesDbCheckedRecently(existingMetadata))
+    if (theGamesDbCheckedRecently(existingMetadata, metadataPath))
         return false;
 
     const int platform = request.system == DiscDriveService::System::PlayStation ? 10 : 17;
@@ -656,7 +664,7 @@ DiscArtworkService::Snapshot DiscArtworkService::fetch(const Request &request,
     Downloader downloader;
     const std::string indexCache = cacheRoot + "/index";
     const bool indexCacheReady = ensureDirectory(indexCache);
-    const bool tgdbChecked = theGamesDbCheckedRecently(metadata);
+    const bool tgdbChecked = theGamesDbCheckedRecently(metadata, metadataPath);
     if (!cancel.load() && client_.configured() && !tgdbChecked) {
         const bool gotTheGamesDbImage =
             fetchFromTheGamesDB(request, downloader, out, gameDir, cancel);
