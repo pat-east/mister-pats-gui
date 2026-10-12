@@ -34,7 +34,7 @@ apikey=""
 Die Konfiguration bleibt vorerst manuell. Die GUI zeigt den Status **Not configured** oder
 **Configured** an, ohne den API-Key anzuzeigen oder in Logs auszugeben. Ein leerer oder nicht
 lesbarer Key ist nicht konfiguriert. Die Datei wird tolerant gegen Leerzeilen und Kommentare
-gelesen.
+gelesen; Symlinks, Dateien über 16 KiB und Keys über 256 Byte werden ignoriert.
 
 Der Einstellungs-Punkt bleibt auch ohne Key sichtbar, damit der Status auffindbar ist. Beim
 Anwählen ohne Key zeigt eine Meldung den Dateipfad und das benötigte Format, statt einen

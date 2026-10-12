@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <sstream>
 
 #include "Downloader.h"
 #include "Paths.h"
@@ -99,8 +100,28 @@ void TheGamesDBClient::ensureSettingsFile() const {
 std::string TheGamesDBClient::readKey() const {
     ensureSettingsFile();
     struct stat info {};
-    if (lstat(settingsPath(), &info) != 0 || !S_ISREG(info.st_mode)) return std::string();
-    std::ifstream input(settingsPath());
+    const int fd = open(settingsPath(), O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) return std::string();
+    if (fstat(fd, &info) != 0 || !S_ISREG(info.st_mode) || info.st_size < 0 ||
+        info.st_size > 16384) {
+        close(fd);
+        return std::string();
+    }
+    std::string contents;
+    contents.reserve(size_t(info.st_size));
+    char buffer[1024];
+    for (;;) {
+        const ssize_t count = read(fd, buffer, sizeof(buffer));
+        if (count < 0 && errno == EINTR) continue;
+        if (count < 0 || contents.size() + size_t(count) > 16384) {
+            close(fd);
+            return std::string();
+        }
+        if (count == 0) break;
+        contents.append(buffer, size_t(count));
+    }
+    close(fd);
+    std::istringstream input(contents);
     std::string line;
     while (std::getline(input, line)) {
         line = trim(line);
@@ -110,6 +131,7 @@ std::string TheGamesDBClient::readKey() const {
         std::string key = trim(line.substr(equals + 1));
         if (key.size() >= 2 && key.front() == '"' && key.back() == '"')
             key = key.substr(1, key.size() - 2);
+        if (key.size() > 256) return std::string();
         return trim(key);
     }
     return std::string();
