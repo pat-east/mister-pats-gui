@@ -5,9 +5,9 @@
 #include <cctype>
 #include <condition_variable>
 #include <dirent.h>
-#include <fstream>
 #include <iterator>
 #include <mutex>
+#include <sstream>
 #include <sys/stat.h>
 #include <thread>
 #include <unistd.h>
@@ -40,6 +40,9 @@ bool endsWith(const std::string &text, const char *suffix);
 
 bool installedRbf(const std::string &fatRoot, const char *coreName) {
     const std::string directory = fatRoot + "/_Console";
+    struct stat directoryInfo {};
+    if (lstat(directory.c_str(), &directoryInfo) != 0 ||
+        !S_ISDIR(directoryInfo.st_mode) || S_ISLNK(directoryInfo.st_mode)) return false;
     DIR *dir = opendir(directory.c_str());
     if (!dir) return false;
     const std::string wanted = lower(coreName);
@@ -70,6 +73,9 @@ bool endsWith(const std::string &text, const char *suffix) {
 
 void findMgls(const std::string &directory, unsigned depth, std::vector<std::string> &out) {
     if (depth > 3) return;
+    struct stat directoryInfo {};
+    if (lstat(directory.c_str(), &directoryInfo) != 0 ||
+        !S_ISDIR(directoryInfo.st_mode) || S_ISLNK(directoryInfo.st_mode)) return;
     DIR *dir = opendir(directory.c_str());
     if (!dir) return;
     std::vector<std::string> nested;
@@ -88,8 +94,9 @@ void findMgls(const std::string &directory, unsigned depth, std::vector<std::str
 }
 
 bool hasScopedMain(const std::string &path) {
-    std::ifstream input(path.c_str());
-    if (!input) return false;
+    std::string contents;
+    if (!UpdateFiles::readLimited(path, 1024 * 1024, contents)) return false;
+    std::istringstream input(contents);
     std::string section;
     std::string line;
     while (std::getline(input, line)) {
