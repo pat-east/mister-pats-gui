@@ -59,33 +59,67 @@ bool backupName(const std::string &name) {
     return true;
 }
 
+int openDirectoryNoFollow(const std::string &path) {
+    if (path.empty() || path.front() != '/') return -1;
+    int directory = open("/", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (directory < 0) return -1;
+    size_t start = 1;
+    while (start < path.size()) {
+        const size_t slash = path.find('/', start);
+        const std::string component = path.substr(start,
+            slash == std::string::npos ? std::string::npos : slash - start);
+        if (component.empty() || component == "." || component == "..") {
+            close(directory);
+            return -1;
+        }
+        const int next = openat(directory, component.c_str(),
+                                O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        close(directory);
+        if (next < 0) return -1;
+        directory = next;
+        if (slash == std::string::npos) break;
+        start = slash + 1;
+    }
+    return directory;
+}
+
 void pruneBackups(const std::string &root) {
-    DIR *dir = opendir(root.c_str());
-    if (!dir) return;
+    const int rootFd = openDirectoryNoFollow(root);
+    if (rootFd < 0) return;
+    const int listingFd = dup(rootFd);
+    if (listingFd < 0) { close(rootFd); return; }
+    DIR *dir = fdopendir(listingFd);
+    if (!dir) { close(listingFd); close(rootFd); return; }
     std::vector<std::string> dirs;
     while (dirent *entry = readdir(dir)) {
         const std::string name = entry->d_name;
         if (!backupName(name)) continue;
         struct stat st {};
-        if (lstat((root + "/" + name).c_str(), &st) == 0 && S_ISDIR(st.st_mode))
+        if (fstatat(rootFd, name.c_str(), &st, AT_SYMLINK_NOFOLLOW) == 0 && S_ISDIR(st.st_mode))
             dirs.push_back(name);
     }
     closedir(dir);
     std::sort(dirs.begin(), dirs.end());
     while (dirs.size() > 5) {
-        const std::string victim = root + "/" + dirs.front();
-        DIR *files = opendir(victim.c_str());
-        if (!files) break;
+        const int victimFd = openat(rootFd, dirs.front().c_str(),
+                                    O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        if (victimFd < 0) { dirs.erase(dirs.begin()); continue; }
+        const int filesFd = dup(victimFd);
+        if (filesFd < 0) { close(victimFd); break; }
+        DIR *files = fdopendir(filesFd);
+        if (!files) { close(filesFd); close(victimFd); break; }
         while (dirent *entry = readdir(files)) {
             if (!std::strcmp(entry->d_name, ".") || !std::strcmp(entry->d_name, "..")) continue;
-            const std::string path = victim + "/" + entry->d_name;
             struct stat st {};
-            if (lstat(path.c_str(), &st) == 0 && S_ISREG(st.st_mode)) unlink(path.c_str());
+            if (fstatat(victimFd, entry->d_name, &st, AT_SYMLINK_NOFOLLOW) == 0 && S_ISREG(st.st_mode))
+                unlinkat(victimFd, entry->d_name, 0);
         }
         closedir(files);
-        if (rmdir(victim.c_str()) != 0) break;
+        close(victimFd);
+        if (unlinkat(rootFd, dirs.front().c_str(), AT_REMOVEDIR) != 0) break;
         dirs.erase(dirs.begin());
     }
+    close(rootFd);
 }
 
 bool writeExclusive(const std::string &path, const unsigned char *data, size_t size,
