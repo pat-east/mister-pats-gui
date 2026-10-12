@@ -39,7 +39,8 @@ uint32_t le32(const unsigned char *p) {
 bool ensureDir(const std::string &path) {
     if (mkdir(path.c_str(), 0755) == 0 || errno == EEXIST) {
         struct stat st {};
-        return lstat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+        // Never follow a pre-existing symlink for staging, backups or managed MGLs.
+        return lstat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode);
     }
     return false;
 }
