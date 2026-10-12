@@ -282,6 +282,13 @@ und die `BOOT`-Kennung normalisiert. Der mitgelieferte Redump/TOSEC-Index löst 
 zu Titeln auf. Mehrdeutige Kennungen werden nicht willkürlich einem Titel zugeordnet; beim Saturn
 bleibt dann der im IP.BIN gelesene Titel erhalten.
 
+`assets/disc-index.tsv` enthält 15.671 Kennung-/Titel-Zuordnungen: 13.068 für PS1 und 2.603 für
+Saturn. Die TSV-Datei ist 865.040 Byte groß und wird zusätzlich komprimiert in die GUI eingebettet;
+damit funktioniert die Offline-Auflösung auch ohne separate Indexdatei auf der SD-Karte. Die
+Zuordnungen stammen aus den Redump-DAT-Dateien des libretro/libretro-database-Projekts und sind
+im Index sowie in `assets/DISC-INDEX-SOURCE.txt` CC BY-SA 4.0 zugeordnet. Das ist die Abdeckung
+der verwendeten Quelle, keine Garantie, dass jede veröffentlichte Disc enthalten ist.
+
 Auf dem Dock wurden `/dev/sr0` (`DVDRAM GUD1N`), Saturn `T-11302H` / `DISC WORLD` und PS1
 `SLES-01507` aus `SYSTEM.CNF` gelesen. Das bestätigt die dort verwendeten Sektorzugriffe. Das
 Timeout- und Abbruchverhalten des isolierten Prozesses muss noch mit einem nicht reagierenden
