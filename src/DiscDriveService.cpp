@@ -235,16 +235,35 @@ const std::unordered_map<std::string, std::vector<std::string>> &titleIndex() {
         }
 
         const std::string externalPath = std::string(MISTER_PAT_ROOT) + "/disc-index.tsv";
-        struct stat info {};
-        if (lstat(externalPath.c_str(), &info) == 0 && S_ISREG(info.st_mode) &&
-            info.st_size > 0 && info.st_size <= 2 * 1024 * 1024) {
-            std::ifstream externalInput(externalPath.c_str());
-            if (externalInput) {
-                std::unordered_map<std::string, std::vector<std::string>> overrides;
-                readIndex(externalInput, overrides);
-                for (auto &entry : overrides)
-                    result[entry.first] = std::move(entry.second);
+        const int indexFd = open(externalPath.c_str(), O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+        if (indexFd >= 0) {
+            struct stat info {};
+            if (fstat(indexFd, &info) == 0 && S_ISREG(info.st_mode) &&
+                info.st_size > 0 && info.st_size <= 2 * 1024 * 1024) {
+                std::string contents;
+                contents.reserve(static_cast<size_t>(info.st_size));
+                char buffer[4096];
+                bool bounded = true;
+                for (;;) {
+                    const ssize_t count = read(indexFd, buffer, sizeof(buffer));
+                    if (count < 0 && errno == EINTR) continue;
+                    if (count < 0) { bounded = false; break; }
+                    if (count == 0) break;
+                    if (contents.size() + static_cast<size_t>(count) > 2 * 1024 * 1024) {
+                        bounded = false;
+                        break;
+                    }
+                    contents.append(buffer, static_cast<size_t>(count));
+                }
+                if (bounded && !contents.empty()) {
+                    std::istringstream externalInput(contents);
+                    std::unordered_map<std::string, std::vector<std::string>> overrides;
+                    readIndex(externalInput, overrides);
+                    for (auto &entry : overrides)
+                        result[entry.first] = std::move(entry.second);
+                }
             }
+            close(indexFd);
         }
         return result;
     }();
