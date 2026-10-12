@@ -25,5 +25,6 @@ private:
     bool screenshotOverlay_ = false;
     bool launchProbePending_ = false;
     uint64_t launchProbeGeneration_ = 0;
+    uint64_t launchCoreRevision_ = 0;
     std::chrono::steady_clock::time_point launchProbeStarted_{};
 };

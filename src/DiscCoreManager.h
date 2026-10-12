@@ -14,6 +14,7 @@
 class DiscCoreManager {
 public:
     struct Status {
+        uint64_t inspectionRevision = 0;
         bool alternateMainInstalled = false;
         bool alternateMainVerified = false;
         bool psxMglInstalled = false;
@@ -52,6 +53,8 @@ public:
 
     // Latest filesystem inspection, refreshed by the manager worker.
     Status snapshot() const;
+    // Schedules a fresh filesystem inspection and returns its revision.
+    uint64_t requestInspection();
     static const char *projectUrl();
 
 private:
@@ -75,6 +78,7 @@ private:
     std::condition_variable wake_;
     Status snapshot_;
     std::unordered_map<std::string, HashCacheEntry> hashCache_;
+    uint64_t requestedInspectionRevision_ = 0;
     bool stopping_ = false;
     std::thread worker_;
 };

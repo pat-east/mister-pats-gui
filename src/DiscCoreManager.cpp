@@ -186,16 +186,37 @@ DiscCoreManager::Status DiscCoreManager::snapshot() const {
     return snapshot_;
 }
 
+uint64_t DiscCoreManager::requestInspection() {
+    uint64_t revision;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (stopping_) return requestedInspectionRevision_;
+        revision = ++requestedInspectionRevision_;
+    }
+    wake_.notify_one();
+    return revision;
+}
+
 void DiscCoreManager::workerLoop() {
     for (;;) {
+        uint64_t revision;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (stopping_) return;
+            revision = requestedInspectionRevision_;
+        }
         Status current = inspect();
+        current.inspectionRevision = revision;
         {
             std::lock_guard<std::mutex> lock(mutex_);
             if (stopping_) return;
             snapshot_ = std::move(current);
         }
         std::unique_lock<std::mutex> lock(mutex_);
-        if (wake_.wait_for(lock, std::chrono::seconds(3), [this] { return stopping_; })) return;
+        wake_.wait_for(lock, std::chrono::seconds(3), [this, revision] {
+            return stopping_ || requestedInspectionRevision_ != revision;
+        });
+        if (stopping_) return;
     }
 }
 

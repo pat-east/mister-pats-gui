@@ -295,9 +295,10 @@ Disc-Ansicht zurück.
 **Start game** ist nur deaktiviert, wenn Disc-Lesbarkeit, System/Core-Zuordnung oder kompatible
 Physical-Disc-Dateien den Start verhindern. Boxart, Metadaten, Internetverbindung und laufende
 Artwork-Suche sind keine Startvoraussetzungen.
-Beim Auslösen fordert die GUI eine frische Disc-Prüfung im Laufwerks-Worker an. Der Start erfolgt
-erst nach erfolgreicher Prüfung desselben Disc-Generationsstands und erneuter Core-Prüfung. Wird
-währenddessen der Tab verlassen, wird der ausstehende Start verworfen.
+Beim Auslösen fordert die GUI eine frische Disc-Prüfung im Laufwerks-Worker und eine neue
+Dateisystemprüfung des Core-Pakets an. Der Start erfolgt erst, wenn beide abgeschlossen sind, die
+Disc-Generation unverändert ist und der passende Core weiterhin bereit ist. Wird währenddessen
+der Tab verlassen, wird der ausstehende Start verworfen.
 
 ## Disc-Informationen ermitteln
 

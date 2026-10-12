@@ -20,10 +20,11 @@ void DiscScreen::update(float deltaSeconds) {
     if (!launchProbePending_) return;
     if (std::chrono::steady_clock::now() - launchProbeStarted_ > std::chrono::seconds(15)) {
         launchProbePending_ = false;
-        context_.notify("Disc recheck timed out. Press Start game to try again.", 5.0f);
+        context_.notify("Disc/core recheck timed out. Press Start game to try again.", 5.0f);
         return;
     }
-    if (disc.state == DiscDriveService::MediaState::Checking) return;
+    if (disc.state == DiscDriveService::MediaState::Checking ||
+        coreStatus_.inspectionRevision < launchCoreRevision_) return;
     launchProbePending_ = false;
     if (disc.generation != launchProbeGeneration_) {
         context_.notify("Disc changed during the check. Press Start game again.", 5.0f);
@@ -67,14 +68,15 @@ void DiscScreen::handle(Action action) {
         if (disc.state == DiscDriveService::MediaState::Readable &&
             coreStatus_.readyFor(disc.system) && !mgl.empty() && launch_) {
             if (launchProbePending_) {
-                context_.notify("Checking the disc before launch…", 4.0f);
+                context_.notify("Checking disc and core before launch…", 4.0f);
                 return;
             }
             launchProbePending_ = true;
             launchProbeGeneration_ = disc.generation;
+            launchCoreRevision_ = cores_.requestInspection();
             launchProbeStarted_ = std::chrono::steady_clock::now();
             context_.discDrive.requestProbe();
-            context_.notify("Rechecking disc before launch…", 4.0f);
+            context_.notify("Rechecking disc and Physical Disc core…", 4.0f);
         }
         else if (disc.state != DiscDriveService::MediaState::Readable ||
                  disc.system == DiscDriveService::System::Unknown)
