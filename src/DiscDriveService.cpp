@@ -487,14 +487,16 @@ DiscDriveService::~DiscDriveService() {
 
 DiscDriveService::Snapshot DiscDriveService::snapshot() const {
     std::lock_guard<std::mutex> lock(mutex_);
-    if (probeActive_ && std::chrono::steady_clock::now() - probeStarted_ >=
-                            std::chrono::seconds(kProbeStatusTimeoutSeconds)) {
+    if (probeActive_ && snapshot_.state != MediaState::NoDrive) {
         Snapshot pending = snapshot_;
         pending.state = MediaState::Checking;
         pending.system = System::Unknown;
         pending.title.clear();
         pending.identifier.clear();
-        pending.error = "Drive read is taking longer than expected";
+        pending.error = std::chrono::steady_clock::now() - probeStarted_ >=
+                                std::chrono::seconds(kProbeStatusTimeoutSeconds)
+                            ? "Drive read is taking longer than expected"
+                            : std::string();
         return pending;
     }
     return snapshot_;

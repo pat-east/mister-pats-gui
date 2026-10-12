@@ -48,6 +48,7 @@ private:
     std::condition_variable wake_;
     Snapshot snapshot_;
     Request pending_;
+    uint64_t activeGeneration_ = 0;
     bool hasPending_ = false;
     bool stopping_ = false;
     std::atomic<bool> cancelCurrent_{false};

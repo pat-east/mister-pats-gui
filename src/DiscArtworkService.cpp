@@ -305,11 +305,21 @@ DiscArtworkService::~DiscArtworkService() {
 }
 
 void DiscArtworkService::request(const DiscDriveService::Snapshot &disc) {
+    if (disc.state == DiscDriveService::MediaState::Checking) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (snapshot_.state != State::Idle && activeGeneration_ == disc.generation) return;
+        cancelCurrent_.store(true);
+        hasPending_ = false;
+        snapshot_ = Snapshot();
+        activeGeneration_ = disc.generation;
+        return;
+    }
     if (disc.state != DiscDriveService::MediaState::Readable || disc.title.empty()) {
         std::lock_guard<std::mutex> lock(mutex_);
         cancelCurrent_.store(true);
         hasPending_ = false;
         snapshot_ = Snapshot();
+        activeGeneration_ = disc.generation;
         return;
     }
     // A PlayStation boot serial without a matching offline title is not a useful
@@ -321,11 +331,13 @@ void DiscArtworkService::request(const DiscDriveService::Snapshot &disc) {
         cancelCurrent_.store(true);
         hasPending_ = false;
         snapshot_ = Snapshot();
+        activeGeneration_ = disc.generation;
         return;
     }
     const std::string key = safeKey(disc);
     if (key.empty()) return;
     std::lock_guard<std::mutex> lock(mutex_);
+    activeGeneration_ = disc.generation;
     if (snapshot_.cacheKey == key && snapshot_.state != State::Idle) return;
     if (hasPending_ && pending_.system == disc.system &&
         pending_.identifier == disc.identifier && pending_.title == disc.title) return;

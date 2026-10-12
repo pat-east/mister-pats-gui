@@ -136,6 +136,9 @@ Die Implementierung sucht alle vier Sekunden nach `/dev/sr*`-Blockgeräten und l
 `/sys/block/sr*/device/model`. Laufwerkserkennung, eingelegte Disc und Lesbarkeit bleiben getrennte
 Zustände. Die Hardwareabfrage läuft in einem separaten Loader-Unterprozess. Nach sieben Sekunden
 ohne Ergebnis beendet der GUI-Prozess die Probe, verwirft den alten Titel und sperrt **Start game**.
+Bereits während jeder laufenden Probe zeigt die GUI **Checking disc**, verwirft Titel und
+Kennung des vorherigen Mediums und sperrt **Start game**, damit ein Disc-Wechsel nicht kurzzeitig
+den alten Datenträger startbar lässt.
 Falls ein Treiber den Prozess in einem nicht unterbrechbaren Kernel-Wartezustand hält, wird kein
 weiterer Probeprozess gestartet, bis der alte Prozess beendet ist.
 
