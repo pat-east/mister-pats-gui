@@ -208,25 +208,43 @@ std::string resolveIndexTitles(const std::vector<std::string> &titles) {
     });
 }
 
+void readIndex(std::istream &source,
+               std::unordered_map<std::string, std::vector<std::string>> &destination) {
+    std::string line;
+    while (std::getline(source, line)) {
+        if (line.empty() || line[0] == '#' || line.size() > 2048) continue;
+        const size_t first = line.find('\t');
+        const size_t second = first == std::string::npos ? first : line.find('\t', first + 1);
+        if (first == std::string::npos || second == std::string::npos) continue;
+        const std::string system = line.substr(0, first);
+        const std::string identifier = trim(line.substr(first + 1, second - first - 1));
+        const std::string title = trim(line.substr(second + 1));
+        if ((system != "PSX" && system != "SATURN") || identifier.empty() ||
+            identifier.size() > 128 || title.empty() || title.size() > 512) continue;
+        destination[system + "\t" + identifier].push_back(title);
+    }
+}
+
 const std::unordered_map<std::string, std::vector<std::string>> &titleIndex() {
     static const std::unordered_map<std::string, std::vector<std::string>> index = [] {
         std::unordered_map<std::string, std::vector<std::string>> result;
-        std::ifstream input(std::string(MISTER_PAT_ROOT) + "/disc-index.tsv");
         std::string embedded;
-        std::istringstream fallback;
-        std::istream *source = &input;
-        if (!input && loadEmbeddedDiscIndex(embedded)) {
-            fallback.str(embedded);
-            source = &fallback;
+        if (loadEmbeddedDiscIndex(embedded)) {
+            std::istringstream builtIn(embedded);
+            readIndex(builtIn, result);
         }
-        std::string line;
-        while (std::getline(*source, line)) {
-            if (line.empty() || line[0] == '#') continue;
-            const size_t first = line.find('\t');
-            const size_t second = first == std::string::npos ? first : line.find('\t', first + 1);
-            if (first == std::string::npos || second == std::string::npos) continue;
-            result[line.substr(0, first) + "\t" +
-                   line.substr(first + 1, second - first - 1)].push_back(line.substr(second + 1));
+
+        const std::string externalPath = std::string(MISTER_PAT_ROOT) + "/disc-index.tsv";
+        struct stat info {};
+        if (lstat(externalPath.c_str(), &info) == 0 && S_ISREG(info.st_mode) &&
+            info.st_size > 0 && info.st_size <= 2 * 1024 * 1024) {
+            std::ifstream externalInput(externalPath.c_str());
+            if (externalInput) {
+                std::unordered_map<std::string, std::vector<std::string>> overrides;
+                readIndex(externalInput, overrides);
+                for (auto &entry : overrides)
+                    result[entry.first] = std::move(entry.second);
+            }
         }
         return result;
     }();

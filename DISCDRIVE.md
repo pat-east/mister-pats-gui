@@ -297,6 +297,9 @@ bleibt dann der im IP.BIN gelesene Titel erhalten.
 `assets/disc-index.tsv` enthält 15.671 Kennung-/Titel-Zuordnungen: 13.068 für PS1 und 2.603 für
 Saturn. Die TSV-Datei ist 865.040 Byte groß und wird zusätzlich komprimiert in die GUI eingebettet;
 damit funktioniert die Offline-Auflösung auch ohne separate Indexdatei auf der SD-Karte. Die
+externe `disc-index.tsv` kann einzelne eingebettete Zuordnungen überschreiben; fehlende oder
+ungültige externe Einträge fallen auf den eingebetteten Index zurück. Symlink-Dateien sowie
+Indexdateien über 2 MiB werden ignoriert. Die
 Zuordnungen stammen aus den Redump-DAT-Dateien des libretro/libretro-database-Projekts und sind
 im Index sowie in `assets/DISC-INDEX-SOURCE.txt` CC BY-SA 4.0 zugeordnet. Das ist die Abdeckung
 der verwendeten Quelle, keine Garantie, dass jede veröffentlichte Disc enthalten ist.
