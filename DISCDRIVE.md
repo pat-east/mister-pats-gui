@@ -129,6 +129,8 @@ Laufwerk vorhanden, öffnet sich eine Statusansicht mit getrennten Zeilen für:
 BIOS-Dateien werden nicht verändert. Der Start wird nur freigegeben, wenn auch der passende
 PlayStation- beziehungsweise Saturn-RBF-Core vorhanden ist. Nutzerdateien werden nur an den drei
 ausdrücklich verwalteten Zielpfaden ersetzt; davor werden sie gesichert.
+Bei der Recovery werden Backup-, Daten- und `_Disc_Cores`-Verzeichnisse auf Symlinks geprüft;
+unsichere oder fehlende Pfade stoppen die Wiederherstellung, statt Dateien umzuleiten.
 
 ### Laufwerkserkennung
 

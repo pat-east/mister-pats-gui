@@ -46,6 +46,11 @@ bool ensureDir(const std::string &path) {
     return false;
 }
 
+bool realDirectory(const std::string &path) {
+    struct stat st {};
+    return lstat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode);
+}
+
 bool backupName(const std::string &name) {
     const size_t dash = name.find('-');
     if (dash == std::string::npos || dash == 0 || dash + 1 == name.size()) return false;
@@ -285,7 +290,18 @@ bool recoverInterruptedInstall(std::string &error) {
         error = "unsafe interrupted disc-install journal";
         return false;
     }
+    const std::string backupRoot = std::string(kData) + "/backups/disc-drive";
+    if (!realDirectory(kRoot) || !realDirectory(kData) ||
+        !realDirectory(std::string(kData) + "/backups") || !realDirectory(backupRoot) ||
+        !realDirectory(std::string(kRoot) + "/_Disc_Cores")) {
+        error = "unsafe directory in interrupted disc-install recovery path";
+        return false;
+    }
     const std::string backupDir = std::string(kData) + "/backups/disc-drive/" + backupNameText;
+    if (!realDirectory(backupDir)) {
+        error = "missing or unsafe interrupted disc-install backup directory";
+        return false;
+    }
     const std::string targets[] = {std::string(kRoot) + "/MiSTer-disc",
         std::string(kRoot) + "/_Disc_Cores/PlayStation.mgl",
         std::string(kRoot) + "/_Disc_Cores/Saturn.mgl"};
