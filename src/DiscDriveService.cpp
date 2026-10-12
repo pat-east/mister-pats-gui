@@ -563,8 +563,10 @@ void DiscDriveService::workerLoop() {
         }
 
         Snapshot next = probeWithTimeout(previous);
-        if (!sameMedia(previous, next)) next.generation = previous.generation + 1;
-        else next.generation = previous.generation;
+        if (next.generation <= previous.generation) {
+            next.generation = sameMedia(previous, next)
+                ? previous.generation : previous.generation + 1;
+        }
         {
             std::unique_lock<std::mutex> lock(mutex_);
             probeActive_ = false;
@@ -760,8 +762,14 @@ DiscDriveService::Snapshot DiscDriveService::probeOnce(const Snapshot &previous)
         }
         close(fd);
 
-        if (current.state != MediaState::NoDisc && current.state != MediaState::Checking)
+        if (current.state != MediaState::NoDisc && current.state != MediaState::Checking) {
+            // Keep a tray/media-change event even when the replacement has the same
+            // serial and title as the previous disc. A pending launch must be invalidated.
+            if (changed > 0 && (current.state == MediaState::Readable ||
+                                current.state == MediaState::Unsupported))
+                current.generation = previous.generation + 1;
             return current;
+        }
         if (noDisc.device.empty()) noDisc = current;
     }
     return noDisc;
