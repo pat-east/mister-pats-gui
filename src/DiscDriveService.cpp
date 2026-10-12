@@ -77,6 +77,7 @@ bool fromWire(const ProbeWire &wire, DiscDriveService::Snapshot &snapshot) {
     if (wire.magic != kProbeWireMagic ||
         wire.state > static_cast<uint32_t>(DiscDriveService::MediaState::Unreadable) ||
         wire.system > static_cast<uint32_t>(DiscDriveService::System::Saturn) ||
+        wire.reserved > 1 ||
         wire.device[sizeof(wire.device) - 1] != '\0' ||
         wire.model[sizeof(wire.model) - 1] != '\0' ||
         wire.title[sizeof(wire.title) - 1] != '\0' ||
@@ -554,6 +555,7 @@ void DiscDriveService::requestProbe() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (stopping_) return;
         probeRequested_ = true;
+        forceMetadataRead_ = true;
     }
     wake_.notify_one();
 }
@@ -613,16 +615,19 @@ const char *DiscDriveService::systemName(System system) {
 void DiscDriveService::workerLoop() {
     for (;;) {
         Snapshot previous;
+        bool forceMetadataRead = false;
         {
             std::unique_lock<std::mutex> lock(mutex_);
             if (stopping_) return;
             previous = snapshot_;
             probeRequested_ = false;
+            forceMetadataRead = forceMetadataRead_;
+            forceMetadataRead_ = false;
             probeActive_ = true;
             probeStarted_ = std::chrono::steady_clock::now();
         }
 
-        Snapshot next = probeWithTimeout(previous);
+        Snapshot next = probeWithTimeout(previous, forceMetadataRead);
         if (next.generation <= previous.generation) {
             next.generation = sameMedia(previous, next)
                 ? previous.generation : previous.generation + 1;
@@ -644,12 +649,13 @@ int DiscDriveService::runProbeRequest(int inputFd, int outputFd) {
     if (!readAll(inputFd, &request, sizeof(request))) return 2;
     Snapshot previous;
     if (!fromWire(request, previous)) return 2;
-    const Snapshot result = probeOnce(previous);
+    const Snapshot result = probeOnce(previous, request.reserved == 1);
     const ProbeWire response = toWire(result);
     return writeAll(outputFd, &response, sizeof(response)) ? 0 : 3;
 }
 
-DiscDriveService::Snapshot DiscDriveService::probeWithTimeout(const Snapshot &previous) {
+DiscDriveService::Snapshot DiscDriveService::probeWithTimeout(const Snapshot &previous,
+                                                               bool forceMetadataRead) {
     if (outstandingProbePid_ > 0) {
         int status = 0;
         const pid_t result = waitpid(pid_t(outstandingProbePid_), &status, WNOHANG);
@@ -703,7 +709,8 @@ DiscDriveService::Snapshot DiscDriveService::probeWithTimeout(const Snapshot &pr
         return failed;
     }
 
-    const ProbeWire request = toWire(previous);
+    ProbeWire request = toWire(previous);
+    request.reserved = forceMetadataRead ? 1u : 0u;
     if (!sendAllNoSignal(requestSocket[0], &request, sizeof(request))) {
         close(requestSocket[0]);
         close(responsePipe[0]);
@@ -762,7 +769,8 @@ DiscDriveService::Snapshot DiscDriveService::probeWithTimeout(const Snapshot &pr
     return failed;
 }
 
-DiscDriveService::Snapshot DiscDriveService::probeOnce(const Snapshot &previous) {
+DiscDriveService::Snapshot DiscDriveService::probeOnce(const Snapshot &previous,
+                                                        bool forceMetadataRead) {
     DIR *directory = opendir("/dev");
     if (!directory) return Snapshot();
 
@@ -812,7 +820,7 @@ DiscDriveService::Snapshot DiscDriveService::probeOnce(const Snapshot &previous)
             const bool sameDevice = previous.device == device;
             const bool previousHasMedia = previous.state == MediaState::Readable ||
                                           previous.state == MediaState::Unsupported;
-            if (sameDevice && previousHasMedia && changed == 0) {
+            if (sameDevice && previousHasMedia && changed == 0 && !forceMetadataRead) {
                 current = previous;
                 current.model = readModel(device);
             } else {

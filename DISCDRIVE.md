@@ -305,6 +305,9 @@ Dateisystemprüfung des Core-Pakets an. Der Start erfolgt erst, wenn beide abges
 Disc-Generation unverändert ist und der passende Core weiterhin bereit ist. Wird währenddessen
 der Tab verlassen, wird der ausstehende Start verworfen. Während das Disc-Paket installiert oder
 aktualisiert wird, bleibt der Start gesperrt.
+Die explizite Startprüfung liest die Disc-Metadaten erneut vom Laufwerk, auch wenn der Treiber
+kein Medienwechsel-Flag meldet; das normale Vier-Sekunden-Polling verwendet bei unverändertem
+Medium weiterhin den Snapshot.
 
 ## Disc-Informationen ermitteln
 

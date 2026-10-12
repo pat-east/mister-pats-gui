@@ -38,11 +38,11 @@ public:
     static const char *stateName(MediaState state);
     static const char *systemName(System system);
     static int runProbeRequest(int inputFd, int outputFd);
-    static Snapshot probeOnce(const Snapshot &previous);
+    static Snapshot probeOnce(const Snapshot &previous, bool forceMetadataRead = false);
 
 private:
     void workerLoop();
-    Snapshot probeWithTimeout(const Snapshot &previous);
+    Snapshot probeWithTimeout(const Snapshot &previous, bool forceMetadataRead);
 
     mutable std::mutex mutex_;
     std::condition_variable wake_;
@@ -50,6 +50,7 @@ private:
     bool stopping_ = false;
     bool probeActive_ = false;
     bool probeRequested_ = false;
+    bool forceMetadataRead_ = false;
     std::chrono::steady_clock::time_point probeStarted_{};
     int outstandingProbePid_ = -1;
     std::thread worker_;
