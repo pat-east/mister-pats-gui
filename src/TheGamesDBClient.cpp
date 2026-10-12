@@ -169,7 +169,12 @@ bool TheGamesDBClient::checking() const {
 }
 
 TheGamesDBClient::CheckState TheGamesDBClient::checkState() const {
+    const std::string key = readKey();
+    if (key.empty()) return CheckState::NotChecked;
     std::lock_guard<std::mutex> lock(mutex_);
+    if ((state_ == CheckState::Checking && activeKey_ != key) ||
+        (state_ != CheckState::Checking && checkedKey_ != key))
+        return CheckState::NotChecked;
     return state_;
 }
 
