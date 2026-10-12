@@ -298,7 +298,8 @@ Artwork-Suche sind keine Startvoraussetzungen.
 Beim Auslösen fordert die GUI eine frische Disc-Prüfung im Laufwerks-Worker und eine neue
 Dateisystemprüfung des Core-Pakets an. Der Start erfolgt erst, wenn beide abgeschlossen sind, die
 Disc-Generation unverändert ist und der passende Core weiterhin bereit ist. Wird währenddessen
-der Tab verlassen, wird der ausstehende Start verworfen.
+der Tab verlassen, wird der ausstehende Start verworfen. Während das Disc-Paket installiert oder
+aktualisiert wird, bleibt der Start gesperrt.
 
 ## Disc-Informationen ermitteln
 

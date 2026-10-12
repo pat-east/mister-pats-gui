@@ -23,6 +23,11 @@ void DiscScreen::update(float deltaSeconds) {
         context_.notify("Disc/core recheck timed out. Press Start game to try again.", 5.0f);
         return;
     }
+    if (context_.discInstaller.busy()) {
+        launchProbePending_ = false;
+        context_.notify("Physical Disc package update started. Press Start game when it finishes.", 5.0f);
+        return;
+    }
     if (disc.state == DiscDriveService::MediaState::Checking ||
         coreStatus_.inspectionRevision < launchCoreRevision_) return;
     launchProbePending_ = false;
@@ -60,6 +65,11 @@ void DiscScreen::handle(Action action) {
         const auto disc = context_.discDrive.snapshot();
         if (disc.state == DiscDriveService::MediaState::Checking) {
             context_.notify("Reading disc. Wait for the check to finish.", 4.0f);
+            return;
+        }
+        if (disc.state == DiscDriveService::MediaState::Readable &&
+            context_.discInstaller.busy()) {
+            context_.notify("Wait for the Physical Disc package update to finish.", 5.0f);
             return;
         }
         std::string mgl;
@@ -161,12 +171,14 @@ void DiscScreen::render(Canvas &canvas, const Rect &area, bool) {
     const int thumbsY = rowBottom - thumbSize;
     const int buttonY = thumbsY - theme.px(82);
     const Rect button{rightX, buttonY, thumbSize * 4 + theme.px(18) * 3, theme.px(60)};
-    const bool canLaunch = coreStatus_.readyFor(disc.system) &&
+    const bool installerBusy = context_.discInstaller.busy();
+    const bool canLaunch = !installerBusy && coreStatus_.readyFor(disc.system) &&
                            disc.state == DiscDriveService::MediaState::Readable;
     const bool rbfMissing = disc.system == DiscDriveService::System::PlayStation
         ? !coreStatus_.psxCoreInstalled
         : disc.system == DiscDriveService::System::Saturn && !coreStatus_.saturnCoreInstalled;
     const std::string label = canLaunch ? "Start game" :
+        installerBusy ? "Physical Disc package is updating" :
         disc.state != DiscDriveService::MediaState::Readable ? "Waiting for supported disc" :
         rbfMissing ? "Install matching FPGA core" : "Configure Physical Disc package";
     canvas.fillRoundedRect(button, theme.px(9), canLaunch ? theme.accent : theme.surfaceHi);
