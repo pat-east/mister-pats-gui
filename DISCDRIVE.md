@@ -16,8 +16,9 @@ Optical-Drive-Unterstützung sowie dazu passende Physical-Disc-MGLs und FPGA-Cor
 für dieses Feature die globale `[MiSTer] main=`-Einstellung nicht umstellen.
 
 Der erste Umfang ist manuell: Disc einlegen, GUI erkennt sie, Nutzer wählt **Start game**.
-Automatischer Start beim Einlegen, andere CD-Systeme, Disc-Auswurf und laufendes Wechseln von
-Discs sind zunächst ausgeschlossen.
+Automatischer Start beim Einlegen, andere CD-Systeme und ein Auswurf-Befehl in der GUI sind
+zunächst ausgeschlossen. Ein Disc-Wechsel, während die GUI geöffnet ist, wird vom Laufwerks-Polling
+erkannt; ein Disc-Wechsel während eines gestarteten Spiels gehört nicht zum Umfang.
 
 ## Settings → Library → TheGamesDB
 
