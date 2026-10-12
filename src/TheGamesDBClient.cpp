@@ -151,9 +151,11 @@ std::string TheGamesDBClient::readKey() const {
 bool TheGamesDBClient::configured() const { return !readKey().empty(); }
 
 bool TheGamesDBClient::startApiKeyCheck() {
-    if (readKey().empty()) return false;
+    const std::string key = readKey();
+    if (key.empty()) return false;
     std::lock_guard<std::mutex> lock(mutex_);
     if (state_ == CheckState::Checking || pending_) return false;
+    activeKey_ = key;
     state_ = CheckState::Checking;
     cancelCurrent_.store(false);
     pending_ = true;
@@ -172,8 +174,11 @@ TheGamesDBClient::CheckState TheGamesDBClient::checkState() const {
 }
 
 std::string TheGamesDBClient::checkStatus() const {
-    if (!configured()) return "Not configured";
+    const std::string key = readKey();
+    if (key.empty()) return "Not configured";
     std::lock_guard<std::mutex> lock(mutex_);
+    if ((state_ == CheckState::Checking && activeKey_ != key) ||
+        (state_ != CheckState::Checking && checkedKey_ != key)) return "Configured";
     switch (state_) {
     case CheckState::NotChecked: return "Configured";
     case CheckState::Checking: return "Checking API key…";
@@ -187,13 +192,14 @@ std::string TheGamesDBClient::checkStatus() const {
 
 void TheGamesDBClient::workerLoop() {
     for (;;) {
+        std::string key;
         {
             std::unique_lock<std::mutex> lock(mutex_);
             wake_.wait(lock, [this] { return stopping_ || pending_; });
             if (stopping_) return;
             pending_ = false;
+            key = activeKey_;
         }
-        const std::string key = readKey();
         const std::string target = std::string(MISTER_PAT_ROOT) + "/thegamesdb-check.json";
         unlink(target.c_str());
         Downloader downloader;
@@ -226,5 +232,7 @@ void TheGamesDBClient::workerLoop() {
         std::lock_guard<std::mutex> lock(mutex_);
         if (stopping_) return;
         state_ = result;
+        checkedKey_ = key;
+        activeKey_.clear();
     }
 }
