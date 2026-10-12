@@ -33,6 +33,8 @@ struct Context {
     HiddenSystems &hiddenSystems;
     Preferences &preferences;
     std::function<void()> onThemeChanged;
+    std::function<void(const GameSystem &, const Game &)> onChooseGameVersion;
+    std::function<void()> onGameVersionSettingChanged;
 
     // Prepared background, for restoring the area under a changed element.
     const Canvas *background = nullptr;

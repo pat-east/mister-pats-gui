@@ -114,6 +114,7 @@ private:
     void writeCanvas(const std::string &path);
     void runScript();
     void openGameActions();
+    void openGameVersionChooser(const GameSystem &system, const Game &game);
     void renderGameActions();
     void refreshGameActionArtwork();
     void activateSpaceGrotesk();
@@ -153,6 +154,7 @@ private:
     std::unique_ptr<GamesScreen> gamesScreen_;   // per-system detail view
     std::unique_ptr<GamesScreen> arcadeLibraryScreen_; // Arcade tab, with its own search state
     std::unique_ptr<GamesScreen> allGamesScreen_;// the Games tab: the whole library at once
+    bool arcadeScreenDirty_ = true;
     std::unique_ptr<GamesScreen> favoritesScreen_;
     std::unique_ptr<SettingsScreen> settingsScreen_;
     std::unique_ptr<ScanScreen> scanScreen_;
@@ -161,9 +163,11 @@ private:
     std::unique_ptr<ArcadeSettingsScreen> arcadeSettingsScreen_;
     std::unique_ptr<ArcadeGamesScreen> arcadeGamesScreen_;
     bool gameActionsActive_ = false;
+    bool gameVersionChooserActive_ = false;
     bool gameActionWorking_ = false;
     bool gameActionScrapePendingRefresh_ = false;
     int gameActionCursor_ = 0;
+    int gameVersionScroll_ = 0;
     const GameSystem *gameActionSystem_ = nullptr;
     Game gameActionGame_;
 

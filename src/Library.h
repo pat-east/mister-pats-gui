@@ -4,14 +4,17 @@
 #include "Artwork.h"
 
 #include <string>
+#include <map>
 #include <vector>
 
 #include "GameDatabase.h"
 #include "GameIndex.h"
 
 struct Game {
+    struct Variant { std::string path; std::string label; };
     std::string path;        // ROM or archive on disk
     std::string name;        // display name, extension stripped
+    std::vector<Variant> versions; // populated when several ROMs share a visible title
     std::string boxart;      // candidate path, may not exist
     std::string background;  // candidate "-BG" path, may not exist
 
@@ -60,7 +63,13 @@ public:
     const GameDatabase &database() const { return database_; }
 
     const std::vector<GameSystem> &systems() const { return systems_; }
-    std::vector<Game> gamesOf(const GameSystem &system) const;
+    // Builds and caches path/name groups per system. Artwork remains unresolved until a
+    // screen needs a visible game's image; the cache is discarded when load() refreshes ROMs.
+    const std::vector<Game> &gamesOf(const GameSystem &system,
+                                     bool organizeVersions = true) const;
+    void prepareGameCache(bool organizeVersions = true) const;
+    void clearPersistentGameCache() const;
+    static std::vector<Game> organizeGames(const GameSystem &system, std::vector<Game> games);
 
     // Just the paths. Already sorted by display name when it comes from our own database (one
     // file, written that way); not sorted otherwise, since sorting needs each name and getting
@@ -137,4 +146,5 @@ private:
     GameDatabase database_;
     bool usingDatabase_ = false;
     bool scanningAllowed_ = false;
+    mutable std::map<std::string, std::vector<Game>> gamesCache_;
 };

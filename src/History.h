@@ -19,6 +19,8 @@ public:
     bool save() const;
 
     void remember(const std::string &system, const std::string &path, const std::string &name);
+    std::string mostRecentVersion(const std::string &system, const std::string &name,
+                                  const std::vector<std::string> &candidates) const;
 
     const std::vector<HistoryEntry> &entries() const { return entries_; }
     size_t size() const { return entries_.size(); }

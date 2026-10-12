@@ -25,12 +25,17 @@ public:
 
     bool showArcadeInConsoles() const { return showArcadeInConsoles_; }
     void setShowArcadeInConsoles(bool show);
+    bool organizeGameVersions() const { return organizeGameVersions_; }
+    void setOrganizeGameVersions(bool enabled);
 
     TabDisplay tabDisplay() const { return tabDisplay_; }
     void setTabDisplay(TabDisplay display);
 
     bool showBoxArt() const { return showBoxArt_; }
     void setShowBoxArt(bool show);
+
+    bool loadSmallBoxartsInGridView() const { return loadSmallBoxartsInGridView_; }
+    void setLoadSmallBoxartsInGridView(bool enabled);
 
     bool startSoundEnabled() const { return startSoundEnabled_; }
     void setStartSoundEnabled(bool enabled);
@@ -85,8 +90,10 @@ private:
     bool showGamesTab_ = true;
     bool showArcadeTab_ = true;
     bool showArcadeInConsoles_ = false;
+    bool organizeGameVersions_ = true;
     TabDisplay tabDisplay_ = TabDisplay::Names;
     bool showBoxArt_ = true;
+    bool loadSmallBoxartsInGridView_ = false;
     bool startSoundEnabled_ = true;
     bool menuSoundsEnabled_ = true;
     bool useSpaceGrotesk_ = true;

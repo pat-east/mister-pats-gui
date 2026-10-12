@@ -3,17 +3,85 @@
 #include "SystemCatalog.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <dirent.h>
 #include <fstream>
+#include <iomanip>
 #include <map>
 #include <sys/stat.h>
+#include <unistd.h>
 
 namespace {
 
 constexpr const char *kArcadeKey = "Arcade";
+constexpr const char *kVersionCacheDir = MISTER_PAT_ROOT "/version-groups";
+constexpr unsigned kVersionCacheFormat = 1;
+
+uint64_t hashText(uint64_t hash, const std::string &text) {
+    for (unsigned char c : text) {
+        hash ^= c;
+        hash *= 1099511628211ULL;
+    }
+    hash ^= 0xff;
+    return hash * 1099511628211ULL;
+}
+
+std::string cacheFileKey(const GameSystem &system) {
+    uint64_t hash = hashText(1469598103934665603ULL, system.name);
+    hash = hashText(hash, system.dbKey);
+    char value[17];
+    std::snprintf(value, sizeof(value), "%016llx", static_cast<unsigned long long>(hash));
+    return std::string(kVersionCacheDir) + "/" + value + ".cache";
+}
+
+bool readVersionCache(const std::string &file, uint64_t fingerprint,
+                      std::vector<Game> &games) {
+    std::ifstream in(file);
+    unsigned format = 0;
+    uint64_t storedFingerprint = 0;
+    size_t count = 0;
+    if (!(in >> format >> storedFingerprint >> count) || format != kVersionCacheFormat ||
+        storedFingerprint != fingerprint || count > 1000000) return false;
+    std::vector<Game> loaded;
+    loaded.reserve(count);
+    for (size_t i = 0; i < count; ++i) {
+        Game game;
+        size_t versions = 0;
+        if (!(in >> std::quoted(game.path) >> std::quoted(game.name) >> versions) ||
+            versions > 1000000) return false;
+        game.versions.reserve(versions);
+        for (size_t j = 0; j < versions; ++j) {
+            Game::Variant version;
+            if (!(in >> std::quoted(version.path) >> std::quoted(version.label))) return false;
+            game.versions.push_back(std::move(version));
+        }
+        loaded.push_back(std::move(game));
+    }
+    games = std::move(loaded);
+    return true;
+}
+
+void writeVersionCache(const std::string &file, uint64_t fingerprint,
+                       const std::vector<Game> &games) {
+    mkdir(kVersionCacheDir, 0755);
+    const std::string temporary = file + ".tmp";
+    std::ofstream out(temporary.c_str(), std::ios::trunc);
+    if (!out) return;
+    out << kVersionCacheFormat << ' ' << fingerprint << ' ' << games.size() << '\n';
+    for (const Game &game : games) {
+        out << std::quoted(game.path) << ' ' << std::quoted(game.name) << ' '
+            << game.versions.size() << '\n';
+        for (const Game::Variant &version : game.versions)
+            out << std::quoted(version.path) << ' ' << std::quoted(version.label) << '\n';
+    }
+    out.close();
+    if (out) rename(temporary.c_str(), file.c_str());
+    else unlink(temporary.c_str());
+}
 
 const char *kCoreDirs[] = {
     "/media/fat/_Console", "/media/fat/_Computer", "/media/fat/_Handheld",
@@ -99,6 +167,70 @@ std::string trim(const std::string &s) {
     if (a == std::string::npos) return std::string();
     size_t b = s.find_last_not_of(" \t\r\n");
     return s.substr(a, b - a + 1);
+}
+
+// Region, revision and language tags live at the end of ROM filenames. Remove all
+// consecutive trailing parenthetical tags for the browser title while retaining the
+// original path and each tag as the launch choice.
+std::string versionTitle(const std::string &name, std::vector<std::string> *labels) {
+    std::string title = name;
+    // GoodTools-style names commonly end in a mixture such as "(USA) [!]". Strip one
+    // recognized suffix at a time from the right so the region tag is reached after the
+    // trailing dump tag, regardless of their order or count.
+    while (!title.empty()) {
+        if (title.back() == ')') {
+            const size_t open = title.find_last_of('(');
+            if (open == std::string::npos || open == 0 ||
+                (title[open - 1] != ' ' && title[open - 1] != ')'))
+                break;
+            std::string label = trim(title.substr(open + 1, title.size() - open - 2));
+            if (label.empty()) break;
+            labels->insert(labels->begin(), label);
+            title.erase(title[open - 1] == ')' ? open : open - 1);
+            continue;
+        }
+        if (title.back() == ']') {
+            const size_t open = title.find_last_of('[');
+            if (open == std::string::npos || open == 0 || title[open - 1] != ' ') break;
+            const std::string tag = title.substr(open + 1, title.size() - open - 2);
+            const bool numericRomTag = tag.size() == 4 &&
+                std::all_of(tag.begin(), tag.end(), [](unsigned char c) { return std::isdigit(c); });
+            const bool dumpTag = tag == "!" || numericRomTag || (!tag.empty() &&
+                ((tag[0] == 'a' || tag[0] == 'b' || tag[0] == 'o' || tag[0] == 'p' ||
+                  tag[0] == 'h' || tag[0] == 't' || tag[0] == 'u' || tag[0] == 'v') &&
+                 tag.size() > 1 && std::isdigit(static_cast<unsigned char>(tag[1]))));
+            if (!dumpTag) break;
+            if (numericRomTag) labels->insert(labels->begin(), tag);
+            title.erase(open - 1);
+            continue;
+        }
+        break;
+    }
+    return trim(title);
+}
+
+std::string versionKey(const std::string &title) {
+    std::string key;
+    bool space = false;
+    for (unsigned char c : title) {
+        if (c == ' ' || c == '\t') { space = !key.empty(); continue; }
+        if (space) key.push_back(' ');
+        space = false;
+        key.push_back(char(std::tolower(c)));
+    }
+    return key;
+}
+
+std::string arcadeAlternativeTitle(const std::string &path) {
+    const std::string marker = "_alternatives/_";
+    const size_t at = path.find(marker);
+    if (at == std::string::npos) return {};
+    const size_t start = at + marker.size();
+    const size_t end = path.find('/', start);
+    if (end == std::string::npos) return {};
+    std::string title = path.substr(start, end - start);
+    std::replace(title.begin(), title.end(), '_', ' ');
+    return trim(title);
 }
 
 std::vector<std::string> splitList(const std::string &value) {
@@ -383,6 +515,7 @@ bool Library::loadFromDatabase() {
 bool Library::load(const std::string &sectionDir) {
     systems_.clear();
     cores_.clear();
+    gamesCache_.clear();
     usingDatabase_ = false;
 
     // Our own database first. When it answers, nothing else is touched — no section files,
@@ -479,6 +612,23 @@ void Library::resolveArtwork(const GameSystem &system, Game &game, ArtworkVarian
                                          backgroundFallbacks.begin(), backgroundFallbacks.end());
         break;
     }
+
+    // A grouped game's display name no longer contains its region/revision suffix, while
+    // existing artwork remains named after the representative ROM. Ask only for that ROM's
+    // original name; the other paths in `versions` are launch choices, not extra artwork
+    // candidates. This also keeps a coverless group from probing every ROM version.
+    if (game.name != nameFor(system, path)) {
+        Game original = makeStub(system, path);
+        resolveArtwork(system, original, variant);
+        for (const std::string &candidate : original.boxartCandidates)
+            if (std::find(game.boxartCandidates.begin(), game.boxartCandidates.end(), candidate) ==
+                game.boxartCandidates.end())
+                game.boxartCandidates.push_back(candidate);
+        for (const std::string &candidate : original.backgroundCandidates)
+            if (std::find(game.backgroundCandidates.begin(), game.backgroundCandidates.end(), candidate) ==
+                game.backgroundCandidates.end())
+                game.backgroundCandidates.push_back(candidate);
+    }
 }
 
 bool Library::hasGames(const GameSystem &system) const {
@@ -574,55 +724,143 @@ std::vector<std::string> Library::pathsOf(const GameSystem &system) const {
     return paths;
 }
 
-std::vector<Game> Library::gamesOf(const GameSystem &system) const {
+const std::vector<Game> &Library::gamesOf(const GameSystem &system,
+                                          bool organizeVersions) const {
+    const std::string cacheKey = system.name + '\x1f' + system.dbKey + '\x1f' +
+                                 (organizeVersions ? "organized" : "raw");
+    const auto cached = gamesCache_.find(cacheKey);
+    if (cached != gamesCache_.end()) return cached->second;
+
     std::vector<Game> games;
+    const std::vector<std::string> paths = pathsOf(system);
+    uint64_t fingerprint = hashText(1469598103934665603ULL, system.name);
+    fingerprint = hashText(fingerprint, system.dbKey);
+    for (const std::string &path : paths) fingerprint = hashText(fingerprint, path);
+    if (organizeVersions && readVersionCache(cacheFileKey(system), fingerprint, games))
+        return gamesCache_.emplace(cacheKey, std::move(games)).first->second;
 
-    // One file, read only now that this system is actually being opened, and already sorted
-    // when it was written.
-    if (!system.dbKey.empty()) {
-        const std::vector<std::string> paths = pathsOf(system);
-        games.reserve(paths.size());
-        for (const std::string &path : paths) games.push_back(makeGame(system, path));
-        return games;
-    }
+    games.reserve(paths.size());
+    for (const std::string &path : paths) games.push_back(makeStub(system, path));
 
-    // The cached index avoids touching the game volume at all, which is what keeps a
-    // marginally powered drive on the bus.
-    if (const std::vector<std::string> *paths = index_.pathsFor(system.name)) {
-        games.reserve(paths->size());
-        for (const std::string &path : *paths)
-            if (!isSystemFile(system, path)) games.push_back(makeGame(system, path));
-
-        std::sort(games.begin(), games.end(), [](const Game &a, const Game &b) {
-            return strcasecmp(a.name.c_str(), b.name.c_str()) < 0;
-        });
-        return games;
-    }
-
-    if (!scanningAllowed_) return games;
-
-    for (const std::string &dir : system.romDirs) {
-        DIR *d = opendir(dir.c_str());
-        if (!d) continue;
-
-        while (dirent *entry = readdir(d)) {
-            const std::string filename = entry->d_name;
-            if (filename[0] == '.') continue;
-
-            bool match = hasSuffix(filename, ".zip");
-            for (const std::string &ext : system.romExts)
-                if (hasSuffix(filename, ext)) match = true;
-            if (!match) continue;
-
-            if (!isSystemFile(system, filename))
-                games.push_back(makeGame(system, dir + "/" + filename));
-        }
-        closedir(d);
-    }
+    if (organizeVersions) games = organizeGames(system, std::move(games));
 
     std::sort(games.begin(), games.end(), [](const Game &a, const Game &b) {
         return strcasecmp(a.name.c_str(), b.name.c_str()) < 0;
     });
 
-    return games;
+    auto inserted = gamesCache_.emplace(cacheKey, std::move(games));
+    if (organizeVersions) writeVersionCache(cacheFileKey(system), fingerprint, inserted.first->second);
+    return inserted.first->second;
+}
+
+void Library::prepareGameCache(bool organizeVersions) const {
+    for (const GameSystem &system : systems_) gamesOf(system, organizeVersions);
+}
+
+void Library::clearPersistentGameCache() const {
+    DIR *dir = opendir(kVersionCacheDir);
+    if (!dir) return;
+    while (dirent *entry = readdir(dir)) {
+        const std::string name = entry->d_name;
+        if (name.size() > 6 && name.compare(name.size() - 6, 6, ".cache") == 0)
+            unlink((std::string(kVersionCacheDir) + "/" + name).c_str());
+    }
+    closedir(dir);
+}
+
+std::vector<Game> Library::organizeGames(const GameSystem &system, std::vector<Game> games) {
+    if (system.isArcade) {
+        std::vector<Game> arcadeGroups;
+        std::vector<Game> ordinary;
+        std::map<std::string, size_t> groupByTitle;
+        std::vector<Game> ungroupedAlternatives;
+        for (Game &game : games) {
+            const std::string title = arcadeAlternativeTitle(game.path);
+            if (title.empty()) { ordinary.push_back(std::move(game)); continue; }
+            std::vector<std::string> labels;
+            const std::string cleanFilename = versionTitle(game.name, &labels);
+            const std::string key = versionKey(title);
+            std::string label;
+            for (const std::string &part : labels) {
+                if (!label.empty()) label += ", ";
+                label += part;
+            }
+            if (label.empty() && cleanFilename.size() > title.size() &&
+                versionKey(cleanFilename.substr(0, title.size())) == key)
+                label = trim(cleanFilename.substr(title.size()));
+            if (label.empty()) label = "Standard";
+            game.name = title;
+            auto found = groupByTitle.find(key);
+            if (found == groupByTitle.end()) {
+                groupByTitle[key] = arcadeGroups.size();
+                game.versions.push_back({game.path, label});
+                arcadeGroups.push_back(std::move(game));
+            } else {
+                arcadeGroups[found->second].versions.push_back({game.path, label});
+            }
+        }
+        for (Game &game : ordinary) {
+            std::vector<std::string> labels;
+            const std::string clean = versionTitle(game.name, &labels);
+            auto found = groupByTitle.find(versionKey(clean));
+            if (found == groupByTitle.end()) {
+                ungroupedAlternatives.push_back(std::move(game));
+                continue;
+            }
+            std::string label;
+            for (const std::string &part : labels) {
+                if (!label.empty()) label += ", ";
+                label += part;
+            }
+            if (label.empty()) label = "Standard";
+            arcadeGroups[found->second].versions.push_back({game.path, label});
+        }
+        for (Game &group : arcadeGroups) {
+            if (group.versions.size() <= 1) group.versions.clear();
+        }
+        games = std::move(arcadeGroups);
+        games.insert(games.end(), std::make_move_iterator(ungroupedAlternatives.begin()),
+                     std::make_move_iterator(ungroupedAlternatives.end()));
+    }
+
+    std::map<std::string, bool> markedTitles;
+    for (const Game &game : games) {
+        std::vector<std::string> labels;
+        const std::string clean = versionTitle(game.name, &labels);
+        if (!labels.empty()) markedTitles[versionKey(clean)] = true;
+    }
+    std::map<std::string, size_t> grouped;
+    std::vector<Game> organized;
+    organized.reserve(games.size());
+    for (Game &game : games) {
+        if (!game.versions.empty()) {
+            organized.push_back(std::move(game));
+            continue;
+        }
+        std::vector<std::string> labels;
+        const std::string clean = versionTitle(game.name, &labels);
+        const std::string key = versionKey(clean);
+        if (labels.empty() && markedTitles.find(key) == markedTitles.end()) {
+            if (game.name != clean) {
+                game.name = clean;
+            }
+            organized.push_back(std::move(game));
+            continue;
+        }
+        game.name = clean;
+        std::string label = labels.empty() ? "Standard" : labels.front();
+        for (size_t i = 1; i < labels.size(); ++i) label += ", " + labels[i];
+        auto found = grouped.find(key);
+        if (found == grouped.end()) {
+            game.versions.push_back({game.path, label});
+            grouped.emplace(key, organized.size());
+            organized.push_back(std::move(game));
+        } else {
+            organized[found->second].versions.push_back({game.path, label});
+        }
+    }
+    for (Game &game : organized) {
+        if (game.versions.size() <= 1) game.versions.clear();
+    }
+    return organized;
 }

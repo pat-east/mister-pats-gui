@@ -329,6 +329,59 @@ by preference `.cue`, `.chd`, `.iso`, `.ccd` — the `.cue` ahead of its own `.b
 with several images the alphabetically first one, i.e. disc 1. That is a single `readdir` on one
 folder and therefore no risk to the storage device.
 
+#### Physical PlayStation and Saturn discs
+
+MiSTer Pat currently launches CD-based games from image files. The PlayStation and Saturn
+loader slots are already known (PlayStation: `s`, index `1`; Saturn: `s`, index `0`), but that
+does not make a USB optical drive readable. Physical discs need a MiSTer Main build with an
+optical-drive backend, plus compatible physical-disc MGLs/cores. This is separate from the FPGA
+cores themselves: the backend runs on the ARM/Linux side and supplies disc sectors when a core
+requests them.
+
+The upstream MiSTer Main does not provide generic USB optical-drive support. Two community
+projects currently document a path for physical discs:
+
+- [Main_MiSTer_Physical_Disc](https://github.com/Anime0t4ku/Main_MiSTer_Physical_Disc) provides
+  a physical-disc Main and a `_Physical Disc Cores` collection. It lists PlayStation and Saturn
+  among its supported systems. Its documented manual flow is to connect the drive, insert a
+  disc, then start the matching MGL from that folder. Automatic disc detection is optional and
+  configured separately in `MiSTer.ini`.
+- [MiSTer USB CDROM Loader](https://github.com/theshaneobrien/mister-disc-drive-support) is a
+  separate Main fork with PSX and Saturn support. It documents both a menu Play row and a scoped
+  mode in which only the physical-disc MGLs use its alternate Main. These are distinct projects;
+  their binary names, INI sections and MGL layouts must not be mixed.
+
+For an initial test, use the manual launch path and one disc per system. This avoids changing the
+menu's global startup behavior and makes it clear whether the drive, disc and selected core work
+before we add GUI support. The drive must be a USB optical drive recognized by Linux; the loader
+project provides `physcd_probe` to check this. Drive compatibility varies. Optical drives can
+draw a large current while spinning up, so a powered USB hub or separate drive power supply may
+be needed if the drive disconnects or controllers drop off the bus.
+
+The normal core BIOS setup still applies. The PSX core expects BIOS images under `games/PSX/`:
+`boot.rom` for US, `boot1.rom` for Japan and `boot2.rom` for Europe. The Saturn core expects its
+BIOS as `games/Saturn/boot.rom`. Use BIOS files obtained by the user; the cores do not include
+commercial BIOS ROMs. Set the core's region to `Auto` where available. The physical-disc loader
+also documents automatic PSX BIOS selection by region, and Saturn region detection from the
+inserted disc. [PSX core documentation](https://github.com/MiSTer-devel/PSX_MiSTer/blob/main/README.md),
+[Saturn core documentation](https://github.com/MiSTer-devel/Saturn_MiSTer/blob/main/README.md),
+[loader BIOS and region notes](https://github.com/theshaneobrien/mister-disc-drive-support#region).
+
+MiSTer Pat launches games by writing its own image MGL and sending `load_core` to
+`/dev/MiSTer_cmd`. That flow cannot mount a physical disc by itself. Initial GUI integration for
+PlayStation and Saturn therefore needs to discover or include the corresponding physical-disc
+MGLs and launch the selected MGL directly, while leaving the drive-specific Main selection to
+that MGL's core-specific INI configuration. The GUI must not route the physical-disc Main through
+the global `[MiSTer]` setting: that would replace the normal Main for every core. The existing
+Console Mode menu remains a practical way to validate the hardware setup before changing the
+GUI.
+
+This has not yet been tested on our device. The open implementation question is whether the
+specific drive in the SuperStation Dock (or attached USB drive) enumerates reliably and whether
+the chosen physical-disc MGLs work with the installed PSX and Saturn core versions. Once those
+two cases are verified, the GUI work can stay narrowly scoped to PlayStation and Saturn; automatic
+disc detection and other CD systems can follow later.
+
 ### The stock binary's CLI
 
 `main.cpp:62-73`: exactly two arguments, `argv[1]` = core/RBF path, `argv[2]` = XML path. Both

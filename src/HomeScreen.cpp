@@ -4,6 +4,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <map>
+#include <set>
 
 #include "Alphabet.h"
 #include "ButtonLabels.h"
@@ -94,6 +96,17 @@ void HomeScreen::buildSearchIndex() {
         }
     }
     if (searchBuildSystem_ >= systems.size()) {
+        std::vector<std::pair<const GameSystem *, Game>> organized;
+        size_t offset = 0;
+        for (const GameSystem &system : systems) {
+            std::vector<Game> systemGames;
+            while (offset < searchIndex_.size() && searchIndex_[offset].first == &system)
+                systemGames.push_back(std::move(searchIndex_[offset++].second));
+            if (context_.preferences.organizeGameVersions())
+                systemGames = Library::organizeGames(system, std::move(systemGames));
+            for (Game &game : systemGames) organized.emplace_back(&system, std::move(game));
+        }
+        searchIndex_ = std::move(organized);
         searchIndexReady_ = true;
         searchBuildPending_ = false;
         showSearchResults();
@@ -103,26 +116,78 @@ void HomeScreen::buildSearchIndex() {
 void HomeScreen::refresh() {
     rows_.clear();
 
+    std::set<std::string> usedSystems;
+    for (const HistoryEntry &entry : context_.history.entries()) {
+        if (!entry.system.empty()) usedSystems.insert(entry.system);
+        else if (const GameSystem *system = context_.library.systemForPath(entry.path))
+            usedSystems.insert(system->name);
+    }
+    for (const FavoriteEntry &entry : context_.favorites.entries()) usedSystems.insert(entry.system);
+    std::map<std::string, const std::vector<Game> *> systemGames;
+    if (context_.preferences.organizeGameVersions()) {
+        for (const std::string &name : usedSystems) {
+            if (const GameSystem *system = context_.library.findSystem(name))
+                systemGames.emplace(name, &context_.library.gamesOf(*system));
+        }
+    }
+
+    const auto groupForPath = [&](const GameSystem &system, const std::string &path) -> const Game * {
+        auto found = systemGames.find(system.name);
+        if (found == systemGames.end()) return nullptr;
+        for (const Game &game : *found->second) {
+            if (game.path == path) return &game;
+            for (const Game::Variant &version : game.versions)
+                if (version.path == path) return &game;
+        }
+        return nullptr;
+    };
+    const auto homeGame = [&](const GameSystem &system, const std::string &path,
+                              const Game *group) {
+        Game game = Library::makeGame(system, path, ArtworkVariant::Home);
+        if (group) {
+            game.name = group->name;
+            game.versions = group->versions;
+            Library::resolveArtwork(system, game, ArtworkVariant::Home);
+        }
+        return game;
+    };
+
     Row recent;
     recent.title = "Recently played";
     recent.emptyHint = "Nothing started yet";
+    std::set<std::string> recentGroups;
     for (const HistoryEntry &entry : context_.history.entries()) {
         const GameSystem *system = entry.system.empty()
                                        ? context_.library.systemForPath(entry.path)
                                        : context_.library.findSystem(entry.system);
         if (!system || Library::isSystemFile(*system, entry.path)) continue;
-        recent.items.push_back({system, Library::makeGame(*system, entry.path,
-                                                         ArtworkVariant::Home), {}});
+        const Game *group = context_.preferences.organizeGameVersions()
+                                ? groupForPath(*system, entry.path) : nullptr;
+        Game game = homeGame(*system, entry.path, group);
+        if (group) {
+            const std::string identity = system->name + "\t" + group->name;
+            if (!recentGroups.insert(identity).second) continue;
+            game.path = group->path;
+        }
+        recent.items.push_back({system, std::move(game), {}});
     }
 
     Row favorites;
     favorites.title = "Favorites";
     favorites.emptyHint = "Hold X for 2s on a game to mark it";
+    std::set<std::string> favoriteGroups;
     for (const FavoriteEntry &entry : context_.favorites.entries()) {
         const GameSystem *system = context_.library.findSystem(entry.system);
         if (!system || Library::isSystemFile(*system, entry.path)) continue;
-        favorites.items.push_back({system, Library::makeGame(*system, entry.path,
-                                                            ArtworkVariant::Home), {}});
+        const Game *group = context_.preferences.organizeGameVersions()
+                                ? groupForPath(*system, entry.path) : nullptr;
+        Game game = homeGame(*system, entry.path, group);
+        if (group) {
+            const std::string identity = system->name + "\t" + group->name;
+            if (!favoriteGroups.insert(identity).second) continue;
+            game.path = group->path;
+        }
+        favorites.items.push_back({system, std::move(game), {}});
     }
     // Unlike Recently played, where the order itself is the information, favourites carry
     // none — sorted alphabetically is what makes a specific one fast to find as the list
@@ -191,12 +256,25 @@ void HomeScreen::launch() {
     const Item *item = current();
     if (!item) return;
 
-    if (context_.launcher.launchGame(*item->system, item->game)) {
-        context_.history.remember(item->system->name, item->game.path, item->game.name);
-        context_.notify("Starting " + item->game.name);
+    Game selected = item->game;
+    if (context_.preferences.organizeGameVersions() && selected.versions.size() > 1) {
+        std::vector<std::string> candidates;
+        for (const Game::Variant &variant : selected.versions) candidates.push_back(variant.path);
+        const std::string recent = context_.history.mostRecentVersion(
+            item->system->name, selected.name, candidates);
+        if (recent.empty()) {
+            if (context_.onChooseGameVersion) context_.onChooseGameVersion(*item->system, selected);
+            return;
+        }
+        selected.path = recent;
+    }
+
+    if (context_.launcher.launchGame(*item->system, selected)) {
+        context_.history.remember(item->system->name, selected.path, selected.name);
+        context_.notify("Starting " + selected.name);
         context_.standDown = true;
     } else {
-        context_.showError("Could not start " + item->game.name, context_.launcher.lastError());
+        context_.showError("Could not start " + selected.name, context_.launcher.lastError());
     }
 }
 
@@ -204,26 +282,25 @@ void HomeScreen::toggleFavorite() {
     const Item *item = current();
     if (!item) return;
 
-    const bool was = context_.favorites.contains(item->game.path);
-    context_.favorites.toggle(item->system->name, item->game.path, item->game.name);
+    bool was = context_.favorites.contains(item->game.path);
+    for (const Game::Variant &version : item->game.versions)
+        was = was || context_.favorites.contains(version.path);
+    if (was && !item->game.versions.empty()) {
+        if (context_.favorites.contains(item->game.path))
+            context_.favorites.toggle(item->system->name, item->game.path, item->game.name);
+        for (const Game::Variant &version : item->game.versions)
+            if (context_.favorites.contains(version.path))
+                context_.favorites.toggle(item->system->name, version.path, item->game.name);
+    } else {
+        context_.favorites.toggle(item->system->name, item->game.path, item->game.name);
+    }
     context_.notify(was ? item->game.name + " removed from favorites"
                         : item->game.name + " added to favorites");
 
     // Rebuild the favorites grid in place.
-    Row &favorites = rows_[1];
-    const int previous = favorites.cursor;
-    favorites.items.clear();
-    for (const FavoriteEntry &entry : context_.favorites.entries()) {
-        const GameSystem *system = context_.library.findSystem(entry.system);
-        if (!system || Library::isSystemFile(*system, entry.path)) continue;
-        favorites.items.push_back({system, Library::makeGame(*system, entry.path,
-                                                            ArtworkVariant::Home), {}});
-    }
-    std::sort(favorites.items.begin(), favorites.items.end(), [](const Item &a, const Item &b) {
-        return strcasecmp(a.game.name.c_str(), b.game.name.c_str()) < 0;
-    });
-    favorites.focus.assign(favorites.items.size(), 0.0f);
-    favorites.cursor = std::min(previous, std::max(0, int(favorites.items.size()) - 1));
+    const int previous = rows_[1].cursor;
+    refresh();
+    rows_[1].cursor = std::min(previous, std::max(0, int(rows_[1].items.size()) - 1));
 }
 
 void HomeScreen::handle(Action action) {

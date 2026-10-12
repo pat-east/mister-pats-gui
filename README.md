@@ -419,16 +419,20 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.5.0 change list.
 - [x] **A separately remembered view per tab** — Home, Favorites, Consoles and Games — instead
       of the one default view for all of them.
 
-#### 0.8.0 — Game variants
+#### 0.8.0 — Game variants and SuperStation Dock
 
 - [ ] **Group language and revision variants of one game.** Show one entry for titles such as
       Pokémon Sapphire even when the library has separate Europe, Japan and USA ROMs or
       multiple revisions; let the player choose a specific version when needed. Keep the ROMs
       and their language/revision details intact.
+- [ ] **Disc-drive support for the SuperStation Dock.** Discover and launch physical PlayStation
+      and Saturn discs through their physical-disc MGLs. Start with manual launch; automatic disc
+      detection and other CD systems can follow after the Dock's drive and MGL compatibility are
+      confirmed on hardware. Keep physical-disc Main selection scoped to those MGLs, not the
+      global MiSTer Main setting.
 
 #### Not scheduled yet
 
-- [ ] **Disc-drive support for the SuperStation Dock.** Read and launch games using the Dock's disc drive.
 - [ ] **Option to swap Confirm and Back buttons**, with the current European mapping as the
       default.
 - [ ] **Fade in tab content when switching tabs** instead of sliding it into view.

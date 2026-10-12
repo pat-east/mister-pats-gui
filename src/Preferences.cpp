@@ -81,8 +81,10 @@ bool Preferences::load(const std::string &file) {
     showGamesTab_ = true;
     showArcadeTab_ = true;
     showArcadeInConsoles_ = false;
+    organizeGameVersions_ = true;
     tabDisplay_ = TabDisplay::Names;
     showBoxArt_ = true;
+    loadSmallBoxartsInGridView_ = false;
     startSoundEnabled_ = true;
     menuSoundsEnabled_ = true;
     useSpaceGrotesk_ = true;
@@ -112,9 +114,11 @@ bool Preferences::load(const std::string &file) {
         if (line == "showGamesTab=0") showGamesTab_ = false;
         else if (line == "showArcadeTab=0") showArcadeTab_ = false;
         else if (line == "showArcadeInConsoles=1") showArcadeInConsoles_ = true;
+        else if (line == "organizeGameVersions=0") organizeGameVersions_ = false;
         else if (line == "tabDisplay=icons") tabDisplay_ = TabDisplay::Icons;
         else if (line == "tabDisplay=both") tabDisplay_ = TabDisplay::Both;
         else if (line == "showBoxArt=0") showBoxArt_ = false;
+        else if (line == "loadSmallBoxartsInGridView=1") loadSmallBoxartsInGridView_ = true;
         else if (line == "startSound=0") startSoundEnabled_ = false;
         else if (line == "menuSounds=0") menuSoundsEnabled_ = false;
         else if (line == "useSpaceGrotesk=0") useSpaceGrotesk_ = false;
@@ -182,6 +186,11 @@ void Preferences::setShowArcadeInConsoles(bool show) {
     save();
 }
 
+void Preferences::setOrganizeGameVersions(bool enabled) {
+    organizeGameVersions_ = enabled;
+    save();
+}
+
 void Preferences::setTabDisplay(TabDisplay display) {
     tabDisplay_ = display;
     save();
@@ -189,6 +198,11 @@ void Preferences::setTabDisplay(TabDisplay display) {
 
 void Preferences::setShowBoxArt(bool show) {
     showBoxArt_ = show;
+    save();
+}
+
+void Preferences::setLoadSmallBoxartsInGridView(bool enabled) {
+    loadSmallBoxartsInGridView_ = enabled;
     save();
 }
 
@@ -305,9 +319,11 @@ bool Preferences::save() const {
     if (!showGamesTab_) out << "showGamesTab=0\n";
     if (!showArcadeTab_) out << "showArcadeTab=0\n";
     if (showArcadeInConsoles_) out << "showArcadeInConsoles=1\n";
+    if (!organizeGameVersions_) out << "organizeGameVersions=0\n";
     if (tabDisplay_ == TabDisplay::Icons) out << "tabDisplay=icons\n";
     else if (tabDisplay_ == TabDisplay::Both) out << "tabDisplay=both\n";
     if (!showBoxArt_) out << "showBoxArt=0\n";
+    if (loadSmallBoxartsInGridView_) out << "loadSmallBoxartsInGridView=1\n";
     if (!startSoundEnabled_) out << "startSound=0\n";
     if (!menuSoundsEnabled_) out << "menuSounds=0\n";
     if (!useSpaceGrotesk_) out << "useSpaceGrotesk=0\n";

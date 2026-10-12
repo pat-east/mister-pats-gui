@@ -20,8 +20,12 @@ public:
         bool favorite = false;
         bool showLabel = true;
         bool coverArt = false;     // fit artwork inside instead of filling the tile
+        bool nativeImageSize = false; // center cover art at its decoded pixel size
         bool keepImageOpaque = false; // avoid focus dimming for opaque system icons
         bool blackArtBackground = false; // match black-backed system icons
+        bool compactPlaceholder = false; // use native small-boxart dimensions when art is missing
+        int placeholderWidth = 0;
+        int placeholderHeight = 0;
         bool nameIsInside = false; // set by draw(); the placeholder reads it
     };
 

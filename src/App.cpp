@@ -98,10 +98,15 @@ bool App::initialize(const Options &options) {
     setFaceButtonStyle(preferences_.faceButtonStyle());
     if (options_.splashMs > 0) {
         Splash::show(framebuffer_, *theme_, options_.splashMs, icons_, images_,
-                     [this] { library_.load(); });
+                     [this] {
+                         library_.load();
+                         if (preferences_.organizeGameVersions())
+                             library_.prepareGameCache();
+                     });
         if (preferences_.startSoundEnabled()) UiSounds::play();
     } else {
         library_.load();
+        if (preferences_.organizeGameVersions()) library_.prepareGameCache();
     }
 
     systemIconDownload_ = std::make_unique<SystemIconDownload>(icons_);
@@ -119,6 +124,21 @@ bool App::initialize(const Options &options) {
     context_ = std::make_unique<Context>(*theme_, library_, favorites_, launcher_, images_,
                                         icons_, history_, hiddenSystems_, preferences_);
     context_->background = background_.get();
+    context_->onChooseGameVersion = [this](const GameSystem &system, const Game &game) {
+        openGameVersionChooser(system, game);
+    };
+    context_->onGameVersionSettingChanged = [this] {
+        homeScreen_->refresh();
+        homeScreen_->invalidateSearchIndex();
+        favoritesScreen_->showFavorites();
+        allGamesScreen_->showAllGames();
+        if (gamesScreen_->title() != "") gamesScreen_->reload();
+        if (const GameSystem *arcade = library_.arcadeSystem()) {
+            arcadeLibraryScreen_->showSystem(*arcade);
+            arcadeScreenDirty_ = false;
+        }
+        needsFullRedraw_ = true;
+    };
     context_->onThemeChanged = [this] {
         renderBackground(*background_);
         needsFullRedraw_ = true;
@@ -247,7 +267,9 @@ bool App::initialize(const Options &options) {
 }
 
 void App::reloadLibrary() {
+    library_.clearPersistentGameCache();
     library_.load();
+    if (preferences_.organizeGameVersions()) library_.prepareGameCache();
     favorites_.load();
     history_.load();
     systemsScreen_->refresh();
@@ -256,9 +278,12 @@ void App::reloadLibrary() {
     allGamesScreen_->showAllGames();
     homeScreen_->invalidateSearchIndex();
     if (!gamesScreen_->empty()) gamesScreen_->reload();
+    arcadeScreenDirty_ = true;
     if (tab_ == Tab::Arcade) {
-        if (const GameSystem *arcade = library_.arcadeSystem())
+        if (const GameSystem *arcade = library_.arcadeSystem()) {
             arcadeLibraryScreen_->showSystem(*arcade);
+            arcadeScreenDirty_ = false;
+        }
     }
     if (tab_ == Tab::Arcade && !arcadeTabShown()) selectTab(Tab::Home);
 }
@@ -501,9 +526,14 @@ void App::selectTab(Tab tab) {
     needsFullRedraw_ = true;
     if (tab == Tab::Home) homeScreen_->refresh();
     if (tab == Tab::Favorites) favoritesScreen_->showFavorites();
-    if (tab == Tab::Arcade)
-        if (const GameSystem *arcade = library_.arcadeSystem())
-            arcadeLibraryScreen_->showSystem(*arcade);
+    if (tab == Tab::Arcade) {
+        if (const GameSystem *arcade = library_.arcadeSystem()) {
+            if (arcadeScreenDirty_ || arcadeLibraryScreen_->title() != arcade->name) {
+                arcadeLibraryScreen_->showSystem(*arcade);
+                arcadeScreenDirty_ = false;
+            }
+        }
+    }
     // The whole library is gathered when the tab is first opened and then kept; a library
     // reload is what throws it away again. Building the list itself is no longer the
     // expensive part — see GamesScreen::reload() — so there is no longer a mid-build state
@@ -555,11 +585,23 @@ void App::openGameActions() {
     gameActionSystem_ = canonical;
     gameActionGame_ = std::move(selectedGame);
     gameActionCursor_ = 0;
+    gameVersionScroll_ = 0;
     gameActionWorking_ = false;
     gameActionsActive_ = true;
     input_.cancelFavoriteHold();
     favoriteHoldScreen_ = nullptr;
     favoriteHoldPath_.clear();
+    needsFullRedraw_ = true;
+}
+
+void App::openGameVersionChooser(const GameSystem &system, const Game &game) {
+    gameActionSystem_ = &system;
+    gameActionGame_ = game;
+    gameActionCursor_ = 0;
+    gameVersionScroll_ = 0;
+    gameActionWorking_ = false;
+    gameVersionChooserActive_ = true;
+    gameActionsActive_ = true;
     needsFullRedraw_ = true;
 }
 
@@ -571,7 +613,8 @@ void App::renderGameActions() {
     canvas.fillRect(bounds, theme.shadow.withAlpha(175));
 
     const int width = std::min(theme.px(650), bounds.w - theme.px(64));
-    const int height = theme.px(gameActionWorking_ ? 350 : 310);
+    const int height = theme.px(gameActionWorking_ ? 350 : gameVersionChooserActive_
+        ? std::min(620, 150 + int(gameActionGame_.versions.size()) * 50) : 310);
     const Rect panel{bounds.x + (bounds.w - width) / 2, bounds.y + (bounds.h - height) / 2,
                      width, height};
     canvas.dropShadow(panel, theme.radius(), theme.px(24), theme.shadow.withAlpha(160));
@@ -587,8 +630,29 @@ void App::renderGameActions() {
                          theme.sizeBody(), theme.textMuted);
     y += theme.px(36);
 
+    if (gameVersionChooserActive_) {
+        y += theme.px(8);
+        const int visibleRows = std::max(1, (panel.bottom() - theme.px(56) - y) / theme.px(48));
+        const int lastVisible = std::min(int(gameActionGame_.versions.size()),
+                                         gameVersionScroll_ + visibleRows);
+        for (int rowIndex = gameVersionScroll_; rowIndex < lastVisible; ++rowIndex) {
+            const size_t i = size_t(rowIndex);
+            const auto &version = gameActionGame_.versions[i];
+            const Rect row{left - theme.px(12), y - theme.px(7), width - theme.px(48), theme.px(42)};
+            if (rowIndex == gameActionCursor_) canvas.fillRoundedRect(row, theme.px(8), theme.accent.withAlpha(45));
+            theme.bold().draw(canvas, left, y,
+                theme.regular().elide(version.label, theme.sizeBody(), textWidth), theme.sizeBody(),
+                rowIndex == gameActionCursor_ ? theme.textPrimary : theme.textMuted);
+            y += theme.px(48);
+        }
+        theme.regular().draw(canvas, left, panel.bottom() - theme.px(34),
+            formatButtonLabels("A  Start version     B  Back"), theme.sizeSmall(), theme.textMuted);
+        return;
+    }
+
     const std::string description = gameActionCursor_ == 0
         ? "Play starts this game."
+        : gameActionCursor_ == 1 ? "Choose a ROM version to start."
         : "Find a missing cover online or prepare an existing cover for the game views.";
     theme.regular().draw(canvas, left, y,
                          theme.regular().elide(description, theme.sizeSmall(), textWidth),
@@ -614,13 +678,15 @@ void App::renderGameActions() {
         return;
     }
 
-    const char *items[] = {"Play this game", "Find or prepare cover art"};
-    for (int i = 0; i < 2; ++i) {
+    const char *items[] = {"Play this game", "Choose version", "Find or prepare cover art"};
+    const int itemCount = gameActionGame_.versions.size() > 1 ? 3 : 2;
+    for (int i = 0; i < itemCount; ++i) {
+        const char *label = itemCount == 2 && i == 1 ? items[2] : items[i];
         const Rect row{left - theme.px(12), y - theme.px(7), width - theme.px(48),
                        theme.px(44)};
         if (i == gameActionCursor_)
             canvas.fillRoundedRect(row, theme.px(8), theme.accent.withAlpha(45));
-        theme.bold().draw(canvas, left, y, items[i], theme.sizeBody(),
+        theme.bold().draw(canvas, left, y, label, theme.sizeBody(),
                           i == gameActionCursor_ ? theme.textPrimary : theme.textMuted);
         y += theme.px(52);
     }
@@ -707,9 +773,14 @@ void App::dispatch(Action action) {
     }
 
     if (gameActionsActive_) {
-        if (action == Action::Quit || action == Action::Back) {
+        if (action == Action::Back && gameVersionChooserActive_) {
+            gameVersionChooserActive_ = false;
+            gameActionCursor_ = 1;
+            needsFullRedraw_ = true;
+        } else if (action == Action::Quit || action == Action::Back) {
             if (gameActionWorking_ && scraper_.running()) scraper_.cancel();
             gameActionsActive_ = false;
+            gameVersionChooserActive_ = false;
             gameActionWorking_ = false;
             needsFullRedraw_ = true;
         } else if (gameActionWorking_) {
@@ -719,12 +790,34 @@ void App::dispatch(Action action) {
                 needsFullRedraw_ = true;
             }
         } else if (action == Action::Up || action == Action::Down) {
-            gameActionCursor_ = 1 - gameActionCursor_;
+            if (gameVersionChooserActive_) {
+                gameActionCursor_ = std::max(0, std::min(int(gameActionGame_.versions.size()) - 1,
+                    gameActionCursor_ + (action == Action::Down ? 1 : -1)));
+                const int visibleRows = std::max(1, (theme_->px(620) - theme_->px(170)) / theme_->px(48));
+                if (gameActionCursor_ < gameVersionScroll_) gameVersionScroll_ = gameActionCursor_;
+                if (gameActionCursor_ >= gameVersionScroll_ + visibleRows)
+                    gameVersionScroll_ = gameActionCursor_ - visibleRows + 1;
+            } else gameActionCursor_ = std::max(0, std::min(
+                gameActionGame_.versions.size() > 1 ? 2 : 1,
+                gameActionCursor_ + (action == Action::Down ? 1 : -1)));
         } else if (action == Action::Confirm) {
-            if (gameActionCursor_ == 0) {
+            if (gameVersionChooserActive_) {
+                const Game::Variant &variant = gameActionGame_.versions[size_t(gameActionCursor_)];
+                Game selected = Library::makeGame(*gameActionSystem_, variant.path);
+                if (context_->launcher.launchGame(*gameActionSystem_, selected)) {
+                    history_.remember(gameActionSystem_->name, selected.path, gameActionGame_.name);
+                    gameActionsActive_ = false;
+                    gameVersionChooserActive_ = false;
+                    context_->standDown = true;
+                } else context_->showError("Could not start " + gameActionGame_.name,
+                                           context_->launcher.lastError());
+            } else if (gameActionCursor_ == 0) {
                 gameActionsActive_ = false;
                 needsFullRedraw_ = true;
                 activeScreen()->handle(Action::Confirm);
+            } else if (gameActionCursor_ == 1 && gameActionGame_.versions.size() > 1) {
+                gameVersionChooserActive_ = true;
+                gameActionCursor_ = 0;
             } else if (gameActionSystem_ && library_.usingDatabase() && !scraper_.running()) {
                 MediaScraper::Options options;
                 options.boxart = true;

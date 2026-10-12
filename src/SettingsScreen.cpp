@@ -17,6 +17,8 @@ std::string settingHelp(const std::string &label) {
         return "Download missing covers and make copies sized for each view. Covers already on your drives are kept.";
     if (label == "Reload saved game list")
         return "Reload the saved game list. This does not search the drives or find newly added games.";
+    if (label == "Organize game-versions")
+        return "Group ROMs with region, revision or language suffixes under one title.";
     if (label == "Manage systems")
         return "Choose which consoles appear in the Consoles and Games views.";
     if (label == "Manage Arcade")
@@ -35,6 +37,8 @@ std::string settingHelp(const std::string &label) {
         return "Choose whether the top navigation shows tab names, icons, or both.";
     if (label == "Show box art")
         return "Show or hide cover pictures while browsing games.";
+    if (label == "Load small boxarts in grid-view")
+        return "Use smaller cover images in Grid view. This can noticeably reduce image loading time.";
     if (label == "Start sound")
         return "Play a sound after the GUI finishes starting.";
     if (label == "Menu sounds")
@@ -188,6 +192,13 @@ void SettingsScreen::buildRows() {
                          context_.notify("Saved game list loaded");
                      }});
 
+    library.push_back({"Organize game-versions",
+                     [this] { return std::string(context_.preferences.organizeGameVersions() ? "On" : "Off"); },
+                     [this] { context_.preferences.setOrganizeGameVersions(
+                                  !context_.preferences.organizeGameVersions());
+                             if (context_.onGameVersionSettingChanged)
+                                 context_.onGameVersionSettingChanged(); }});
+
     library.push_back({"Manage systems", [] { return std::string("A"); },
                      [this] { onManageSystems_(); }});
 
@@ -251,6 +262,16 @@ void SettingsScreen::buildRows() {
                      [this] { return std::string(context_.preferences.showBoxArt() ? "On" : "Off"); },
                      [this] {
                          context_.preferences.setShowBoxArt(!context_.preferences.showBoxArt());
+                     }});
+
+    interface.push_back({"Load small boxarts in grid-view",
+                     [this] {
+                         return std::string(context_.preferences.loadSmallBoxartsInGridView()
+                                                ? "On" : "Off");
+                     },
+                     [this] {
+                         context_.preferences.setLoadSmallBoxartsInGridView(
+                             !context_.preferences.loadSmallBoxartsInGridView());
                      }});
 
     interface.push_back({"Start sound",

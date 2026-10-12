@@ -111,3 +111,13 @@ void History::remember(const std::string &system, const std::string &path,
 
     save();
 }
+
+std::string History::mostRecentVersion(const std::string &system, const std::string &name,
+                                       const std::vector<std::string> &candidates) const {
+    for (const HistoryEntry &entry : entries_) {
+        if (entry.system != system || entry.name != name) continue;
+        if (std::find(candidates.begin(), candidates.end(), entry.path) != candidates.end())
+            return entry.path;
+    }
+    return {};
+}

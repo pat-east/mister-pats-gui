@@ -4,7 +4,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <map>
 #include <sstream>
+#include <unordered_set>
 
 #include "Alphabet.h"
 #include "ButtonLabels.h"
@@ -35,11 +37,13 @@ ViewSpec specFor(GameView view) {
     }
 }
 
-ArtworkVariant artworkVariantFor(GameView view) {
+ArtworkVariant artworkVariantFor(GameView view, bool loadSmallBoxartsInGridView) {
     switch (view) {
     case GameView::List: return ArtworkVariant::Detail;
-    case GameView::BoxartSmall: return ArtworkVariant::Small;
+    case GameView::BoxartSmall:
+        return ArtworkVariant::Small;
     case GameView::Grid:
+        return loadSmallBoxartsInGridView ? ArtworkVariant::Small : ArtworkVariant::Grid;
     default: return ArtworkVariant::Grid;
     }
 }
@@ -159,21 +163,34 @@ void GamesScreen::reload() {
     // moment something is actually about to draw it — see ensureArtwork().
     bool preSorted = false;
     if (favoritesMode_) {
-        for (const FavoriteEntry &favorite : context_.favorites.entries()) {
-            const GameSystem *system = context_.library.findSystem(favorite.system);
-            if (!system || Library::isSystemFile(*system, favorite.path)) continue;
-            entries_.push_back({system, Library::makeStub(*system, favorite.path), false,
-                                ArtworkVariant::Full, {}});
+        std::map<std::string, std::unordered_set<std::string>> favoritePaths;
+        for (const FavoriteEntry &favorite : context_.favorites.entries())
+            favoritePaths[favorite.system].insert(favorite.path);
+        for (const auto &bucket : favoritePaths) {
+            const GameSystem *system = context_.library.findSystem(bucket.first);
+            if (!system) continue;
+            if (context_.preferences.organizeGameVersions()) {
+                for (const Game &game : context_.library.gamesOf(*system)) {
+                    bool favored = bucket.second.count(game.path) != 0;
+                    for (const Game::Variant &version : game.versions)
+                        favored = favored || bucket.second.count(version.path) != 0;
+                    if (favored) entries_.push_back({system, game, false,
+                                                     ArtworkVariant::Full, {}});
+                }
+            } else {
+                for (const std::string &path : bucket.second)
+                    if (!Library::isSystemFile(*system, path))
+                        entries_.push_back({system, Library::makeStub(*system, path), false,
+                                            ArtworkVariant::Full, {}});
+            }
         }
     } else if (allMode_) {
         for (const GameSystem &system : context_.library.systems())
-            for (const std::string &path : context_.library.pathsOf(system))
-                entries_.push_back({&system, Library::makeStub(system, path), false,
-                                    ArtworkVariant::Full, {}});
+            for (Game game : context_.library.gamesOf(system, context_.preferences.organizeGameVersions()))
+                entries_.push_back({&system, std::move(game), false, ArtworkVariant::Full, {}});
     } else if (system_) {
-        for (const std::string &path : context_.library.pathsOf(*system_))
-            entries_.push_back({system_, Library::makeStub(*system_, path), false,
-                                ArtworkVariant::Full, {}});
+        for (Game game : context_.library.gamesOf(*system_, context_.preferences.organizeGameVersions()))
+            entries_.push_back({system_, std::move(game), false, ArtworkVariant::Full, {}});
         preSorted = context_.library.pathsPreSorted(*system_);
     }
 
@@ -303,8 +320,19 @@ void GamesScreen::toggleFavorite() {
     const Entry *entry = current();
     if (!entry) return;
 
-    const bool wasFavorite = context_.favorites.contains(entry->game.path);
-    context_.favorites.toggle(entry->system->name, entry->game.path, entry->game.name);
+    bool wasFavorite = context_.favorites.contains(entry->game.path);
+    if (context_.preferences.organizeGameVersions())
+        for (const Game::Variant &version : entry->game.versions)
+            wasFavorite = wasFavorite || context_.favorites.contains(version.path);
+    if (wasFavorite && !entry->game.versions.empty()) {
+        if (context_.favorites.contains(entry->game.path))
+            context_.favorites.toggle(entry->system->name, entry->game.path, entry->game.name);
+        for (const Game::Variant &version : entry->game.versions)
+            if (context_.favorites.contains(version.path))
+                context_.favorites.toggle(entry->system->name, version.path, entry->game.name);
+    } else {
+        context_.favorites.toggle(entry->system->name, entry->game.path, entry->game.name);
+    }
     needsPaint_ = true;
     context_.notify(wasFavorite ? entry->game.name + " removed from favorites"
                                 : entry->game.name + " added to favorites");
@@ -321,13 +349,26 @@ void GamesScreen::launch() {
     const Entry *entry = current();
     if (!entry) return;
 
-    if (context_.launcher.launchGame(*entry->system, entry->game)) {
-        context_.history.remember(entry->system->name, entry->game.path, entry->game.name);
-        context_.notify("Starting " + entry->game.name);
+    Game selected = entry->game;
+    if (context_.preferences.organizeGameVersions() && selected.versions.size() > 1) {
+        std::vector<std::string> candidates;
+        for (const Game::Variant &variant : selected.versions) candidates.push_back(variant.path);
+        const std::string recent = context_.history.mostRecentVersion(
+            entry->system->name, selected.name, candidates);
+        if (recent.empty()) {
+            if (context_.onChooseGameVersion) context_.onChooseGameVersion(*entry->system, selected);
+            return;
+        }
+        selected.path = recent;
+    }
+
+    if (context_.launcher.launchGame(*entry->system, selected)) {
+        context_.history.remember(entry->system->name, selected.path, selected.name);
+        context_.notify("Starting " + selected.name);
         context_.standDown = true;
     }
     else {
-        context_.showError("Could not start " + entry->game.name, context_.launcher.lastError());
+        context_.showError("Could not start " + selected.name, context_.launcher.lastError());
     }
 }
 
@@ -361,7 +402,8 @@ void GamesScreen::update(float deltaSeconds) {
     // frame, not whenever renderGrid() next happens to ask for it.
     if (context_.preferences.showBoxArt() && !entries_.empty()) {
         const int index = std::min(std::max(cursor_, 0), int(entries_.size()) - 1);
-        ensureArtwork(entries_[size_t(index)], artworkVariantFor(view_));
+        ensureArtwork(entries_[size_t(index)], artworkVariantFor(
+            view_, context_.preferences.loadSmallBoxartsInGridView()));
     }
 
     const float speed = std::min(1.0f, deltaSeconds * 9.0f);
@@ -640,11 +682,25 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area, bool fullRedraw) 
 
     // Build candidates for newly visible entries with string operations only. The worker does
     // the existence checks and file loads so they cannot stall scrolling.
-    const ArtworkVariant variant = artworkVariantFor(view_);
+    const bool useSmallGridArt = view_ == GameView::Grid &&
+                                 context_.preferences.loadSmallBoxartsInGridView();
+    const ArtworkVariant variant = artworkVariantFor(
+        view_, context_.preferences.loadSmallBoxartsInGridView());
     if (context_.preferences.showBoxArt()) {
         for (int i = first; i < last; ++i)
             ensureArtwork(entries_[size_t(i)], variant);
     }
+
+    // Grid is using the prepared small image at native size for a loading-speed comparison.
+    // Keep JPEG fallbacks bounded to the same source dimensions so they are not enlarged either.
+    const int artworkWidth = useSmallGridArt
+                                 ? std::min(grid_.tileWidth(),
+                                            artworkBounds(ArtworkVariant::Small).width)
+                                 : grid_.tileWidth();
+    const int artworkHeight = useSmallGridArt
+                                  ? std::max(1, std::min(grid_.tileHeight() - labelHeight,
+                                            artworkBounds(ArtworkVariant::Small).height))
+                                  : grid_.tileHeight();
 
     // Ask for the focused tile's picture before anything else. The two passes below draw it
     // last on purpose — so its shadow and grown edge sit above its neighbours rather than
@@ -655,7 +711,7 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area, bool fullRedraw) 
     if (context_.preferences.showBoxArt() && cursor_ >= first && cursor_ < last) {
         const Entry &focused = entries_[size_t(cursor_)];
         context_.images.requestAsyncCandidates(focused.game.boxartCandidates,
-                                               grid_.tileWidth(), grid_.tileHeight(), true);
+                                               artworkWidth, artworkHeight, true);
     }
 
     // Keep the current image per visible tile. A cache-wide generation counter makes one
@@ -666,7 +722,7 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area, bool fullRedraw) 
         for (int i = first; i < last; ++i) {
             const Entry &entry = entries_[size_t(i)];
             visibleArtwork[size_t(i - first)] = context_.images.requestAsyncCandidates(
-                entry.game.boxartCandidates, grid_.tileWidth(), grid_.tileHeight(), i == cursor_);
+                entry.game.boxartCandidates, artworkWidth, artworkHeight, i == cursor_);
         }
     }
 
@@ -747,6 +803,10 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area, bool fullRedraw) 
             content.label = entry.game.name;
             content.showLabel = spec.showLabel;
             content.coverArt = spec.coverArt;
+            content.nativeImageSize = useSmallGridArt;
+            content.compactPlaceholder = useSmallGridArt;
+            content.placeholderWidth = artworkWidth;
+            content.placeholderHeight = artworkHeight;
             content.favorite = context_.favorites.contains(entry.game.path);
             content.image = visibleArtwork[size_t(i - first)];
             content.imageRevealPercent = entry.boxartFadeIn.revealPercent();

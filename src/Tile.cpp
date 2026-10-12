@@ -90,8 +90,15 @@ void Tile::draw(Canvas &canvas, Theme &theme, const Rect &frame, const Content &
 
     const int labelHeight = captionHeight(theme, content.showLabel, !content.sublabel.empty());
 
-    const Rect body{outer.x, outer.y, outer.w, outer.h - labelHeight};
+    Rect body{outer.x, outer.y, outer.w, outer.h - labelHeight};
     if (body.empty()) return;
+    if (!hasArt && content.compactPlaceholder && content.placeholderWidth > 0 &&
+        content.placeholderHeight > 0) {
+        const int width = std::min(body.w, content.placeholderWidth);
+        const int height = std::min(body.h, content.placeholderHeight);
+        body = {body.x + (body.w - width) / 2, body.y + (body.h - height) / 2,
+                width, height};
+    }
 
     // Only the focused tile gets a shadow: on a dark background the others gain almost
     // nothing from it, and every shadow layer is a full-tile alpha pass.
@@ -106,8 +113,14 @@ void Tile::draw(Canvas &canvas, Theme &theme, const Rect &frame, const Content &
 
         Rect target = body;
         if (content.coverArt) {
-            target = body.inset(theme.px(6))
-                         .fitAspect(content.image->width(), content.image->height());
+            if (content.nativeImageSize) {
+                target = {body.x + (body.w - content.image->width()) / 2,
+                          body.y + (body.h - content.image->height()) / 2,
+                          content.image->width(), content.image->height()};
+            } else {
+                target = body.inset(theme.px(6))
+                             .fitAspect(content.image->width(), content.image->height());
+            }
         }
 
         const uint8_t alpha = content.keepImageOpaque
@@ -137,10 +150,10 @@ void Tile::draw(Canvas &canvas, Theme &theme, const Rect &frame, const Content &
         theme.bold().drawCentered(canvas, star, "*", theme.sizeBody(), theme.favorite);
     }
 
-    int labelBottom = body.bottom();
+    int labelBottom = outer.y + outer.h - labelHeight;
 
     if (content.showLabel && !nameInside) {
-        const Rect labelArea{outer.x, body.bottom() + theme.px(4), outer.w, theme.px(24)};
+        const Rect labelArea{outer.x, labelBottom + theme.px(4), outer.w, theme.px(24)};
         Font &font = theme.regular();
         const int labelSize = content.coverArt ? theme.sizeGameLabel() : theme.sizeBody();
         const std::string label = font.elide(content.label, labelSize, labelArea.w);

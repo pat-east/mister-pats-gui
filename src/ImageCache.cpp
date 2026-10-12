@@ -160,7 +160,9 @@ ImagePtr ImageCache::get(const std::string &path, int width, int height, bool re
     Entry entry;
     entry.lastUsed = tick_;
 
-    ImagePtr source = Image::load(path);
+    // Candidate lists can include several old ROM-version names. Missing paths should be a
+    // cheap lookup, not a decoder failure followed by the recovery delay below.
+    ImagePtr source = access(path.c_str(), F_OK) == 0 ? Image::load(path) : nullptr;
 
     if (!source || !source->valid()) {
         // A drive touched for the first time this session can lose an early read even though
@@ -168,8 +170,10 @@ ImagePtr ImageCache::get(const std::string &path, int width, int height, bool re
         // incidental delay around this exact call made the failure stop reproducing. One
         // short, deliberate pause and a retry turns that into nothing anyone sees, rather
         // than depending on logging (or anything else) to accidentally provide the delay.
-        usleep(5000);
-        source = Image::load(path);
+        if (access(path.c_str(), F_OK) == 0) {
+            usleep(5000);
+            source = Image::load(path);
+        }
     }
 
     if (!source || !source->valid()) {
@@ -369,7 +373,7 @@ void ImageCache::workerLoop() {
         }
 
         auto loadAndFit = [&](const std::string &candidate) -> ImagePtr {
-            if (candidate.empty()) return nullptr;
+            if (candidate.empty() || access(candidate.c_str(), F_OK) != 0) return nullptr;
             ImagePtr source = Image::load(candidate);
             if (!source || !source->valid()) {
                 // Match the synchronous cache's recovery for drives that briefly fail an early read.
@@ -404,6 +408,7 @@ void ImageCache::workerLoop() {
             // an uncaught exception there calls std::terminate and exits the whole GUI.
             image.reset();
         }
+        const bool loadedArtwork = bool(image);
 
         {
             std::lock_guard<std::mutex> lock(workMutex_);
@@ -415,6 +420,8 @@ void ImageCache::workerLoop() {
                 pending_.erase(work.key);
             }
         }
-        usleep(kArtworkWorkerPauseUs);
+        // Missing artwork only costs candidate-path checks. Do not throttle the entire
+        // visible queue by 100 ms for each coverless game; keep the pacing after actual decode.
+        if (loadedArtwork) usleep(kArtworkWorkerPauseUs);
     }
 }
