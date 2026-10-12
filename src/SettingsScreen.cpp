@@ -1616,7 +1616,8 @@ void SettingsScreen::renderDiscCoreInstallConfirmation(Canvas &canvas, const Rec
     const int margin = theme.px(30);
     const int left = panel.x + margin;
     int y = panel.y + margin;
-    theme.bold().draw(canvas, left, y, "Install USB CDROM Loader v0.7.0?",
+    theme.bold().draw(canvas, left, y,
+                      std::string("Install USB CDROM Loader v") + DiscCorePackage::kVersion + "?",
                       theme.sizeHeading(), theme.textPrimary);
     y += theme.bold().lineHeight(theme.sizeHeading()) + theme.px(18);
     const std::vector<std::string> lines = wrapHelp(
