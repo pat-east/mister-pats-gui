@@ -805,6 +805,7 @@ DiscDriveService::Snapshot DiscDriveService::probeOnce(const Snapshot &previous,
         const int status = ioctl(fd, CDROM_DRIVE_STATUS, CDSL_CURRENT);
         const int changed = ioctl(fd, CDROM_MEDIA_CHANGED, CDSL_CURRENT);
         if (status == CDS_NO_DISC || status == CDS_TRAY_OPEN) {
+            current.state = MediaState::NoDisc;
             close(fd);
             if (noDisc.device.empty()) noDisc = current;
             continue;
