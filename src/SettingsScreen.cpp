@@ -363,7 +363,7 @@ void SettingsScreen::buildRows() {
                              return std::string("Working — ") +
                                  std::to_string(state.bytes / 1024) + " KB — A cancel";
                          if (!state.message.empty()) return state.message;
-                         const auto cores = context_.discCores.inspect();
+                         const auto cores = context_.discCores.snapshot();
                          if (cores.packageReady()) return std::string("Installed v0.7.0");
                          return cores.alternateMainInstalled || cores.psxMglInstalled ||
                                 cores.saturnMglInstalled
@@ -1560,7 +1560,7 @@ void SettingsScreen::renderDiscDriveSettings(Canvas &canvas, const Rect &area) {
     y += theme.px(58);
 
     const auto drive = context_.discDrive.snapshot();
-    const auto cores = context_.discCores.inspect();
+    const auto cores = context_.discCores.snapshot();
     const auto line = [&](const std::string &label, const std::string &value, Color color) {
         theme.bold().draw(canvas, panel.x + margin, y, label, theme.sizeBody(), theme.textPrimary);
         theme.regular().draw(canvas, panel.x + margin + theme.px(330), y, value,

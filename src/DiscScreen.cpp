@@ -7,17 +7,14 @@
 DiscScreen::DiscScreen(Context &context, DiscCoreManager &cores,
                        std::function<void(const std::string &)> launch)
     : context_(context), cores_(cores), launch_(std::move(launch)) {
-    coreStatus_ = cores_.inspect();
+    coreStatus_ = cores_.snapshot();
 }
 
 void DiscScreen::update(float deltaSeconds) {
+    (void)deltaSeconds;
     const auto disc = context_.discDrive.snapshot();
     context_.discArtwork.request(disc);
-    refreshTimer_ += deltaSeconds;
-    if (refreshTimer_ >= 3.0f) {
-        refreshTimer_ = 0;
-        coreStatus_ = cores_.inspect();
-    }
+    coreStatus_ = cores_.snapshot();
     artStatus_ = context_.discArtwork.snapshot();
 }
 

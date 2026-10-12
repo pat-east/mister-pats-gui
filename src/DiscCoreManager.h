@@ -1,6 +1,9 @@
 #pragma once
 
+#include <condition_variable>
+#include <mutex>
 #include <string>
+#include <thread>
 
 #include "DiscDriveService.h"
 
@@ -37,7 +40,23 @@ public:
         bool hasAnyCore() const { return psxMglInstalled || saturnMglInstalled; }
     };
 
+    DiscCoreManager();
+    ~DiscCoreManager();
+    DiscCoreManager(const DiscCoreManager &) = delete;
+    DiscCoreManager &operator=(const DiscCoreManager &) = delete;
+
+    // Latest filesystem inspection, refreshed by the manager worker.
+    Status snapshot() const;
     Status inspect(const std::string &fatRoot = "/media/fat",
                    const std::string &iniPath = "/media/fat/MiSTer.ini") const;
     static const char *projectUrl();
+
+private:
+    void workerLoop();
+
+    mutable std::mutex mutex_;
+    std::condition_variable wake_;
+    Status snapshot_;
+    bool stopping_ = false;
+    std::thread worker_;
 };

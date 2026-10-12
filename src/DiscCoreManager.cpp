@@ -1,11 +1,15 @@
 #include "DiscCoreManager.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cctype>
+#include <condition_variable>
 #include <dirent.h>
 #include <fstream>
 #include <iterator>
+#include <mutex>
 #include <sys/stat.h>
+#include <thread>
 #include <unistd.h>
 #include <vector>
 
@@ -157,6 +161,35 @@ bool compatibleDiscMgl(const std::string &path, const char *core) {
 }
 
 } // namespace
+
+DiscCoreManager::DiscCoreManager() : worker_(&DiscCoreManager::workerLoop, this) {}
+
+DiscCoreManager::~DiscCoreManager() {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        stopping_ = true;
+    }
+    wake_.notify_all();
+    if (worker_.joinable()) worker_.join();
+}
+
+DiscCoreManager::Status DiscCoreManager::snapshot() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return snapshot_;
+}
+
+void DiscCoreManager::workerLoop() {
+    for (;;) {
+        Status current = inspect();
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (stopping_) return;
+            snapshot_ = std::move(current);
+        }
+        std::unique_lock<std::mutex> lock(mutex_);
+        if (wake_.wait_for(lock, std::chrono::seconds(3), [this] { return stopping_; })) return;
+    }
+}
 
 DiscCoreManager::Status DiscCoreManager::inspect(const std::string &fatRoot,
                                                 const std::string &iniPath) const {

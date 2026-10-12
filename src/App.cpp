@@ -227,7 +227,7 @@ bool App::initialize(const Options &options) {
         }
         context_->standDown = true;
     });
-    discCoreStatus_ = discCores_.inspect();
+    discCoreStatus_ = discCores_.snapshot();
 
     scanScreen_ = std::make_unique<ScanScreen>(
         *context_, scan_, scraper_, [this] { reloadLibrary(); }, [this] { closeScan(); });
@@ -1173,7 +1173,7 @@ int App::run() {
         discCoreRefreshTimer_ -= dt;
         if (discCoreRefreshTimer_ <= 0.0f) {
             discCoreRefreshTimer_ = 3.0f;
-            const auto current = discCores_.inspect();
+            const auto current = discCores_.snapshot();
             if (current.alternateMainInstalled != discCoreStatus_.alternateMainInstalled ||
                 current.psxMglInstalled != discCoreStatus_.psxMglInstalled ||
                 current.saturnMglInstalled != discCoreStatus_.saturnMglInstalled ||

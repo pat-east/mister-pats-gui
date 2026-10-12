@@ -322,7 +322,8 @@ ein erfolgreich gestarteter Core beendet wie bei anderen Spielen die GUI-Eingabe
   Quellen-Priorität TheGamesDB → bestehende Libretro.com-Variante. Die Disc-Ansicht kennt keine
   TheGamesDB-Endpunkte direkt.
 - `DiscCoreManager`: Erkennen, Installieren und Aktualisieren eines festgelegten, versionierten
-  Physical-Disc-Pakets mit Integritätsprüfung.
+  Physical-Disc-Pakets mit Integritätsprüfung. Der Dateisystemstatus wird im Worker alle drei
+  Sekunden aktualisiert; Disc-Tab, Settings und UI-Update lesen nur den letzten Snapshot.
 - `DiscScreen`: reine Darstellung und Eingabe; konsumiert asynchrone Status-/Metadaten-Snapshots.
 - `TopBar`/`TabIcons`: Disc-Tab ganz links, nur sichtbar, solange das Laufwerk verfügbar ist.
 

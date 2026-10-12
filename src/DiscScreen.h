@@ -17,7 +17,6 @@ private:
     std::function<void(const std::string &)> launch_;
     DiscCoreManager::Status coreStatus_;
     DiscArtworkService::Snapshot artStatus_;
-    float refreshTimer_ = 0;
     int cursor_ = 0;
     int overlayIndex_ = 0;
     bool screenshotOverlay_ = false;
