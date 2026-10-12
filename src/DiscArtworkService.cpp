@@ -85,37 +85,115 @@ bool saveJpeg(ImagePtr image, const std::string &target) {
     return true;
 }
 
+bool appendUtf8(std::string &out, unsigned long codepoint) {
+    if (codepoint > 0x10ffff || (codepoint >= 0xd800 && codepoint <= 0xdfff)) return false;
+    if (codepoint <= 0x7f) out.push_back(char(codepoint));
+    else if (codepoint <= 0x7ff) {
+        out.push_back(char(0xc0 | (codepoint >> 6)));
+        out.push_back(char(0x80 | (codepoint & 0x3f)));
+    } else if (codepoint <= 0xffff) {
+        out.push_back(char(0xe0 | (codepoint >> 12)));
+        out.push_back(char(0x80 | ((codepoint >> 6) & 0x3f)));
+        out.push_back(char(0x80 | (codepoint & 0x3f)));
+    } else {
+        out.push_back(char(0xf0 | (codepoint >> 18)));
+        out.push_back(char(0x80 | ((codepoint >> 12) & 0x3f)));
+        out.push_back(char(0x80 | ((codepoint >> 6) & 0x3f)));
+        out.push_back(char(0x80 | (codepoint & 0x3f)));
+    }
+    return true;
+}
+
+bool parseJsonString(const std::string &json, size_t quote, std::string &out, size_t &after) {
+    if (quote >= json.size() || json[quote] != '"') return false;
+    out.clear();
+    for (size_t i = quote + 1; i < json.size(); ++i) {
+        const unsigned char ch = static_cast<unsigned char>(json[i]);
+        if (ch == '"') { after = i + 1; return true; }
+        if (ch < 0x20) return false;
+        if (ch != '\\') { out.push_back(char(ch)); continue; }
+        if (++i >= json.size()) return false;
+        switch (json[i]) {
+        case '"': out.push_back('"'); break;
+        case '\\': out.push_back('\\'); break;
+        case '/': out.push_back('/'); break;
+        case 'b': out.push_back('\b'); break;
+        case 'f': out.push_back('\f'); break;
+        case 'n': out.push_back('\n'); break;
+        case 'r': out.push_back('\r'); break;
+        case 't': out.push_back('\t'); break;
+        case 'u': {
+            auto hex = [&json](size_t at, unsigned long &value) {
+                if (at + 4 > json.size()) return false;
+                value = 0;
+                for (size_t j = at; j < at + 4; ++j) {
+                    const char digit = json[j];
+                    value <<= 4;
+                    if (digit >= '0' && digit <= '9') value |= digit - '0';
+                    else if (digit >= 'a' && digit <= 'f') value |= digit - 'a' + 10;
+                    else if (digit >= 'A' && digit <= 'F') value |= digit - 'A' + 10;
+                    else return false;
+                }
+                return true;
+            };
+            unsigned long cp = 0;
+            if (!hex(i + 1, cp)) return false;
+            i += 4;
+            if (cp >= 0xd800 && cp <= 0xdbff) {
+                if (i + 6 >= json.size() || json[i + 1] != '\\' || json[i + 2] != 'u') return false;
+                unsigned long low = 0;
+                if (!hex(i + 3, low) || low < 0xdc00 || low > 0xdfff) return false;
+                cp = 0x10000 + ((cp - 0xd800) << 10) + (low - 0xdc00);
+                i += 6;
+            }
+            if (!appendUtf8(out, cp)) return false;
+            break;
+        }
+        default: return false;
+        }
+    }
+    return false;
+}
+
 size_t propertyPosition(const std::string &json, const std::string &key, size_t from = 0) {
-    return json.find("\"" + key + "\"", from);
+    for (size_t i = from; i < json.size(); ++i) {
+        if (json[i] != '"') continue;
+        std::string candidate;
+        size_t after = 0;
+        if (!parseJsonString(json, i, candidate, after)) return std::string::npos;
+        size_t colon = after;
+        while (colon < json.size() && std::isspace(static_cast<unsigned char>(json[colon]))) ++colon;
+        if (candidate == key && colon < json.size() && json[colon] == ':') return i;
+        i = after - 1;
+    }
+    return std::string::npos;
+}
+
+size_t propertyColon(const std::string &json, size_t position) {
+    std::string ignored;
+    size_t after = 0;
+    if (!parseJsonString(json, position, ignored, after)) return std::string::npos;
+    while (after < json.size() && std::isspace(static_cast<unsigned char>(json[after]))) ++after;
+    return after < json.size() && json[after] == ':' ? after : std::string::npos;
 }
 
 std::string jsonStringAt(const std::string &json, const std::string &key, size_t from = 0) {
     const size_t pos = propertyPosition(json, key, from);
     if (pos == std::string::npos) return std::string();
-    const size_t colon = json.find(':', pos + key.size() + 2);
+    const size_t colon = propertyColon(json, pos);
     if (colon == std::string::npos) return std::string();
-    const size_t quote = json.find('"', colon + 1);
-    if (quote == std::string::npos) return std::string();
+    size_t quote = colon + 1;
+    while (quote < json.size() && std::isspace(static_cast<unsigned char>(json[quote]))) ++quote;
     std::string out;
-    bool escaped = false;
-    for (size_t i = quote + 1; i < json.size(); ++i) {
-        const char ch = json[i];
-        if (escaped) {
-            if (ch == 'n') out.push_back('\n');
-            else if (ch == 'r') out.push_back('\r');
-            else out.push_back(ch);
-            escaped = false;
-        } else if (ch == '\\') escaped = true;
-        else if (ch == '"') return out;
-        else out.push_back(ch);
-    }
+    size_t after = 0;
+    if (parseJsonString(json, quote, out, after)) return out;
     return std::string();
 }
 
 std::string jsonNumberAt(const std::string &json, const std::string &key, size_t from = 0) {
     const size_t pos = propertyPosition(json, key, from);
     if (pos == std::string::npos) return std::string();
-    const size_t colon = json.find(':', pos + key.size() + 2);
+    const size_t colon = propertyColon(json, pos);
     if (colon == std::string::npos) return std::string();
     size_t begin = colon + 1;
     while (begin < json.size() && std::isspace(static_cast<unsigned char>(json[begin]))) ++begin;
