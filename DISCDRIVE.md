@@ -98,9 +98,11 @@ verfügbar ist, wird dieser normalisiert und mit Plattform sowie Anbieter-ID ges
 gleichnamige Titel nicht kollidieren. Temporäre Downloads werden erst nach erfolgreicher
 Validierung atomar übernommen. Anbieter, Spiel-ID, Disc-Kennung und gefundene Bildtypen werden
 mitgespeichert. Der Cache wird bei 128 MiB oder 80 Disc-Verzeichnissen anhand der ältesten
-Verzeichnisse verkleinert; das aktuelle Spiel bleibt dabei erhalten. Cache-Verzeichnisse und
-vorhandene Bild- und Metadatendateien werden ohne Symlink-Auflösung geprüft; bei einem unsicheren
-Cache-Pfad wird die Artwork-Suche übersprungen.
+Verzeichnisse verkleinert; das aktuelle Spiel bleibt dabei erhalten. Metadaten halten Anbieter
+pro Bildtyp fest, auch wenn Boxart und Screenshots aus unterschiedlichen Quellen stammen. Der
+negative TheGamesDB-Cache bleibt dabei erhalten. Cache-Verzeichnisse und vorhandene Bild- und
+Metadatendateien werden ohne Symlink-Auflösung geprüft; bei einem unsicheren Cache-Pfad wird die
+Artwork-Suche übersprungen.
 
 TheGamesDB-Limits sollen nicht bei jedem Wechsel in die Disc-Ansicht vorsorglich abgefragt
 werden. Der Key-Check bleibt eine explizite Aktion in Settings; normale Anfragen werten deren

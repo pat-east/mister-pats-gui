@@ -144,6 +144,56 @@ void recordTheGamesDbCheck(const std::string &metadataPath, const std::string &t
     writeTextAtomically(metadataPath, metadata);
 }
 
+bool hasImageType(const std::string &metadata, const std::string &type) {
+    const size_t key = propertyPosition(metadata, "image_types");
+    if (key == std::string::npos) return false;
+    const size_t begin = metadata.find('[', key);
+    const size_t end = begin == std::string::npos ? begin : metadata.find(']', begin + 1);
+    return begin != std::string::npos && end != std::string::npos &&
+           metadata.find(jsonQuoted(type), begin + 1) < end;
+}
+
+std::string recordArtworkMetadata(const std::string &metadata, const std::string &title,
+                                  const std::string &discId, bool hasBoxart,
+                                  bool hasScreenshots, std::string boxartProvider,
+                                  std::string screenshotProvider) {
+    const std::string legacyProvider = jsonStringAt(metadata, "provider");
+    if (legacyProvider == "TheGamesDB") {
+        if (boxartProvider.empty() && hasImageType(metadata, "boxart"))
+            boxartProvider = legacyProvider;
+        if (screenshotProvider.empty() && hasImageType(metadata, "screenshot"))
+            screenshotProvider = legacyProvider;
+    } else if (legacyProvider == "Libretro.com") {
+        if (boxartProvider.empty() && hasImageType(metadata, "boxart"))
+            boxartProvider = legacyProvider;
+        if (screenshotProvider.empty() && hasImageType(metadata, "screenshot"))
+            screenshotProvider = legacyProvider;
+    }
+
+    std::string result = "{\"title\":" + jsonQuoted(title) +
+        ",\"disc_id\":" + jsonQuoted(discId);
+    if (metadata.find("\"thegamesdb_checked\":true") != std::string::npos) {
+        result += ",\"thegamesdb_checked\":true";
+        const std::string checkedAt = jsonNumberAt(metadata, "thegamesdb_checked_at");
+        if (!checkedAt.empty()) result += ",\"thegamesdb_checked_at\":" + checkedAt;
+    }
+    std::string gameId = jsonStringAt(metadata, "thegamesdb_game_id");
+    if (gameId.empty()) gameId = jsonStringAt(metadata, "game_id");
+    if (!gameId.empty()) result += ",\"thegamesdb_game_id\":" + jsonQuoted(gameId);
+    if (hasBoxart && !boxartProvider.empty())
+        result += ",\"boxart_provider\":" + jsonQuoted(boxartProvider);
+    if (hasScreenshots && !screenshotProvider.empty())
+        result += ",\"screenshot_provider\":" + jsonQuoted(screenshotProvider);
+    result += ",\"image_types\":[";
+    if (hasBoxart) result += "\"boxart\"";
+    if (hasScreenshots) {
+        if (hasBoxart) result += ",";
+        result += "\"screenshot\"";
+    }
+    result += "]}\n";
+    return result;
+}
+
 std::vector<std::string> objectsFromArray(const std::string &json, const std::string &key,
                                           size_t from = 0) {
     std::vector<std::string> objects;
@@ -579,12 +629,28 @@ DiscArtworkService::Snapshot DiscArtworkService::fetch(const Request &request,
     accessed.actime = time(nullptr);
     accessed.modtime = accessed.actime;
     utime(gameDir.c_str(), &accessed);
-    const std::string metadata = readText(metadataPath);
+    std::string metadata = readText(metadataPath);
+    std::string boxartProvider = jsonStringAt(metadata, "boxart_provider");
+    std::string screenshotProvider = jsonStringAt(metadata, "screenshot_provider");
+    const auto inferLegacyProviders = [&] {
+        const std::string provider = jsonStringAt(metadata, "provider");
+        if (provider == "TheGamesDB" || provider == "Libretro.com") {
+            if (boxartProvider.empty() && hasImageType(metadata, "boxart"))
+                boxartProvider = provider;
+            if (screenshotProvider.empty() && hasImageType(metadata, "screenshot"))
+                screenshotProvider = provider;
+        }
+    };
+    inferLegacyProviders();
     const std::string screenshot = gameDir + "/screenshot-1.jpg";
-    for (int i = 1; i <= 4; ++i) {
-        const std::string shot = gameDir + "/screenshot-" + std::to_string(i) + ".jpg";
-        if (fileExists(shot)) out.screenshots.push_back(shot);
-    }
+    const auto refreshScreenshots = [&] {
+        out.screenshots.clear();
+        for (int i = 1; i <= 4; ++i) {
+            const std::string shot = gameDir + "/screenshot-" + std::to_string(i) + ".jpg";
+            if (fileExists(shot)) out.screenshots.push_back(shot);
+        }
+    };
+    refreshScreenshots();
     if (fileExists(out.boxart) && !out.screenshots.empty()) out.state = State::Ready;
 
     Downloader downloader;
@@ -592,8 +658,19 @@ DiscArtworkService::Snapshot DiscArtworkService::fetch(const Request &request,
     const bool indexCacheReady = ensureDirectory(indexCache);
     const bool tgdbChecked = theGamesDbCheckedRecently(metadata);
     if (!cancel.load() && client_.configured() && !tgdbChecked) {
-        if (fetchFromTheGamesDB(request, downloader, out, gameDir, cancel) &&
-            !out.screenshots.empty() && fileExists(out.boxart)) {
+        const bool gotTheGamesDbImage =
+            fetchFromTheGamesDB(request, downloader, out, gameDir, cancel);
+        metadata = readText(metadataPath);
+        refreshScreenshots();
+        inferLegacyProviders();
+        if (gotTheGamesDbImage) {
+            if (hasImageType(metadata, "boxart")) boxartProvider = "TheGamesDB";
+            if (hasImageType(metadata, "screenshot")) screenshotProvider = "TheGamesDB";
+        }
+        if (gotTheGamesDbImage && !out.screenshots.empty() && fileExists(out.boxart)) {
+            const std::string saved = recordArtworkMetadata(metadata, request.title,
+                request.identifier, fileExists(out.boxart), true, boxartProvider, screenshotProvider);
+            if (writeTextAtomically(metadataPath, saved)) metadata = saved;
             pruneDiscCache(cacheRoot, gameDir);
             return out;
         }
@@ -601,16 +678,27 @@ DiscArtworkService::Snapshot DiscArtworkService::fetch(const Request &request,
     if (cancel.load()) return out;
     if (fileExists(out.boxart) && !out.screenshots.empty()) {
         out.state = State::Ready;
+        const std::string saved = recordArtworkMetadata(metadata, request.title,
+            request.identifier, true, true, boxartProvider, screenshotProvider);
+        if (writeTextAtomically(metadataPath, saved)) metadata = saved;
         pruneDiscCache(cacheRoot, gameDir);
         return out;
     }
     if (!indexCacheReady) {
         out.state = out.screenshots.empty() && !fileExists(out.boxart) ? State::Missing : State::Ready;
+        const std::string saved = recordArtworkMetadata(metadata, request.title,
+            request.identifier, fileExists(out.boxart), !out.screenshots.empty(),
+            boxartProvider, screenshotProvider);
+        if (writeTextAtomically(metadataPath, saved)) metadata = saved;
         return out;
     }
     LibretroIndex index;
     if (!index.open(LibretroIndex::platformFor(platformKey), downloader, indexCache)) {
         out.state = out.screenshots.empty() && !fileExists(out.boxart) ? State::Missing : State::Ready;
+        const std::string saved = recordArtworkMetadata(metadata, request.title,
+            request.identifier, fileExists(out.boxart), !out.screenshots.empty(),
+            boxartProvider, screenshotProvider);
+        if (writeTextAtomically(metadataPath, saved)) metadata = saved;
         return out;
     }
     if (cancel.load()) return out;
@@ -624,8 +712,8 @@ DiscArtworkService::Snapshot DiscArtworkService::fetch(const Request &request,
         if (!cancel.load() && downloader.fetch(url, temp, 45)) {
             if (cancel.load()) { unlink(temp.c_str()); return out; }
             struct stat info {};
-            if (stat(temp.c_str(), &info) == 0 && info.st_size > 0 && info.st_size <= 12 * 1024 * 1024)
-                saveJpeg(Image::load(temp), out.boxart);
+            if (stat(temp.c_str(), &info) == 0 && info.st_size > 0 && info.st_size <= 12 * 1024 * 1024 &&
+                saveJpeg(Image::load(temp), out.boxart)) boxartProvider = "Libretro.com";
             unlink(temp.c_str());
         }
     }
@@ -645,14 +733,18 @@ DiscArtworkService::Snapshot DiscArtworkService::fetch(const Request &request,
         if (!cancel.load() && downloader.fetch(url, temp, 45)) {
             if (cancel.load()) { unlink(temp.c_str()); return out; }
             struct stat info {};
-            if (stat(temp.c_str(), &info) == 0 && info.st_size > 0 && info.st_size <= 12 * 1024 * 1024)
-                saveJpeg(Image::load(temp), screenshot);
+            if (stat(temp.c_str(), &info) == 0 && info.st_size > 0 && info.st_size <= 12 * 1024 * 1024 &&
+                saveJpeg(Image::load(temp), screenshot)) screenshotProvider = "Libretro.com";
             unlink(temp.c_str());
         }
     }
-    if (fileExists(screenshot)) out.screenshots.push_back(screenshot);
+    refreshScreenshots();
     if (fileExists(out.boxart) || !out.screenshots.empty()) out.state = State::Ready;
     else out.state = State::Missing;
+    const std::string saved = recordArtworkMetadata(metadata, request.title,
+        request.identifier, fileExists(out.boxart), !out.screenshots.empty(),
+        boxartProvider, screenshotProvider);
+    if (writeTextAtomically(metadataPath, saved)) metadata = saved;
     pruneDiscCache(cacheRoot, gameDir);
     return out;
 }
