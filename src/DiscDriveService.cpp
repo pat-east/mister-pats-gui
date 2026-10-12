@@ -338,6 +338,15 @@ std::string headerText(const unsigned char *bytes, size_t length) {
     return trim(out);
 }
 
+bool isPlayStationPvd(const unsigned char *pvd, uint32_t &volumeBlocks) {
+    uint16_t logicalBlockSize = 0;
+    return pvd[0] == 1 && std::memcmp(pvd + 1, "CD001", 5) == 0 && pvd[6] == 1 &&
+           upperAscii(headerText(pvd + 8, 32)) == "PLAYSTATION" &&
+           isoBothEndian32(pvd + 80, volumeBlocks) && volumeBlocks != 0 &&
+           isoBothEndian16(pvd + 128, logicalBlockSize) &&
+           logicalBlockSize == kSectorBytes;
+}
+
 std::string normalizePsxSerial(const std::string &text) {
     const std::string upper = upperAscii(text);
     for (size_t start = 0; start + 11 <= upper.size(); ++start) {
@@ -361,16 +370,9 @@ std::string normalizePsxSerial(const std::string &text) {
 
 bool readPsxBootIdentifier(int fd, std::string &identifier) {
     unsigned char pvd[kSectorBytes];
-    if (!readAt(fd, 16, pvd, sizeof(pvd)) || pvd[0] != 1 ||
-        std::memcmp(pvd + 1, "CD001", 5) != 0 ||
-        pvd[6] != 1 ||
-        upperAscii(headerText(pvd + 8, 32)) != "PLAYSTATION") return false;
-
     uint32_t volumeBlocks = 0;
-    uint16_t logicalBlockSize = 0;
-    if (!isoBothEndian32(pvd + 80, volumeBlocks) || volumeBlocks == 0 ||
-        !isoBothEndian16(pvd + 128, logicalBlockSize) ||
-        logicalBlockSize != kSectorBytes) return false;
+    if (!readAt(fd, 16, pvd, sizeof(pvd)) || !isPlayStationPvd(pvd, volumeBlocks))
+        return false;
 
     const unsigned char *root = pvd + 156;
     uint32_t rootExtent = 0;
@@ -484,9 +486,8 @@ void readMetadata(int fd, DiscDriveService::Snapshot &out) {
     // Read the primary descriptor separately so an ISO disc with a malformed or missing
     // SYSTEM.CNF is distinguished from an unrelated CD or a failed optical read.
     unsigned char pvd[kSectorBytes];
-    if (readAt(fd, 16, pvd, sizeof(pvd)) && pvd[0] == 1 &&
-        std::memcmp(pvd + 1, "CD001", 5) == 0 &&
-        upperAscii(headerText(pvd + 8, 32)) == "PLAYSTATION") {
+    uint32_t volumeBlocks = 0;
+    if (readAt(fd, 16, pvd, sizeof(pvd)) && isPlayStationPvd(pvd, volumeBlocks)) {
         out.system = DiscDriveService::System::PlayStation;
         out.state = DiscDriveService::MediaState::Readable;
         return;
