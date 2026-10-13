@@ -9,6 +9,7 @@
 #include "UpdateService.h"
 #include "OnScreenKeyboard.h"
 #include "Wifi.h"
+#include "CoreMraUpdater.h"
 
 class SettingsScreen : public Screen {
 public:
@@ -43,9 +44,14 @@ public:
     bool wantsBack() const {
         return optionsFocused_ || wifiStep_ != WifiStep::None || timeZoneChooserActive_ ||
                rebootConfirmationActive_ || changelogActive_ || infoModalActive_ ||
-               discDriveSettingsActive_ || discCoreInstallConfirmationActive_;
+               discDriveSettingsActive_ || discCoreInstallConfirmationActive_ ||
+               coreUpdaterModalActive_;
     }
     bool wantsStartForWifiPassword() const { return wifiStep_ == WifiStep::PasswordEntry; }
+    // In the update list Start opens the review; everywhere else it still acts like A.
+    bool usesStartAction() const override {
+        return coreUpdaterModalActive_ && coreUpdaterDialog_ == CoreUpdaterDialog::List;
+    }
 
     void update(float deltaSeconds) override;
     void render(Canvas &canvas, const Rect &area, bool fullRedraw) override;
@@ -96,6 +102,10 @@ private:
     void renderInfo(Canvas &canvas, const Rect &area);
     void renderDiscDriveSettings(Canvas &canvas, const Rect &area);
     void renderDiscCoreInstallConfirmation(Canvas &canvas, const Rect &area);
+    void handleCoreUpdater(Action action);
+    void renderCoreUpdater(Canvas &canvas, const Rect &area);
+    void openCoreUpdater();
+    void beginCoreCheck();
 
     Context &context_;
     std::function<void()> onReload_;
@@ -143,6 +153,18 @@ private:
     bool infoModalActive_ = false;
     bool discDriveSettingsActive_ = false;
     bool discCoreInstallConfirmationActive_ = false;
+    CoreMraUpdater coreUpdater_;
+    enum class CoreUpdaterDialog { Intro, Checking, List, Review, Installing, Result };
+    CoreUpdaterDialog coreUpdaterDialog_ = CoreUpdaterDialog::Intro;
+    bool coreUpdaterModalActive_ = false;
+    int coreUpdaterCursor_ = 0;
+    int coreUpdaterScroll_ = 0;
+    int coreUpdaterTypeFilter_ = 0;
+    int coreUpdaterStatusFilter_ = 0;
+    size_t coreUpdaterVisibleCount_ = 0;
+    bool coreUpdaterInstallResult_ = false;
+    bool coreUpdaterOnline_ = false;
+    float coreUpdaterNetworkTimer_ = 0.0f;
     enum class WifiStep { None, Scanning, Networks, SsidEntry, PasswordEntry, CountryEntry,
                           TestPrompt, Testing, TestReview, TestFailed };
     Wifi wifi_;

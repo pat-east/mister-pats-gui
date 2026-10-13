@@ -2,6 +2,10 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <ctime>
+#include <fstream>
+#include <ifaddrs.h>
+#include <net/if.h>
 #include <sstream>
 
 #include "Canvas.h"
@@ -24,6 +28,35 @@ void drawRoundCheckbox(Canvas &canvas, Theme &theme, const Rect &box, bool on) {
     canvas.fillRoundedRect(dot, dot.w / 2, Color::rgb(0xD6D8DE));
 }
 
+// Whether this MiSTer can plausibly reach the internet: an interface with an IPv4 address and
+// a default route. It sends no traffic and touches no storage (/proc is kernel memory), so the
+// Core and MRA updater can ask before it starts a download. A reachable network is still
+// confirmed by the download itself.
+bool internetRouteAvailable() {
+    bool address = false;
+    ifaddrs *list = nullptr;
+    if (getifaddrs(&list) == 0) {
+        for (ifaddrs *it = list; it && !address; it = it->ifa_next) {
+            address = it->ifa_addr && it->ifa_addr->sa_family == AF_INET &&
+                      !(it->ifa_flags & IFF_LOOPBACK) && (it->ifa_flags & IFF_UP);
+        }
+        freeifaddrs(list);
+    }
+    if (!address) return false;
+
+    std::ifstream routes("/proc/net/route");
+    std::string line;
+    std::getline(routes, line); // header
+    while (std::getline(routes, line)) {
+        char name[32] = {};
+        unsigned destination = 1, flags = 0;
+        if (std::sscanf(line.c_str(), "%31s %x %*x %x", name, &destination, &flags) == 3 &&
+            destination == 0 && (flags & 0x1)) // RTF_UP
+            return true;
+    }
+    return false;
+}
+
 std::string settingHelp(const std::string &label) {
     if (label == "TheGamesDB")
         return "Looks up box art, screenshots and release year for PlayStation and Saturn discs. Add your API key to /media/fat/mister-pat/thegamesdb-settings.ini as apikey=\"YOUR_KEY\", then select this row to test it. Without a key or a matching result, artwork falls back to Libretro.";
@@ -37,8 +70,12 @@ std::string settingHelp(const std::string &label) {
         return "Group ROMs with region, revision or language suffixes under one title.";
     if (label == "Manage systems")
         return "Choose which consoles appear in the Consoles and Games views.";
-    if (label == "Manage Arcade")
+    if (label == "Manage Consoles")
+        return "Choose which consoles appear in the Consoles and Games views.";
+    if (label == "Arcade game status")
         return "See which Arcade games are ready to launch and why others are unavailable.";
+    if (label == "Core and MRA updates")
+        return "Check and update official Arcade and Console cores and Arcade MRAs.";
     if (label == "Controllers")
         return "Test connected controllers, change how far a stick must move, or set up button controls.";
     if (label == "Face-button labels")
@@ -215,10 +252,10 @@ void SettingsScreen::buildRows() {
                          context_.notify("Saved game list loaded");
                      }});
 
-    library.push_back({"Manage systems", [] { return std::string("A"); },
-                     [this] { onManageSystems_(); }});
+    library.push_back({"Core and MRA updates", [] { return std::string("A"); },
+                     [this] { openCoreUpdater(); }});
 
-    library.push_back({"Manage Arcade", [] { return std::string("A"); },
+    library.push_back({"Arcade game status", [] { return std::string("A"); },
                      [this] { onManageArcade_(); }});
 
     library.push_back({"Organize game-versions",
@@ -262,6 +299,8 @@ void SettingsScreen::buildRows() {
 
     // How the interface itself looks and navigates.
     auto &interface = categories_[2].rows;
+    interface.push_back({"Manage Consoles", [] { return std::string("A"); },
+                         [this] { onManageSystems_(); }});
     interface.push_back({"Show Games tab",
                      [this] { return std::string(context_.preferences.showGamesTab() ? "On" : "Off"); },
                      [this] { onToggleGamesTab_(); }});
@@ -674,6 +713,30 @@ void SettingsScreen::update(float deltaSeconds) {
                         ".", 7.0f);
     }
     previousTheGamesDbCheckState_ = gamesDbCheckState;
+    if (coreUpdaterModalActive_) {
+        const CoreMraSnapshot snapshot = coreUpdater_.snapshot();
+        if (coreUpdaterDialog_ == CoreUpdaterDialog::Intro) {
+            // Picks up a connection that comes up while the dialog is open, e.g. after Wi-Fi setup.
+            coreUpdaterNetworkTimer_ -= deltaSeconds;
+            if (coreUpdaterNetworkTimer_ <= 0.0f) {
+                coreUpdaterNetworkTimer_ = 2.0f;
+                coreUpdaterOnline_ = internetRouteAvailable();
+            }
+        }
+        if (coreUpdaterDialog_ == CoreUpdaterDialog::Checking) {
+            if (snapshot.phase == CoreMraPhase::Ready) {
+                coreUpdaterDialog_ = CoreUpdaterDialog::List;
+                coreUpdaterCursor_ = coreUpdaterScroll_ = 0;
+            } else if (snapshot.phase == CoreMraPhase::Failed) {
+                coreUpdaterDialog_ = CoreUpdaterDialog::Result;
+                coreUpdaterInstallResult_ = false;
+            }
+        } else if (coreUpdaterDialog_ == CoreUpdaterDialog::Installing &&
+                   (snapshot.phase == CoreMraPhase::Complete || snapshot.phase == CoreMraPhase::Failed)) {
+            coreUpdaterDialog_ = CoreUpdaterDialog::Result;
+            coreUpdaterInstallResult_ = true;
+        }
+    }
     if (categories_.size() > 3) {
         // The color only matters while High contrast is on, so it is greyed out otherwise.
         for (Row &row : categories_[3].rows)
@@ -708,6 +771,10 @@ void SettingsScreen::update(float deltaSeconds) {
 }
 
 void SettingsScreen::handle(Action action) {
+    if (coreUpdaterModalActive_) {
+        handleCoreUpdater(action);
+        return;
+    }
     if (discCoreInstallConfirmationActive_) {
         if (action == Action::Confirm) {
             discCoreInstallConfirmationActive_ = false;
@@ -823,6 +890,439 @@ void SettingsScreen::handle(Action action) {
         break;
     default:
         break;
+    }
+}
+
+void SettingsScreen::openCoreUpdater() {
+    coreUpdaterModalActive_ = true;
+    coreUpdaterDialog_ = CoreUpdaterDialog::Intro;
+    coreUpdaterInstallResult_ = false;
+    coreUpdaterCursor_ = coreUpdaterScroll_ = 0;
+    coreUpdaterTypeFilter_ = 0;
+    coreUpdaterStatusFilter_ = 0;
+    coreUpdaterOnline_ = internetRouteAvailable();
+    coreUpdaterNetworkTimer_ = 2.0f;
+}
+
+void SettingsScreen::beginCoreCheck() {
+    if (coreUpdater_.startCheck()) coreUpdaterDialog_ = CoreUpdaterDialog::Checking;
+}
+
+void SettingsScreen::handleCoreUpdater(Action action) {
+    CoreMraSnapshot snapshot = coreUpdater_.snapshot();
+    if (coreUpdaterDialog_ == CoreUpdaterDialog::Intro) {
+        if (action == Action::Confirm) {
+            // Greyed out while offline: nothing happens.
+            coreUpdaterOnline_ = internetRouteAvailable();
+            if (coreUpdaterOnline_) beginCoreCheck();
+        } else if (action == Action::Back) coreUpdaterModalActive_ = false;
+        return;
+    }
+    if (coreUpdaterDialog_ == CoreUpdaterDialog::Checking) {
+        if (action == Action::Back) {
+            coreUpdater_.cancelCheck();
+            coreUpdaterModalActive_ = false;
+        }
+        return;
+    }
+    if (coreUpdaterDialog_ == CoreUpdaterDialog::Installing) {
+        return;
+    }
+    if (coreUpdaterDialog_ == CoreUpdaterDialog::Result) {
+        if (action == Action::Confirm && !coreUpdaterInstallResult_) {
+            // Back to the first dialog, which checks the connection before it tries again.
+            openCoreUpdater();
+        } else if (action == Action::Confirm || action == Action::Back) {
+            coreUpdaterModalActive_ = false;
+        }
+        return;
+    }
+    if (coreUpdaterDialog_ == CoreUpdaterDialog::Review) {
+        if (action == Action::Back) coreUpdaterDialog_ = CoreUpdaterDialog::List;
+        else if (action == Action::Up && coreUpdaterScroll_ > 0) --coreUpdaterScroll_;
+        else if (action == Action::Down) {
+            // coreUpdaterVisibleCount_ is how many rows the last drawing fitted.
+            const int selectedFiles = int(std::count_if(snapshot.entries.begin(), snapshot.entries.end(),
+                [](const CoreMraEntry &e) { return e.selected; }));
+            if (coreUpdaterScroll_ + int(coreUpdaterVisibleCount_) < selectedFiles) ++coreUpdaterScroll_;
+        }
+        else if (action == Action::Confirm) {
+            if (coreUpdater_.startInstall()) coreUpdaterDialog_ = CoreUpdaterDialog::Installing;
+        }
+        return;
+    }
+
+    std::vector<size_t> visible;
+    for (size_t i = 0; i < snapshot.entries.size(); ++i) {
+        const CoreMraEntry &entry = snapshot.entries[i];
+        if (coreUpdaterStatusFilter_ == 0 && entry.status != CoreMraStatus::Missing &&
+            entry.status != CoreMraStatus::UpdateAvailable && entry.status != CoreMraStatus::Modified &&
+            entry.status != CoreMraStatus::Error) continue;
+        if (coreUpdaterStatusFilter_ == 2 && entry.status != CoreMraStatus::UpToDate) continue;
+        if (coreUpdaterStatusFilter_ == 3 && entry.status != CoreMraStatus::Modified) continue;
+        visible.push_back(i);
+    }
+    if (visible.empty()) coreUpdaterCursor_ = 0;
+    else coreUpdaterCursor_ = std::max(0, std::min(coreUpdaterCursor_, int(visible.size()) - 1));
+
+    const bool anySelected = std::any_of(snapshot.entries.begin(), snapshot.entries.end(),
+                                         [](const CoreMraEntry &entry) { return entry.selected; });
+    auto openReview = [&] {
+        if (!anySelected) return;
+        coreUpdaterDialog_ = CoreUpdaterDialog::Review;
+        coreUpdaterScroll_ = 0;
+    };
+
+    switch (action) {
+    case Action::Up:
+        if (coreUpdaterCursor_ > 0) --coreUpdaterCursor_;
+        break;
+    case Action::Down:
+        if (coreUpdaterCursor_ + 1 < int(visible.size())) ++coreUpdaterCursor_;
+        break;
+    case Action::Left:
+        coreUpdaterStatusFilter_ = (coreUpdaterStatusFilter_ + 3) % 4;
+        coreUpdaterCursor_ = 0;
+        break;
+    case Action::Right:
+        coreUpdaterStatusFilter_ = (coreUpdaterStatusFilter_ + 1) % 4;
+        coreUpdaterCursor_ = 0;
+        break;
+    case Action::FaceXPress:
+        coreUpdater_.selectAllMissingOrOutdated();
+        break;
+    case Action::CycleView: // Y: ask the official source again instead of using the saved result
+        if (coreUpdater_.startCheck(true)) coreUpdaterDialog_ = CoreUpdaterDialog::Checking;
+        break;
+    case Action::Confirm:
+        if (!visible.empty()) coreUpdater_.toggleSelected(visible[size_t(coreUpdaterCursor_)]);
+        break;
+    case Action::Start:
+        openReview();
+        break;
+    case Action::Back:
+        coreUpdaterModalActive_ = false;
+        break;
+    default:
+        break;
+    }
+}
+
+void SettingsScreen::renderCoreUpdater(Canvas &canvas, const Rect &area) {
+    Theme &theme = context_.theme;
+    const CoreMraSnapshot snapshot = coreUpdater_.snapshot();
+    canvas.fillRect(area, theme.shadow.withAlpha(215));
+    // The file list needs room; the other steps are short dialogs.
+    const bool listDialog = coreUpdaterDialog_ == CoreUpdaterDialog::List ||
+                            coreUpdaterDialog_ == CoreUpdaterDialog::Review;
+    const int width = std::min(area.w - theme.px(36), theme.px(listDialog ? 1812 : 1120));
+    const int height = std::min(area.h - theme.px(36), theme.px(listDialog ? 860 : 760));
+    const Rect panel{area.x + (area.w - width) / 2, area.y + (area.h - height) / 2, width, height};
+    canvas.fillRoundedRect(panel, theme.radius(), theme.surfaceHi);
+    const int margin = theme.px(28);
+    const int left = panel.x + margin;
+    const int contentRight = panel.right() - margin;
+    int y = panel.y + margin;
+    const int titleSize = theme.sizeHeading();
+    auto line = [&](const std::string &text, Color color = Color::rgb(0xFFFFFF), int size = 0) {
+        const int fontSize = size ? size : theme.sizeBody();
+        theme.regular().draw(canvas, left, y, theme.regular().elide(text, fontSize, contentRight-left), fontSize, color);
+        y += theme.regular().lineHeight(fontSize) + theme.px(9);
+    };
+    std::string title = "Core and MRA updates";
+    if (coreUpdaterDialog_ == CoreUpdaterDialog::Checking) title = "Checking official updates";
+    else if (coreUpdaterDialog_ == CoreUpdaterDialog::List) title = "Choose what to update";
+    else if (coreUpdaterDialog_ == CoreUpdaterDialog::Review) title = "Confirm installation";
+    else if (coreUpdaterDialog_ == CoreUpdaterDialog::Installing) title = "Installing updates";
+    else if (coreUpdaterDialog_ == CoreUpdaterDialog::Result) title = coreUpdaterInstallResult_ ? "Update result" : "Update check failed";
+    theme.bold().draw(canvas, left, y, title, titleSize, theme.textPrimary);
+    y += theme.bold().lineHeight(titleSize) + theme.px(16);
+
+    if (coreUpdaterDialog_ == CoreUpdaterDialog::Intro) {
+        line("Check the official MiSTer Distribution for Arcade cores, Console cores and Arcade MRAs.");
+        line("Only selected core and MRA files are downloaded. BIOS files and ROMs are not included.", theme.textMuted);
+        line("The check reads the installed files and does not change them.", theme.textMuted);
+        y += theme.px(14);
+        if (coreUpdaterOnline_) {
+            line("Network connected", theme.accent);
+        } else {
+            line("No internet connection", theme.warning);
+            line("Connect this MiSTer to a network first, for example under Settings → System → Connect to Wi-Fi.",
+                 theme.textMuted);
+        }
+    } else if (coreUpdaterDialog_ == CoreUpdaterDialog::Checking) {
+        line(snapshot.totalFiles ? "Comparing installed files with the official list…"
+                                 : "Loading the official list…", theme.textMuted);
+        const int trackY = y + theme.px(8);
+        const Rect track{left, trackY, contentRight-left, theme.px(12)};
+        canvas.fillRoundedRect(track, theme.px(6), theme.surface);
+        if (snapshot.currentTotal) {
+            const int filled = int((uint64_t(track.w) * snapshot.completed) / snapshot.currentTotal);
+            canvas.fillRoundedRect({track.x, track.y, std::max(theme.px(12), filled), track.h}, theme.px(6), theme.accent);
+        }
+        y = track.bottom() + theme.px(18);
+        line(std::to_string(snapshot.completed) + (snapshot.totalFiles ? " / " + std::to_string(snapshot.totalFiles) + " files checked" : " files checked"), theme.textMuted, theme.sizeSmall());
+
+        // The files being checked right now, newest at the bottom, so it is visible that
+        // something is happening. It follows the check; it is not scrolled by hand.
+        const int size = theme.sizeBody();
+        const int rowHeight = theme.regular().lineHeight(size) + theme.px(8);
+        const Rect list{left, y + theme.px(6), contentRight-left,
+                        std::max(rowHeight, panel.bottom() - margin - theme.px(40) - (y + theme.px(6)))};
+        canvas.fillRoundedRect(list, theme.px(9), theme.surface);
+        const int inner = theme.px(14);
+        const int rows = std::max(1, (list.h - 2 * theme.px(8)) / rowHeight);
+        const int count = int(snapshot.recent.size());
+        const int first = std::max(0, count - rows);
+        canvas.pushClip(list);
+        for (int i = first; i < count; ++i) {
+            const CoreMraRecent &item = snapshot.recent[size_t(i)];
+            const int rowY = list.y + theme.px(8) + (i - first) * rowHeight;
+            const bool newest = i == count - 1;
+            const char *label = item.status == CoreMraStatus::UpToDate ? "Up to date"
+                              : item.status == CoreMraStatus::Missing ? "Missing"
+                              : item.status == CoreMraStatus::Error ? "Unavailable"
+                              : item.status == CoreMraStatus::Modified ? "Modified" : "Update available";
+            const Color labelColor = item.status == CoreMraStatus::Error ? theme.warning
+                                   : item.status == CoreMraStatus::UpToDate ? theme.textMuted
+                                   : theme.accent;
+            const int labelWidth = theme.regular().measure(label, size);
+            theme.regular().draw(canvas, list.right() - inner - labelWidth, rowY, label, size, labelColor);
+            theme.regular().draw(canvas, list.x + inner, rowY,
+                                 theme.regular().elide(item.name, size, list.w - 2 * inner - labelWidth - theme.px(24)),
+                                 size, newest ? theme.textPrimary : theme.textMuted);
+        }
+        canvas.popClip();
+    } else if (coreUpdaterDialog_ == CoreUpdaterDialog::List) {
+        static const char *statuses[] = {"Needs update", "All", "Up to date", "Changed"};
+        const int small = theme.sizeSmall();
+        auto sizeText = [](uint64_t bytes) {
+            char buffer[32];
+            if (bytes >= 1024ull * 1024) std::snprintf(buffer, sizeof(buffer), "%.1f MB", double(bytes) / (1024.0 * 1024.0));
+            else std::snprintf(buffer, sizeof(buffer), "%llu KB", (unsigned long long)((bytes + 1023) / 1024));
+            return std::string(buffer);
+        };
+        // "CPS2_20260501.rbf" -> "CPS2", "1944.mra" -> "1944"
+        auto friendlyName = [](const std::string &file) {
+            std::string name = file;
+            const size_t dot = name.find_last_of('.');
+            if (dot != std::string::npos) name.erase(dot);
+            const size_t us = name.find_last_of('_');
+            if (us != std::string::npos && name.size() - us == 9 &&
+                name.find_first_not_of("0123456789", us + 1) == std::string::npos) name.erase(us);
+            return name;
+        };
+
+        line("Files marked Not installed or Changed differ from the official distribution. Pick the ones to install.", theme.textMuted);
+        {
+            const long long age = std::max(0LL, (long long)std::time(nullptr) - (long long)snapshot.checkedAt);
+            line(age < 60 ? std::string("Checked just now")
+                          : "Checked " + std::to_string(age / 60) + (age / 60 == 1 ? " minute ago" : " minutes ago"),
+                 theme.textMuted);
+        }
+
+        // Which files are listed: tabs like the main navigation, the active one underlined.
+        {
+            const int size = theme.sizeBody();
+            int x = left + theme.px(4);
+            for (int i = 0; i < 4; ++i) {
+                const bool active = i == coreUpdaterStatusFilter_;
+                Font &font = active ? theme.bold() : theme.regular();
+                const int w = font.measure(statuses[i], size);
+                font.draw(canvas, x, y, statuses[i], size, active ? theme.textPrimary : theme.textMuted);
+                if (active)
+                    canvas.fillRoundedRect({x, y + font.lineHeight(size) + theme.px(4), w, theme.px(3)},
+                                           theme.px(2), theme.focus);
+                x += w + theme.px(36);
+            }
+            y += theme.bold().lineHeight(size) + theme.px(4) + theme.px(3) + theme.px(16);
+        }
+
+        std::vector<size_t> visible;
+        size_t selectedCount = 0, selectedCores = 0, selectedMras = 0;
+        uint64_t selectedBytes = 0;
+        for (size_t i=0; i<snapshot.entries.size(); ++i) {
+            const auto &e = snapshot.entries[i];
+            if (e.selected) {
+                ++selectedCount; selectedBytes += e.size;
+                if (e.type == CoreMraType::ArcadeMra) ++selectedMras; else ++selectedCores;
+            }
+            if (coreUpdaterStatusFilter_ == 0 && e.status != CoreMraStatus::Missing && e.status != CoreMraStatus::UpdateAvailable && e.status != CoreMraStatus::Modified && e.status != CoreMraStatus::Error) continue;
+            if (coreUpdaterStatusFilter_ == 2 && e.status != CoreMraStatus::UpToDate) continue;
+            if (coreUpdaterStatusFilter_ == 3 && e.status != CoreMraStatus::Modified) continue;
+            visible.push_back(i);
+        }
+
+        // Lines of the list: a heading whenever the kind of file changes, then the files.
+        struct ListLine { bool header; CoreMraType type; size_t count; int visibleIndex; };
+        std::vector<ListLine> lines;
+        int cursorLine = 0;
+        const int cursor = visible.empty() ? 0 : std::min(coreUpdaterCursor_, int(visible.size())-1);
+        for (size_t v = 0; v < visible.size(); ++v) {
+            const CoreMraType type = snapshot.entries[visible[v]].type;
+            if (v == 0 || snapshot.entries[visible[v - 1]].type != type) {
+                size_t count = 0;
+                for (size_t k = v; k < visible.size() && snapshot.entries[visible[k]].type == type; ++k) ++count;
+                lines.push_back({true, type, count, -1});
+            }
+            if (int(v) == cursor) cursorLine = int(lines.size());
+            lines.push_back({false, type, 0, int(v)});
+        }
+
+        const int headerH = theme.px(36), rowH = theme.px(62), gap = theme.px(6);
+        const int footerH = theme.px(88);
+        const int listBottom = panel.bottom() - margin - footerH - theme.px(10);
+        // Lines are of different heights, so scroll by line and fit what the space allows.
+        auto lineHeight = [&](const ListLine &l) { return l.header ? headerH : rowH + gap; };
+        if (cursorLine > 0 && lines[size_t(cursorLine) - 1].header) --cursorLine; // keep the heading with its first file
+        if (cursorLine < coreUpdaterScroll_) coreUpdaterScroll_ = cursorLine;
+        for (;;) {
+            int used = 0;
+            for (int i = coreUpdaterScroll_; i <= int(visible.empty() ? 0 : cursorLine) && i < int(lines.size()); ++i) used += lineHeight(lines[size_t(i)]);
+            // include the focused file itself (cursorLine may point at its heading)
+            if (!visible.empty() && cursorLine + 1 < int(lines.size()) && lines[size_t(cursorLine)].header)
+                used += lineHeight(lines[size_t(cursorLine) + 1]);
+            if (y + used <= listBottom || coreUpdaterScroll_ >= cursorLine) break;
+            ++coreUpdaterScroll_;
+        }
+        coreUpdaterScroll_ = std::max(0, std::min(coreUpdaterScroll_, std::max(0, int(lines.size()) - 1)));
+
+        canvas.pushClip({left, y, contentRight-left, std::max(0, listBottom - y)});
+        int rowY = y;
+        for (int li = coreUpdaterScroll_; li < int(lines.size()) && rowY < listBottom; ++li) {
+            const ListLine &l = lines[size_t(li)];
+            if (l.header) {
+                const char *group = l.type == CoreMraType::ArcadeCore ? "Arcade cores"
+                                  : l.type == CoreMraType::ConsoleCore ? "Console cores" : "Arcade MRAs";
+                theme.bold().draw(canvas, left + theme.px(4), rowY + theme.px(6), group, theme.sizeBody(), theme.textPrimary);
+                const std::string count = std::to_string(l.count) + (l.count == 1 ? " file" : " files");
+                theme.regular().draw(canvas, contentRight - theme.regular().measure(count, small), rowY + theme.px(10), count, small, theme.textMuted);
+                rowY += headerH;
+                continue;
+            }
+            const auto &entry = snapshot.entries[visible[size_t(l.visibleIndex)]];
+            const Rect row{left, rowY, contentRight-left, rowH};
+            const bool focused = l.visibleIndex == cursor;
+            canvas.fillRoundedRect(row, theme.px(8), focused ? theme.surfaceHi : theme.surface);
+            if (focused) canvas.strokeRoundedRect(row, theme.px(8), std::max(1, theme.px(2)), theme.focus);
+
+            const int box = theme.px(24);
+            const Rect check{row.x + theme.px(18), row.y + (row.h - box) / 2, box, box};
+            // Files that are already current or cannot be checked cannot be selected: no checkbox.
+            if (entry.status != CoreMraStatus::UpToDate && entry.status != CoreMraStatus::Error)
+                drawRoundCheckbox(canvas, theme, check, entry.selected);
+            const int textX = check.right() + theme.px(18);
+            const int nameW = row.w / 2 - theme.px(60);
+            theme.bold().draw(canvas, textX, row.y + theme.px(9),
+                              theme.bold().elide(friendlyName(entry.name), theme.sizeBody(), nameW), theme.sizeBody(), theme.textPrimary);
+            theme.regular().draw(canvas, textX, row.y + theme.px(35),
+                                 theme.regular().elide(entry.path, small, nameW), small, theme.textMuted);
+
+            const char *state = entry.status == CoreMraStatus::UpToDate ? "Up to date"
+                              : entry.status == CoreMraStatus::Missing ? "Not installed"
+                              : entry.status == CoreMraStatus::UpdateAvailable ? "Update available"
+                              : entry.status == CoreMraStatus::Modified ? "Changed" : "Cannot be checked";
+            const Color stateColor = entry.status == CoreMraStatus::Error ? theme.warning
+                                   : entry.status == CoreMraStatus::UpToDate ? theme.textMuted : theme.accent;
+            const char *detail = entry.status == CoreMraStatus::UpToDate ? "Installed"
+                               : entry.status == CoreMraStatus::Missing ? "Not on this MiSTer"
+                               : entry.status == CoreMraStatus::Modified ? "Differs from official" : "";
+            theme.bold().draw(canvas, row.x + row.w * 56 / 100, row.y + theme.px(8), state, theme.sizeBody(), stateColor);
+            theme.regular().draw(canvas, row.x + row.w * 56 / 100, row.y + theme.px(36), detail, small, theme.textMuted);
+            const std::string sz = sizeText(entry.size);
+            theme.regular().draw(canvas, row.right() - theme.px(22) - theme.regular().measure(sz, theme.sizeBody()),
+                                 row.y + (row.h - theme.regular().lineHeight(theme.sizeBody())) / 2, sz, theme.sizeBody(), theme.textMuted);
+            rowY += rowH + gap;
+        }
+        canvas.popClip();
+        if (visible.empty()) {
+            theme.bold().draw(canvas, left + theme.px(4), y + theme.px(8), "Nothing to show here", theme.sizeBody(), theme.textPrimary);
+            theme.regular().draw(canvas, left + theme.px(4), y + theme.px(44),
+                                 coreUpdaterStatusFilter_ == 0 ? "Everything in this group is up to date. Press ← or → to see all files."
+                                                               : "No files match this filter. Press ← or → to change it.",
+                                 small, theme.textMuted);
+        }
+
+        // Summary and the main action.
+        const Rect summary{left, panel.bottom() - margin - footerH, contentRight-left, footerH};
+        canvas.fillRoundedRect(summary, theme.px(10), theme.surface);
+        theme.bold().draw(canvas, summary.x + theme.px(24), summary.y + theme.px(16),
+                          std::to_string(selectedCount) + " selected", theme.sizeBody(), theme.textPrimary);
+        std::string detailText = selectedCount == 0 ? "Pick at least one file to continue."
+            : std::to_string(selectedCores) + (selectedCores == 1 ? " core" : " cores") + " + " +
+              std::to_string(selectedMras) + (selectedMras == 1 ? " MRA" : " MRAs") + "  ·  download: " + sizeText(selectedBytes);
+        theme.regular().draw(canvas, summary.x + theme.px(24), summary.y + theme.px(50), detailText, theme.sizeBody(), theme.textMuted);
+    } else if (coreUpdaterDialog_ == CoreUpdaterDialog::Review) {
+        std::vector<const CoreMraEntry *> selected;
+        uint64_t bytes=0;
+        for (const auto &entry : snapshot.entries) if (entry.selected) { selected.push_back(&entry); bytes += entry.size; }
+        const size_t count = selected.size();
+        line(std::to_string(count) + (count == 1 ? " file will be downloaded (" : " files will be downloaded (") +
+             std::to_string(bytes / (1024*1024)) + " MiB).", theme.textPrimary);
+
+        // Body size: this is the screen where the user confirms what will change.
+        const int small = theme.sizeBody();
+        const int rowHeight = theme.px(46);
+        const int noteHeight = 2 * (theme.regular().lineHeight(theme.sizeBody()) + theme.px(9));
+        const int headingH = theme.regular().lineHeight(small) + theme.px(10);
+        const int listTop = y + headingH;
+        const int listBottom = panel.bottom() - margin - noteHeight - theme.px(8);
+        const int rowsAvailable = std::max(1, (listBottom - listTop - theme.px(12)) / rowHeight);
+        const int visibleRows = std::min(int(count), rowsAvailable);
+        coreUpdaterVisibleCount_ = size_t(visibleRows);
+        coreUpdaterScroll_ = std::max(0, std::min(coreUpdaterScroll_, int(count) - visibleRows));
+
+        theme.regular().draw(canvas, left, y, "Selected files", small, theme.textMuted);
+        {
+            // Say what is out of view instead of a range that has to be decoded.
+            const int above = coreUpdaterScroll_;
+            const int below = int(count) - coreUpdaterScroll_ - visibleRows;
+            std::string more;
+            if (above > 0) more += "↑ " + std::to_string(above) + " more";
+            if (above > 0 && below > 0) more += "   ";
+            if (below > 0) more += "↓ " + std::to_string(below) + " more";
+            if (!more.empty())
+                theme.regular().draw(canvas, contentRight - theme.regular().measure(more, small), y, more, small, theme.focus);
+        }
+        const Rect box{left, listTop, contentRight - left, visibleRows * rowHeight + theme.px(12)};
+        canvas.fillRoundedRect(box, theme.px(9), theme.surface);
+        for (int i = 0; i < visibleRows; ++i) {
+            const CoreMraEntry &entry = *selected[size_t(coreUpdaterScroll_ + i)];
+            const int rowY = box.y + theme.px(6) + i * rowHeight + (rowHeight - theme.regular().lineHeight(small)) / 2;
+            char size[32];
+            if (entry.size >= 1024ull * 1024) std::snprintf(size, sizeof(size), "%.1f MB", double(entry.size) / (1024.0 * 1024.0));
+            else std::snprintf(size, sizeof(size), "%llu KB", (unsigned long long)((entry.size + 1023) / 1024));
+            theme.regular().draw(canvas, box.x + theme.px(18), rowY,
+                                 theme.regular().elide(entry.path, small, box.w - theme.px(200)), small, theme.textPrimary);
+            theme.regular().draw(canvas, box.right() - theme.px(18) - theme.regular().measure(size, small), rowY, size, small, theme.textMuted);
+        }
+        if (int(count) > visibleRows) { // scroll bar, so it is clear there is more
+            const Rect track{box.right() - theme.px(8), box.y + theme.px(6), theme.px(4), visibleRows * rowHeight};
+            canvas.fillRoundedRect(track, theme.px(2), theme.surfaceHi);
+            const int thumbH = std::max(theme.px(24), track.h * visibleRows / int(count));
+            const int thumbY = track.y + (track.h - thumbH) * coreUpdaterScroll_ / std::max(1, int(count) - visibleRows);
+            canvas.fillRoundedRect({track.x, thumbY, track.w, thumbH}, theme.px(2), theme.focus);
+        }
+        y = box.bottom() + theme.px(10);
+        line("Each file is checked against the official manifest before it replaces its target.", theme.textMuted);
+        line("No system files, firmware, BIOS files or ROMs are updated.", theme.textMuted);
+    } else if (coreUpdaterDialog_ == CoreUpdaterDialog::Installing) {
+        line(snapshot.message.empty() ? "Preparing update…" : snapshot.message, theme.textMuted);
+        line(std::to_string(snapshot.current) + " / " + std::to_string(snapshot.totalFiles) + " files   ·   " + std::to_string(snapshot.currentBytes / 1024) + " / " + std::to_string(snapshot.currentTotal / 1024) + " KiB", theme.textMuted, theme.sizeSmall());
+        const Rect track{left, y + theme.px(8), contentRight-left, theme.px(12)};
+        canvas.fillRoundedRect(track, theme.px(6), theme.surface);
+        if (snapshot.currentTotal) canvas.fillRoundedRect({track.x,track.y,std::max(theme.px(12),int(uint64_t(track.w)*snapshot.currentBytes/snapshot.currentTotal)),track.h},theme.px(6),theme.accent);
+        y = track.bottom() + theme.px(18);
+        line(std::to_string(snapshot.installed) + " installed   ·   " + std::to_string(snapshot.failed) + " failed", theme.textMuted, theme.sizeSmall());
+    } else if (!coreUpdaterInstallResult_) {
+        // The check itself failed: no file was touched, so say that instead of showing counters.
+        line(snapshot.message.empty() ? "The official update list could not be loaded." : snapshot.message, theme.warning);
+        line("Nothing on your MiSTer was changed.", theme.textMuted);
+        if (!snapshot.detail.empty())
+            line("Details: " + snapshot.detail, theme.textMuted, theme.sizeSmall());
+    } else {
+        line(snapshot.message.empty() ? "The update operation has finished." : snapshot.message, snapshot.failed ? theme.warning : theme.textMuted);
+        line(std::to_string(snapshot.installed) + " installed   ·   " + std::to_string(snapshot.failed) + " failed", theme.textPrimary);
     }
 }
 
@@ -1944,9 +2444,22 @@ void SettingsScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*
                              panel.bottom() - margin - footerHeight,
                              "B Close", theme.sizeSmall(), theme.accent);
     }
+    if (coreUpdaterModalActive_) renderCoreUpdater(canvas, area);
 }
 
 std::string SettingsScreen::hints() const {
+    if (coreUpdaterModalActive_) {
+        switch (coreUpdaterDialog_) {
+        case CoreUpdaterDialog::Intro:
+            return coreUpdaterOnline_ ? "A Check for updates   B Back" : "B Back";
+        case CoreUpdaterDialog::Checking: return "Checking official files…   B Stop";
+        case CoreUpdaterDialog::List:
+            return "↑/↓ Move   ←/→ Change filter   A Select   X Select all   Y Check again   Start Review updates   B Close";
+        case CoreUpdaterDialog::Review: return "↑/↓ Scroll   A Confirm and install   B Back";
+        case CoreUpdaterDialog::Installing: return "Installing updates…   Keep MiSTer powered on";
+        case CoreUpdaterDialog::Result: return coreUpdaterInstallResult_ ? "A Close" : "A Try again   B Close";
+        }
+    }
     if (discCoreInstallConfirmationActive_) return "A Install package   B Cancel";
     if (discDriveSettingsActive_) return "A/B Back";
     if (infoModalActive_) return "B Close";

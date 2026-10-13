@@ -322,7 +322,9 @@ Settings uses three columns: categories on the left, the selected category's act
 options in the middle, and a larger explanation of the selected option on the right. Use
 up/down to move within the focused column and left/right to switch between categories and
 options. Choose **Settings → System → Info** to open system facts in a modal. The categories are
-Library, Controllers, Interface, Accessibility, Updates, and System. Interface settings include
+Library, Controllers, Interface, Accessibility, Updates, and System. Library also holds **Core and
+MRA updates**, which compares the official distribution's cores and MRAs with what is installed
+(see [UPDATER.md](UPDATER.md)). Interface settings include
 **Game view**—Grid, Boxart small, List or Individual—tab display as names, icons or both, and
 interface sound controls.
 Accessibility settings include the Space Grotesk font switch or download action, three font sizes

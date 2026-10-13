@@ -5,10 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.8.2] - 2026-10-13
+## [0.8.3] - 2026-10-14
 
 ### Added
 
+- **Core and MRA updates** (Settings → Library) compare the official MiSTer distribution's Arcade
+  cores, Console cores and Arcade MRAs with what is installed. The list is grouped by kind and
+  filterable by state (Needs update, All, Up to date, Changed); files are chosen with round
+  checkboxes, confirmed on a scrolling review list and verified against the official hashes before
+  they replace anything. BIOS files, ROMs and system files are never touched. See
+  [UPDATER.md](docs/UPDATER.md).
+  - The first dialog checks that a network is available and says what to do when it is not.
+  - A running check shows progress and the files being compared.
+  - A check is saved for 15 minutes, also across a restart; **Y** checks again.
+  - Failures are explained in plain words, state that nothing was changed, and keep the technical
+    reason as a small detail.
+  - Older versions of a core are not removed after an update (see Known limitations).
 - **Box-art directory index.** The names in every box-art folder are read once at startup, with a
   short pause between folders, and again after a library reload. Covers are then opened without
   probing for files that do not exist, which was slow in large folders on exFAT. See
@@ -43,6 +55,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Known limitations
 
+- Installing a core or MRA with the new updater next to the official Downloader has been tried
+  only once on hardware (five Arcade cores, nine MRAs and one Console core installed and matched
+  the official hashes); a run of the official Downloader afterwards has not been checked. Old core
+  versions stay next to the new ones. See [UPDATER.md](docs/UPDATER.md).
 - The Home screen can stay blank after a cold start until a button is pressed; the cause is
   suspected but not fixed. See [ISSUES.md](docs/ISSUES.md).
 - The tile caption height is fixed; with the larger fonts it needs a visual check at the largest

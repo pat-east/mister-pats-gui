@@ -205,7 +205,7 @@ void ArcadeGamesScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedr
     Theme &theme = context_.theme;
 
     const int headerHeight = theme.px(58);
-    theme.bold().draw(canvas, area.x, area.y, "Arcade Games", theme.sizeHeading(),
+    theme.bold().draw(canvas, area.x, area.y, "Arcade game status", theme.sizeHeading(),
                       theme.textPrimary);
 
     // Live for as long as anything has actually been checked yet — waiting for the whole scan

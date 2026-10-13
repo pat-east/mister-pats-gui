@@ -235,7 +235,7 @@ bool App::initialize(const Options &options) {
         [this] { openArtwork(); },
         [this] { startAssetDownload(); }, [this] { return assetDownloadStatus(); },
         [this] { openVisibility(); }, [this] { openControllers(); },
-        [this] { openArcadeSettings(); },
+        [this] { openArcadeGames(); },
         [this] { toggleGamesTab(); }, [this] { toggleArcadeTab(); }, [this] { cycleDefaultView(); },
         [this] { startMisterCore(); },
         [this] {

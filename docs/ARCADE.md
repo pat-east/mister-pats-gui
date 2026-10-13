@@ -58,9 +58,8 @@ and [Non-goals](#non-goals-for-v1).
 - [Where cores and MRAs would come from, if this ever fetches
   them](#where-cores-and-mras-would-come-from-if-this-ever-fetches-them) — how
   `Update_All_MiSTer` actually works
-- [Decision: Manage Cores and Manage MRAs](#decision-manage-cores-and-manage-mras) — starting
-  from the ROMs you own rather than the whole catalog, the shared sync mechanism, and the
-  complete end-to-end path, with a mockup
+- [Decision: Core and MRA updates](#decision-core-and-mra-updates) — starting
+  the shared sync mechanism, and the complete end-to-end path, with a mockup
 - [Non-goals for v1](#non-goals-for-v1)
 - [Open questions](#open-questions) — most now answered, with where
 
@@ -1117,8 +1116,7 @@ reapplying an already-fixed one.
 The question asked: if the diagnostic table's "Core? N" / "ROM? N" columns ever grew an
 "install it" action, where would the file actually come from? The MiSTer community already
 solved this well; worth understanding before inventing a competing answer. **Now taken further
-than research** — see [Decision: Manage Cores and Manage
-MRAs](#decision-manage-cores-and-manage-mras) below for the actual plan.
+than research** — see [Decision: Core and MRA updates](#decision-core-and-mra-updates) below for the actual plan.
 
 **`Update_All_MiSTer` is a menu-driven wrapper, not the engine.** The actual download/verify
 tool is [`MiSTer-devel/Downloader_MiSTer`](https://github.com/MiSTer-devel/Downloader_MiSTer)
@@ -1183,16 +1181,14 @@ maintained) the way a missing core or ROM set is surfaced. An "install this" act
 real, ongoing maintenance work (manifest curation, per-core packaging) this project does not do
 today — a link or a clear instruction may be the more honest v1 than a competing downloader.
 
-## Decision: Manage Cores and Manage MRAs
+## Decision: Core and MRA updates
 
-Two more rows under Settings → Manage Arcade, alongside Arcade Games: **Manage Cores** and
-**Manage MRAs**. Both sync against the same manifest described above
-([Distribution_MiSTer's `db.json`](#where-cores-and-mras-would-come-from-if-this-ever-fetches-them)),
-through the same downloader this project already has (`Downloader`, currently used for box art
-and the update check) plus two genuinely new pieces — a manifest parser and an MD5 check — both
-scoped narrowly rather than pulled in as general libraries, matching how this document's earlier
-decisions already favour a small, purpose-built parser (`MraFile`'s own tag scanner) over a
-general one.
+Core and MRA synchronization belongs in **Settings → Library**, alongside the separate Arcade
+readiness overview. **Core and MRA updates** opens a modal over Settings, with Arcade cores, Console cores,
+and Arcade MRAs shown together in one status and selection view. The separate Arcade readiness
+overview is named **Arcade game status**. Updates use the official distribution manifest described
+above ([Distribution_MiSTer's `db.json`](#where-cores-and-mras-would-come-from-if-this-ever-fetches-them))
+and the project downloader, with a narrowly scoped manifest parser and MD5 verification.
 
 ### The starting point is the manifest, not your ROM library
 
@@ -1273,10 +1269,9 @@ own README this session:
 
 **What this changes here:** given the community's own trusted tool already treats "sync the
 whole enabled database" as the normal, unremarkable default — for cores as much as for
-anything else — inventing bespoke ROM-driven selectivity for *this* project's Manage Cores
-screen would be solving a problem the ecosystem has not needed solved. The simpler, better-
-precedented v1: **Manage Cores syncs the whole official arcade core set, exactly like Manage
-MRAs, both behind one explicit action** (never automatic, matching `Update_All`'s own "you run
+anything else — inventing bespoke ROM-driven selectivity for this project's core update view would be solving
+a problem the ecosystem has not needed solved. The simpler v1 synchronizes official Arcade and
+Console cores and MRAs behind one explicit action (never automatic, matching `Update_All`'s own "you run
 it when you want to" behaviour) — not gated behind a ROM scan at all. Filtering "show me only
 cores I can actually use right now" stays valuable, but belongs to [the diagnostic
 screen](#implemented-the-diagnostic-table) already built (it already has a `Filter` — see
@@ -1310,34 +1305,22 @@ download step.
   the game drive, re-fetched only when stale (the manifest's own `timestamp` field is exactly
   what `Downloader_MiSTer` itself already uses this way).
 
-### The two screens
+### Update and readiness views
 
-Both the same shape, both syncing their whole side of the manifest unconditionally, behind one
-explicit action — no ROM scan gating either one, per the precedent above:
-
-- **Manage Cores**: every `_Arcade/cores/*.rbf` the manifest lists, against what is actually in
-  that folder — Missing / Update available (manifest hash differs from the installed file's) /
-  Up to date. Confirm to download, verify by MD5, install. Also — mirroring the manifest's own
-  `tangle` semantics by hand, since this project would now be the thing doing the installing —
-  remove a superseded dated duplicate of the same core rather than leaving it to accumulate,
-  which is exactly the situation [`resolveCore()`'s own lexicographic-last
-  heuristic](#rbf-version-selection) exists to paper over when nothing manages installation at
-  all.
-- **Manage MRAs**: the same shape, for every `.mra` the manifest lists directly under `_Arcade/`.
-- **The diagnostic table stays the filter, not the download step.** Once both are up to date,
-  [Arcade Games](#implemented-the-diagnostic-table) already answers "which of these can I
-  actually play" — its ROM?/CRC? columns, driven by whatever is genuinely in `games/mame/`, are
-  what turns "693 MRAs and 193 cores are now installed" into "here are the dozen that will
-  actually boot." Two separate, simple jobs — sync everything official; then look at what that
-  makes possible — rather than one job trying to be clever about both at once.
+The modal groups the official distribution into Arcade cores, Console cores, and Arcade MRAs. It
+compares manifest hashes with installed files, shows missing, outdated, and current status, and
+requires an explicit review before downloading and installing selected files. The readiness view
+remains separate: [Arcade game status](#implemented-the-diagnostic-table) answers which games are
+ready using the core and ROM/CRC data already described in the diagnostic table. Local ROM
+availability does not gate core or MRA updates.
 
 ### The complete path, end to end — what the user actually asked to see sketched
 
 1. **This GUI is installed.** (Already true today.)
-2. **Settings → Manage Arcade → Manage Cores**, then **Manage MRAs** — one explicit action each,
-   syncing the whole official set via `ArcadeDistribution`, same shape as `Update_All_MiSTer`'s
-   own default "Main Distribution" sync, just scoped to `_Arcade/`.
-3. **Settings → Manage Arcade → Arcade Games** (already built, live-tested this session — see
+2. **Settings → Library → Core and MRA updates** — check the official set, review selected files,
+   then explicitly install through the modal flow. This syncs the official set via
+   `ArcadeDistribution`, scoped to `_Arcade/` and console core paths.
+3. **Settings → Library → Arcade game status** (the existing Arcade readiness overview — see
    [Implemented: the diagnostic table](#implemented-the-diagnostic-table)) — now has accurate
    Core?/ROM file? columns for the whole official catalog, not just whatever happened to be
    installed already. Its **ROM?/CRC? columns are where your own `games/mame/*.zip` collection
@@ -1363,7 +1346,7 @@ always.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│  Manage Arcade › Manage Cores                                                │
+│  Settings › Library › Core and MRA updates (modal)                          │
 ├──────────────────────────────────────────────────────────────────────────────┤
 │  193 cores in the official distribution                                      │
 │                                                                                │

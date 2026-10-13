@@ -101,6 +101,10 @@ checks whether compatible PlayStation or Saturn FPGA cores are installed.
 - **Make the interface yours:** choose tab names or icons, larger text, larger button hints, and high contrast with a
   highlight color you pick (eight to choose from), and separate startup and menu sounds. Settings also includes clock and time-zone controls, Wi-Fi
   setup, asset downloads, artwork visibility and a confirmed reboot action.
+- **Keep Arcade and Console cores current:** Settings → Library → Core and MRA updates compares
+  the official MiSTer distribution with what is installed, lets you pick what to update and
+  verifies every download against the official hash before it replaces anything. No BIOS files,
+  ROMs or system files are touched.
 - **Update safely:** check for releases, verify downloaded files, install a versioned GUI library
   and choose when to restart. Older installed versions remain available for recovery.
 - **Boot straight into the GUI and launch through MiSTer's own loader.** The FPGA and its core
@@ -230,6 +234,7 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 | [GAME-VERSIONS.md](docs/GAME-VERSIONS.md) | Game version grouping behavior and safeguards for future parser changes |
 | [DISCDRIVE.md](docs/DISCDRIVE.md) | Physical PlayStation and Saturn disc detection, artwork lookup, safe MGL launch and remaining hardware acceptance |
 | [THEGAMEDB.md](docs/THEGAMEDB.md) | TheGamesDB API experiments, region/platform matches, screenshot coverage and scraper behavior |
+| [UPDATER.md](docs/UPDATER.md) | Core and MRA updates: scope, checking, verified installation, safety rules and what was verified on hardware |
 | [ISSUES.md](docs/ISSUES.md) | Known issues and open investigations, with the evidence collected so far |
 
 ## Status
@@ -251,9 +256,9 @@ regional and language game-version grouping, physical PlayStation and Saturn dis
 launch, offline disc-title lookup, TheGamesDB artwork with Libretro fallback, local caching, and
 a per-disc artwork reload action. Hardware acceptance details and current scraper limitations are
 documented with the feature notes.
-Version 0.8.2 adds a faster box-art path (a directory index, border-only cover focus that moves
-instantly), larger text, a high-contrast highlight color and button-hint size, and a shared design
-system.
+Version 0.8.3 adds Core and MRA updates for Arcade cores, Console cores and Arcade MRAs, a faster
+box-art path (a directory index, border-only cover focus that moves instantly), larger text, a high-
+contrast highlight color and button-hint size, and a shared design system.
 See
 [CHANGELOG.md](CHANGELOG.md),
 [GUI.md](docs/GUI.md), [BOXART.md](docs/BOXART.md), [DISCDRIVE.md](docs/DISCDRIVE.md), and
@@ -354,8 +359,12 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.5.0 change list.
       [DISCDRIVE.md](docs/DISCDRIVE.md). Parser safeguards are in
       [GAME-VERSIONS.md](docs/GAME-VERSIONS.md).
 
-#### 0.8.2 — Speed, accessibility and a shared design (current)
+#### 0.8.3 — Core and MRA updates, speed and accessibility (current)
 
+- [x] **Core and MRA updates.** Settings → Library → Core and MRA updates compares the official
+      distribution's Arcade cores, Console cores and Arcade MRAs with what is installed, with a
+      network check, live progress, a 15-minute saved result and verified installation. See
+      [UPDATER.md](docs/UPDATER.md). Removing old core versions is still open.
 - [x] **Faster box art.** A directory index avoids slow lookups in huge media folders; a
       focused cover only gets a border and focus moves instantly. See [BOXART.md](docs/BOXART.md).
 - [x] **Accessibility.** Larger text, a High contrast color of your choice and a button-hint size
@@ -384,8 +393,10 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.5.0 change list.
       `controller_unique_mapping`). Left out of the first pass of controller management on
       purpose — two same-model pads sharing one mapping is the common case.
 - [ ] **Per-game DIP-switch editing** for Arcade.
-- [ ] **Manage Cores / Manage MRAs** for Arcade, syncing against the official distribution
-      manifest. Design in [ARCADE.md](docs/ARCADE.md#decision-manage-cores-and-manage-mras).
+- [ ] **Core selection per console**, so users can choose which cores are included when checking
+      for and installing core updates.
+- [ ] **Remove old core versions** after a core update, once the official replacement data is
+      understood well enough to do it safely.
 - [ ] **Video modes.** `video_mode=` in `MiSTer.ini`, including a clean fallback when a
       configured mode fails or is not available. Also covers running, and verifying, this GUI
       at resolutions other than 1080p — it only scales its own design pixels to whatever the
