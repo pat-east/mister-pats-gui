@@ -77,7 +77,10 @@ void Tile::drawPlaceholder(Canvas &canvas, Theme &theme, const Rect &body,
 
 void Tile::draw(Canvas &canvas, Theme &theme, const Rect &frame, const Content &content,
                 float focus) {
-    const Rect outer = focusedFrame(frame, focus);
+    // Cover art is prepared at its display size and must never be scaled while drawing (see
+    // docs/DESIGN.md, "Box art is fixed-size"). Its tile therefore does not grow when focused:
+    // focus only adds a border. Other tiles (icons, placeholders) still grow.
+    const Rect outer = content.coverArt ? frame : focusedFrame(frame, focus);
     const int radius = theme.radius();
 
     const bool hasArt = content.image && content.image->valid();
@@ -102,7 +105,7 @@ void Tile::draw(Canvas &canvas, Theme &theme, const Rect &frame, const Content &
 
     // Only the focused tile gets a shadow: on a dark background the others gain almost
     // nothing from it, and every shadow layer is a full-tile alpha pass.
-    if (focus > 0.05f) {
+    if (focus > 0.05f && !content.coverArt) {
         const uint8_t alpha = uint8_t(170 * focus);
         canvas.dropShadow(body, radius, theme.px(16), theme.shadow.withAlpha(alpha));
     }

@@ -528,6 +528,25 @@ To be tried out:
   good enough. If so, we save ourselves the second layer.
 - Whether one intermediate step is enough (thumbnail and Full only).
 
+## Box-art directory lookups and tile focus (0.8.2)
+
+**Directory lookups on exFAT.** A system's `media` folder can hold tens of thousands of files, and
+exFAT finds a file by scanning the directory entry by entry. Measured on the MiSTer over SSH:
+looking up one name that does not exist took about 79 ms in the Game Boy Advance folder (17,348
+entries) and about 17 ms in the Nintendo 64 folder (2,069 entries); a lookup of a file that exists
+costs about half of that the first time and little afterwards. The loader tried up to four names per
+cover, so a cover without a prepared BMP cost several scans, and a favorites list spread over big
+folders was slow. The fix is a directory index (`ArtworkIndex`): the file names of every media
+folder are read once at startup, with a 50 ms pause between folders (16 folders and 76,948 names
+took 3.3 s in the log), and again after a library reload. The loader asks the index first and
+opens only files that exist. See [BOXART.md](BOXART.md).
+
+**Tile focus.** A focused cover used to grow by 10 % and fade in over about 0.4 s: the picture was
+scaled up on the CPU in every frame of the animation, a drop shadow added a full-tile alpha pass,
+and about 13 frames repainted both tiles. Now a focused cover keeps its size, gets a 3 px border,
+and focus switches in one frame, so a key press repaints two tiles once. Moving between games felt
+clearly smoother when tried on the device; no frame timings were recorded for this change.
+
 ## Measurement Log
 
 | Date | Change | Systems grid |

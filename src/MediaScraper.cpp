@@ -1,3 +1,4 @@
+#include "ArtworkIndex.h"
 #include "MediaScraper.h"
 
 #include <algorithm>
@@ -56,7 +57,9 @@ bool writeShrunk(ImagePtr image, const std::string &path, int maxEdge, int quali
     // half-finished file that later looks like "already scraped".
     const std::string temporary = path + ".part";
     if (!image->saveJpeg(temporary, quality)) return false;
-    return rename(temporary.c_str(), path.c_str()) == 0;
+    if (rename(temporary.c_str(), path.c_str()) != 0) return false;
+    ArtworkIndex::instance().noteFile(path);
+    return true;
 }
 
 bool writeBmpVariant(const ImagePtr &source, const std::string &base,
@@ -87,6 +90,7 @@ bool writeBmpVariant(const ImagePtr &source, const std::string &base,
         unlink(temporary.c_str());
         return false;
     }
+    ArtworkIndex::instance().noteFile(path);
     return true;
 }
 

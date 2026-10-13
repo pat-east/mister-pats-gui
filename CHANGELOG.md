@@ -5,6 +5,49 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.2] - 2026-10-13
+
+### Added
+
+- **Box-art directory index.** The names in every box-art folder are read once at startup, with a
+  short pause between folders, and again after a library reload. Covers are then opened without
+  probing for files that do not exist, which was slow in large folders on exFAT. See
+  [BOXART.md](docs/BOXART.md).
+- **High contrast color.** Settings → Accessibility → High contrast color chooses White, Pink,
+  Yellow, Cyan, Lime Green, Electric Blue, Orange or Lavender for the focus outline and every other
+  highlight; progress bars, hints, selected values and favorite marks no longer stay blue in high
+  contrast.
+- **High contrast borders.** In high contrast the search bar and the Settings category and option
+  rows get a white border (not with White as the highlight color).
+- **Hint size.** Settings → Accessibility → Hint size makes the controller hints at the bottom
+  left Standard, Larger or Largest.
+- **Diagnostic logging** for a Home screen that stays blank after a cold start (framebuffer mode
+  changes and kernel uptime in the log); the open investigation is in [ISSUES.md](docs/ISSUES.md).
+
+### Changed
+
+- **Faster browsing.** A focused cover is no longer enlarged: it keeps its size and gets a border,
+  and focus moves to the next tile at once instead of fading over about half a second. Box art is
+  never scaled while drawing.
+- **Larger text.** Every font size is 2 px larger; the Text size setting still scales on top of it.
+- **One look for controls.** Round checkboxes everywhere, dialogs without buttons (actions are in
+  the controller hints at the bottom left, ordered movement → select → confirm → back), and tabs
+  drawn like the main navigation.
+- **Design rules** are documented in [DESIGN.md](docs/DESIGN.md): sizes and spacing, box-art sizes,
+  controls, and the empty, error and success states.
+
+### Fixed
+
+- **Settings cursor.** Moving to another category now starts on that category's first row; the
+  position of the previous category used to carry over and could land on the last entry.
+
+### Known limitations
+
+- The Home screen can stay blank after a cold start until a button is pressed; the cause is
+  suspected but not fixed. See [ISSUES.md](docs/ISSUES.md).
+- The tile caption height is fixed; with the larger fonts it needs a visual check at the largest
+  text size.
+
 ## [0.8.0] - 2026-10-12
 
 ### Added

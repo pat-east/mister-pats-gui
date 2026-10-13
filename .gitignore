@@ -22,12 +22,14 @@ poc/loadcore
 poc/startscreen
 
 .DS_Store
+AGENTS.md
+CLAUDE.md
 
 # Claude Code session state — local to whoever is running it, not part of the project.
 .claude/
 
 # Private release-planning notes and local scrape audit output.
-VNEXT.md
-vnext.md
 reports/
-HOWTORELEASE.md
+
+# Local vNext planning notes and mockups
+_vnext/

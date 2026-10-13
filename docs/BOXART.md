@@ -53,6 +53,33 @@ absent. The uncompressed variants can use up to about 1.7 MB per cover; keeping 
 supports older installations and covers without prepared variants. Background images remain
 JPEG/PNG. Arcade still fetches covers only, without background screenshots.
 
+## Directory index
+
+exFAT finds a file by scanning its directory entry by entry, so a lookup costs time in proportion
+to the folder's size. On a MiSTer, looking up one name that does not exist took about 79 ms in a
+Game Boy Advance `media` folder (about 17,000 files) and about 17 ms in the Nintendo 64 folder
+(about 2,000 files). The image loader tries several names per cover (`-home.bmp`, `-sm.jpg`,
+`.jpg`, `.png`), so a cover without a prepared BMP cost several of those scans.
+
+To avoid it, the GUI reads the file names of every system's box-art folders into memory once
+(`ArtworkIndex`) and asks that list before it touches the file system:
+
+- **When:** at startup while the splash screen is visible, and again, in the background, after a
+  library reload (**Settings → Reload saved game list**), which first drops the old list.
+- **Gentle on storage:** directories are read one after another with a 50 ms pause after each;
+  only names are read (no file contents, nothing is written). Playing or browsing causes no
+  further directory scans for names the list already answers.
+- **How it is used:** a name that is in the list is opened directly; a name that is not is
+  skipped without asking the file system. A folder that is not in the list, or a name with
+  non-ASCII characters, is asked the old way, so nothing becomes unavailable because of the
+  index.
+- **Case:** exFAT ignores case, so names are compared in lower case.
+- **Bounds:** at most 300,000 names (a few tens of MB at the very most; a library with 100,000
+  covers needs a fraction of that). Folders beyond the limit stay unindexed.
+- **Freshness:** the scraper and **Prepare box art** add the files they write. Files copied to the
+  drive by other means appear after the next library reload.
+- The log shows the cost: `artwork index: directories=… names=… elapsed-ms=…`.
+
 ## Boxart fade-in and cache
 
 Newly loaded covers in Home's recent/favorite rows and the Games grid use the existing three-phase

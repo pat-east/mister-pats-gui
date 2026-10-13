@@ -47,9 +47,15 @@ public:
     void setUseSpaceGrotesk(bool use);
 
     int fontSizeScale() const { return fontSizeScale_; }
+    // Size of the controller hints at the bottom left: 100, 115 or 130 percent.
+    int hintSizeScale() const { return hintSizeScale_; }
+    void setHintSizeScale(int scale);
     void setFontSizeScale(int scale);
 
     bool highContrast() const { return highContrast_; }
+    // Index into Theme's high-contrast colors (see Theme::highContrastColorName). Only used while High contrast is on.
+    int highContrastColor() const { return highContrastColor_; }
+    void setHighContrastColor(int index);
     void setHighContrast(bool enabled);
 
     // A shared game view (grid/list/small) or "individual" for per-tab views.
@@ -98,7 +104,9 @@ private:
     bool menuSoundsEnabled_ = true;
     bool useSpaceGrotesk_ = true;
     int fontSizeScale_ = 100;
+    int hintSizeScale_ = 100;
     bool highContrast_ = false;
+    int highContrastColor_ = 2; // Theme::kDefaultHighContrastColor (Yellow)
     std::string defaultView_ = "grid";
     std::string homeView_ = "grid";
     std::string favoritesView_ = "grid";

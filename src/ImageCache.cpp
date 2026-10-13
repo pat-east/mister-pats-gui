@@ -1,5 +1,7 @@
 #include "ImageCache.h"
 
+#include "ArtworkIndex.h"
+
 #include <algorithm>
 #include <cerrno>
 #include <cstdio>
@@ -320,6 +322,8 @@ bool ImageCache::isPendingCandidates(const std::vector<std::string> &candidates,
 
 void ImageCache::invalidateCandidates(const std::vector<std::string> &candidates) {
     if (candidates.empty()) return;
+    // New artwork may have appeared under any of these names.
+    for (const std::string &candidate : candidates) ArtworkIndex::instance().noteFile(candidate);
     const std::string prefix = candidateKeyPrefix(candidates);
     auto matches = [&](const std::string &key) {
         if (key.compare(0, prefix.size(), prefix) == 0) return true;
@@ -373,7 +377,13 @@ void ImageCache::workerLoop() {
         }
 
         auto loadAndFit = [&](const std::string &candidate) -> ImagePtr {
-            if (candidate.empty() || access(candidate.c_str(), F_OK) != 0) return nullptr;
+            if (candidate.empty()) return nullptr;
+            // The directory index already knows which files exist; asking the file system for
+            // a missing name in a huge folder costs tens of milliseconds.
+            const ArtworkIndex::Presence known = ArtworkIndex::instance().lookup(candidate);
+            if (known == ArtworkIndex::Presence::Absent) return nullptr;
+            if (known == ArtworkIndex::Presence::Unknown && access(candidate.c_str(), F_OK) != 0)
+                return nullptr;
             ImagePtr source = Image::load(candidate);
             if (!source || !source->valid()) {
                 // Match the synchronous cache's recovery for drives that briefly fail an early read.

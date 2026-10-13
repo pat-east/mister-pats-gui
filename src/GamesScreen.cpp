@@ -406,7 +406,7 @@ void GamesScreen::update(float deltaSeconds) {
             view_, context_.preferences.loadSmallBoxartsInGridView()));
     }
 
-    const float speed = std::min(1.0f, deltaSeconds * 9.0f);
+    const float speed = Tile::focusStep(deltaSeconds);
     for (size_t i = 0; i < focus_.size(); ++i) {
         const float target = (int(i) == cursor_) ? 1.0f : 0.0f;
         focus_[i] += (target - focus_[i]) * speed;

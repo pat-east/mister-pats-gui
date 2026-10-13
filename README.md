@@ -98,8 +98,8 @@ checks whether compatible PlayStation or Saturn FPGA cores are installed.
   remain responsive.
 - **Browse large libraries without waiting:** the GUI builds its own per-system game index and
   fills long lists progressively, including the combined Games view.
-- **Make the interface yours:** choose tab names or icons, larger text and high contrast, and
-  separate startup and menu sounds. Settings also includes clock and time-zone controls, Wi-Fi
+- **Make the interface yours:** choose tab names or icons, larger text, larger button hints, and high contrast with a
+  highlight color you pick (eight to choose from), and separate startup and menu sounds. Settings also includes clock and time-zone controls, Wi-Fi
   setup, asset downloads, artwork visibility and a confirmed reboot action.
 - **Update safely:** check for releases, verify downloaded files, install a versioned GUI library
   and choose when to restart. Older installed versions remain available for recovery.
@@ -219,6 +219,7 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 | Document | What it covers |
 | --- | --- |
 | [INSTALL.md](docs/INSTALL.md) | Installing, verifying and uninstalling |
+| [DESIGN.md](docs/DESIGN.md) | The shared design system: sizes, spacing, colors, box-art sizes, controls, dialogs and states |
 | [GUI.md](docs/GUI.md) | The interface design: layout, tiles, navigation, typography |
 | [PERFORMANCE.md](docs/PERFORMANCE.md) | What was measured, what it cost, and what made it fast |
 | [BOXART.md](docs/BOXART.md) | Artwork preparation, formats and scraper matching audit |
@@ -229,6 +230,7 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 | [GAME-VERSIONS.md](docs/GAME-VERSIONS.md) | Game version grouping behavior and safeguards for future parser changes |
 | [DISCDRIVE.md](docs/DISCDRIVE.md) | Physical PlayStation and Saturn disc detection, artwork lookup, safe MGL launch and remaining hardware acceptance |
 | [THEGAMEDB.md](docs/THEGAMEDB.md) | TheGamesDB API experiments, region/platform matches, screenshot coverage and scraper behavior |
+| [ISSUES.md](docs/ISSUES.md) | Known issues and open investigations, with the evidence collected so far |
 
 ## Status
 
@@ -248,7 +250,11 @@ shows each favorite's system, and avoids repainting unchanged list content. Vers
 regional and language game-version grouping, physical PlayStation and Saturn disc detection and
 launch, offline disc-title lookup, TheGamesDB artwork with Libretro fallback, local caching, and
 a per-disc artwork reload action. Hardware acceptance details and current scraper limitations are
-documented with the feature notes. See
+documented with the feature notes.
+Version 0.8.2 adds a faster box-art path (a directory index, border-only cover focus that moves
+instantly), larger text, a high-contrast highlight color and button-hint size, and a shared design
+system.
+See
 [CHANGELOG.md](CHANGELOG.md),
 [GUI.md](docs/GUI.md), [BOXART.md](docs/BOXART.md), [DISCDRIVE.md](docs/DISCDRIVE.md), and
 [THEGAMEDB.md](docs/THEGAMEDB.md).
@@ -334,7 +340,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.5.0 change list.
 - [x] **A separately remembered view per tab** — Home, Favorites, Consoles and Games — instead
       of the one default view for all of them.
 
-#### 0.8.0 — Game variants and SuperStation Dock (current)
+#### 0.8.0 — Game variants and SuperStation Dock
 
 - [x] **Group language and revision variants of one game.** Show one entry for titles such as
       Pokémon Sapphire even when the library has separate Europe, Japan and USA ROMs or
@@ -347,6 +353,15 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.5.0 change list.
       global MiSTer Main setting. Broader Dock acceptance remains tracked in
       [DISCDRIVE.md](docs/DISCDRIVE.md). Parser safeguards are in
       [GAME-VERSIONS.md](docs/GAME-VERSIONS.md).
+
+#### 0.8.2 — Speed, accessibility and a shared design (current)
+
+- [x] **Faster box art.** A directory index avoids slow lookups in huge media folders; a
+      focused cover only gets a border and focus moves instantly. See [BOXART.md](docs/BOXART.md).
+- [x] **Accessibility.** Larger text, a High contrast color of your choice and a button-hint size
+      setting.
+- [x] **A shared design system** in [DESIGN.md](docs/DESIGN.md) and a place for open problems in
+      [ISSUES.md](docs/ISSUES.md).
 
 #### Backlog
 

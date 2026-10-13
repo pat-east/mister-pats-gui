@@ -1,4 +1,5 @@
 #include "App.h"
+#include "ArtworkIndex.h"
 #include "ButtonLabels.h"
 #include "DebugLog.h"
 #include "ErrorModal.h"
@@ -34,7 +35,7 @@ int hintTextWidth(Font &font, const std::string &text, int size, int iconSize, i
 
 void drawHintText(Canvas &canvas, Theme &theme, Font &font, int x, int y, int size,
                   Color color, const std::string &text) {
-    const int iconSize = theme.px(18);
+    const int iconSize = theme.hintIconSize();
     const int gap = theme.px(5);
     const int lineHeight = font.lineHeight(size);
     size_t start = 0;
@@ -61,6 +62,38 @@ void drawHintText(Canvas &canvas, Theme &theme, Font &font, int x, int y, int si
         x += iconSize + gap;
         start = marker + sizeof(kDpadHintToken) - 1;
     }
+}
+
+// Diagnostic for docs/ISSUES.md ("Home is blank after a cold start"): the MiSTer_fb kernel
+// module counts every mode it applies, and Main_MiSTer re-applies it at moments we do not
+// control. Reading the counter is a sysfs read in kernel memory — no storage access.
+long readFramebufferResCount() {
+    std::FILE *file = std::fopen("/sys/module/MiSTer_fb/parameters/res_count", "r");
+    if (!file) return -1;
+    long value = -1;
+    if (std::fscanf(file, "%ld", &value) != 1) value = -1;
+    std::fclose(file);
+    return value;
+}
+
+// Seconds since boot, the same clock as the [ ... ] stamps in dmesg.
+double uptimeSeconds() {
+    std::FILE *file = std::fopen("/proc/uptime", "r");
+    if (!file) return -1.0;
+    double value = -1.0;
+    if (std::fscanf(file, "%lf", &value) != 1) value = -1.0;
+    std::fclose(file);
+    return value;
+}
+
+// Every box-art directory of every system, once each, in library order.
+std::vector<std::string> artworkDirectories(const std::vector<GameSystem> &systems) {
+    std::vector<std::string> directories;
+    for (const GameSystem &system : systems)
+        for (const std::string &directory : system.mediaDirs)
+            if (std::find(directories.begin(), directories.end(), directory) == directories.end())
+                directories.push_back(directory);
+    return directories;
 }
 
 } // namespace
@@ -97,6 +130,8 @@ bool App::initialize(const Options &options) {
     tabIcons_.refresh();
     preferences_.load();
     theme_->setFontSizeScale(preferences_.fontSizeScale());
+    theme_->setHintSizeScale(preferences_.hintSizeScale());
+    theme_->setHighContrastColor(preferences_.highContrastColor());
     theme_->setHighContrast(preferences_.highContrast());
     setFaceButtonStyle(preferences_.faceButtonStyle());
     if (options_.splashMs > 0) {
@@ -105,6 +140,8 @@ bool App::initialize(const Options &options) {
                          library_.load();
                          if (preferences_.organizeGameVersions())
                              library_.prepareGameCache();
+                         // Read the box-art folders once, with the splash still up.
+                         ArtworkIndex::instance().build(artworkDirectories(library_.systems()));
                      });
         if (preferences_.startSoundEnabled()) UiSounds::play();
     } else {
@@ -282,6 +319,8 @@ bool App::initialize(const Options &options) {
 void App::reloadLibrary() {
     library_.clearPersistentGameCache();
     library_.load();
+    // The folders may have changed: drop the index and read them again in the background.
+    ArtworkIndex::instance().buildAsync(artworkDirectories(library_.systems()));
     if (preferences_.organizeGameVersions()) library_.prepareGameCache();
     favorites_.load();
     history_.load();
@@ -939,9 +978,20 @@ void App::renderBottomBar(const Rect &area) {
                                  favoriteHoldScreen_ == activeScreen() &&
                                  !favoriteHoldPath_.empty();
     const std::string hints = formatButtonLabels(activeScreen()->hints());
-    const int iconSize = theme.px(18);
+    const int iconSize = theme.hintIconSize();
     const int iconGap = theme.px(5);
-    const int y = area.y + (area.h - theme.regular().lineHeight(theme.sizeSmall())) / 2;
+    // The hints use their own size setting. If a long hint line would run into the version text
+    // at the right, it steps down until it fits (never below the normal small size).
+    std::string versionText = std::string("v") + kAppVersion;
+    if (updateSnapshot_.phase == UpdatePhase::Available && updateSnapshot_.canInstall)
+        versionText += "  ·  v" + updateSnapshot_.targetVersion + " available";
+    const int room = area.w - 2 * theme.marginX() -
+                     theme.regular().measure(versionText, theme.sizeSmall()) - theme.gap();
+    int hintSize = theme.sizeHint();
+    while (hintSize > theme.sizeSmall() &&
+           hintTextWidth(theme.bold(), hints, hintSize, iconSize, iconGap) > room)
+        --hintSize;
+    const int y = area.y + (area.h - theme.regular().lineHeight(hintSize)) / 2;
 
     if (favoriteHolding) {
         const bool removing = favorites_.contains(favoriteHoldPath_);
@@ -962,20 +1012,20 @@ void App::renderBottomBar(const Rect &area) {
                                theme.favorite);
     } else if (theme.highContrast()) {
         const int x = area.x + theme.marginX();
-        const int textWidth = hintTextWidth(theme.bold(), hints, theme.sizeSmall(), iconSize,
+        const int textWidth = hintTextWidth(theme.bold(), hints, hintSize, iconSize,
                                             iconGap);
         const int paddingX = theme.px(10);
         const int paddingY = theme.px(4);
-        const int lineHeight = theme.bold().lineHeight(theme.sizeSmall());
+        const int lineHeight = theme.bold().lineHeight(hintSize);
         const Rect hintFrame{x - paddingX, y - paddingY,
                              textWidth + paddingX * 2, lineHeight + paddingY * 2};
         canvas.fillRoundedRect(hintFrame, theme.px(6), theme.surfaceHi);
         canvas.strokeRoundedRect(hintFrame, theme.px(6), theme.px(2), theme.focus);
-        drawHintText(canvas, theme, theme.bold(), x, y, theme.sizeSmall(), theme.textPrimary,
+        drawHintText(canvas, theme, theme.bold(), x, y, hintSize, theme.textPrimary,
                      hints);
     } else {
         drawHintText(canvas, theme, theme.regular(), area.x + theme.marginX(), y,
-                     theme.sizeSmall(), theme.textMuted, hints);
+                     hintSize, theme.textMuted, hints);
     }
 
     // Small and out of the way in the corner — a build identifier for bug reports, not
@@ -1182,6 +1232,22 @@ int App::run() {
                 needsFullRedraw_ = true;
             }
         }
+        // Only logs; never redraws. At most 20 lines, so a misbehaving loop elsewhere cannot
+        // turn this into log traffic.
+        framebufferWatchTimer_ -= dt;
+        if (framebufferWatchTimer_ <= 0.0f) {
+            framebufferWatchTimer_ = 2.0f;
+            const long count = readFramebufferResCount();
+            if (count != framebufferResCount_ && framebufferResLogged_ < 20) {
+                ++framebufferResLogged_;
+                char message[160];
+                std::snprintf(message, sizeof(message),
+                              "framebuffer: MiSTer_fb res_count %ld -> %ld (kernel uptime %.1f s, tab=%d)",
+                              framebufferResCount_, count, uptimeSeconds(), int(tab_));
+                DebugLog::info(message);
+            }
+            framebufferResCount_ = count;
+        }
         if (tab_ == Tab::Disc) {
             const std::vector<Tab> tabs = visibleTabs();
             if (std::find(tabs.begin(), tabs.end(), Tab::Disc) == tabs.end())
@@ -1222,9 +1288,11 @@ int App::run() {
         if (full && !previousFrameWasFull) {
             char message[160];
             std::snprintf(message, sizeof(message),
-                          "run: full redraw begins (requested=%d, incremental=%d, error=%d, modal=%d)",
+                          "run: full redraw begins (requested=%d, incremental=%d, error=%d, modal=%d, "
+                          "kernel uptime %.1f s)",
                           needsFullRedraw_ ? 1 : 0, options_.incremental ? 1 : 0,
-                          context_->errorActive ? 1 : 0, gameActionsActive_ ? 1 : 0);
+                          context_->errorActive ? 1 : 0, gameActionsActive_ ? 1 : 0,
+                          uptimeSeconds());
             DebugLog::info(message);
         }
 

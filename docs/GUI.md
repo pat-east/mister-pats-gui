@@ -1,6 +1,7 @@
 # GUI Design
 
-Design document: layout, behavior and rendering rules. Some sketches and proposals below
+Shared visual and interaction rules for new screens live in [DESIGN.md](DESIGN.md). This document
+describes the GUI layout, tiles, navigation, and rendering rules. Some sketches and proposals below
 record earlier design choices; current release changes are summarized in
 [CHANGELOG.md](../CHANGELOG.md), with measurements in [PERFORMANCE.md](PERFORMANCE.md).
 
@@ -172,6 +173,21 @@ Applies to every screen. Dimensions are for 1920×1080.
   opacity.
 - **Safe area:** 80 px left/right, 40 px top/bottom — televisions crop the edges.
 
+### Modal dialogs and confirmation actions
+
+- Dim the current screen and show a centered, rounded panel so the user keeps context. Keep modal
+  contents within the safe area and leave enough space for the global footer.
+- Keep controller hints in the global bottom-left footer. They are the canonical instruction for
+  which buttons act and must remain visible while a modal is open.
+- Dialogs show no buttons for now. The next action is in the footer hint (see `DESIGN.md`,
+  "Buttons").
+- Use **B Back** (or a context-specific label such as **B Close**) to leave a dialog.
+- Confirmation dialogs summarize what will change before the primary action. Keep the action
+  explicit (for example, **Confirm and install**) and state relevant exclusions or restart behavior
+  in the dialog body.
+- Longer lists and progress views may use a larger modal, but retain the same dimmed background,
+  rounded surface, focus treatment, and footer control pattern.
+
 ## 5. Screens
 
 ### 5.1 Consoles (the first PoC)
@@ -215,9 +231,10 @@ A grid of tiles, freely navigable in all four directions.
 - **Tile content:** the system logo if one exists, otherwise the name in Space Grotesk, wrapped
   automatically and fitted to the tile width. Below the tile, the number of games, in a small
   size.
-- **Focus:** the focused tile grows to 112 %, becomes brighter, and gains a stronger shadow and
-  a 3 px border in the accent color. Its neighbors do not move out of the way — the tile grows
-  over them, with its shadow on top.
+- **Focus:** a focused cover tile keeps its size and gets a 3 px border in the accent color; the
+  artwork is never scaled up and has no shadow (box art is prepared at its display size, see
+  `DESIGN.md`). Tiles without cover art, such as system icons, still grow slightly and gain a
+  shadow. Neighbors do not move out of the way.
 - **Background:** very dark, with a soft radial gradient behind the focused tile that follows
   its position with a slight lag (parallax layer 1, factor 0.15).
 - **Scrolling:** if the focus moves below the last visible row, the grid scrolls by exactly one
@@ -309,8 +326,11 @@ Library, Controllers, Interface, Accessibility, Updates, and System. Interface s
 **Game view**—Grid, Boxart small, List or Individual—tab display as names, icons or both, and
 interface sound controls.
 Accessibility settings include the Space Grotesk font switch or download action, three font sizes
-(Standard, Larger and Largest), and a high-contrast switch. Clear focus indicators remain visible
-throughout the interface. Time format and time zone are in System, directly below **Info**. The six selected
+(Standard, Larger and Largest), three sizes for the controller hints at the bottom left, and a
+high-contrast switch with a choice of highlight color (White, Pink, Yellow, Cyan, Lime Green,
+Electric Blue, Orange, Lavender). In high contrast the highlight color carries the focus outline,
+progress bars, hints and selected values, and the search bar and Settings rows get a white border
+(except with White). Clear focus indicators remain visible throughout the interface. Time format and time zone are in System, directly below **Info**. The six selected
 Bootstrap Icons are recorded in `assets/tab-icons/manifest.tsv`; their upstream SVGs, license and
 BMP conversion script are kept alongside them for future additions. The script produces 26×26
 24-bit BMPs with a solid black background, matching the tab icon's 1080p display size and
@@ -391,7 +411,7 @@ Specification:
 | Content | image, fitted preserving its aspect ratio (`contain`), or text fallback |
 | Text fallback | Space Grotesk, wrapped automatically, fitted to the width |
 | Caption | below the tile, 18 px, single line, centered, ellipsized when too long |
-| Secondary line | optional, 15 px, 55 % opacity (e.g. "412 games") |
+| Secondary line | optional, 17 px, 55 % opacity (e.g. "412 games") |
 | Shadow | pre-baked 9-slice sprite, only opacity and size vary |
 | States | `NORMAL`, `FOCUSED`, `PRESSED` (96 % for 80 ms), `LOADING` (pulse in the placeholder) |
 
@@ -435,10 +455,10 @@ Behavior:
 
 | Role | Definition |
 | --- | --- |
-| Heading | Space Grotesk Bold 34 px, slightly increased letter spacing, uppercase |
+| Heading | Space Grotesk Bold 36 px, slightly increased letter spacing, uppercase |
 | Tab | Space Grotesk Medium 24 px, uppercase |
 | Tile caption | Space Grotesk Medium 18 px |
-| Secondary text | Space Grotesk Medium 15 px, 55 % opacity |
+| Secondary text | Space Grotesk Medium 17 px, 55 % opacity |
 | Time | Space Grotesk Medium 32 px |
 
 Colors (placeholders, still to be agreed on):

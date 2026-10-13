@@ -11,6 +11,19 @@
 
 namespace {
 
+// Shared controls of this screen. Every checkbox here goes through this, so they look the same
+// everywhere; the rules are in docs/DESIGN.md ("Checkboxes and switches").
+
+// Round checkbox: dark-blue outline, an inset light-gray dot when on.
+void drawRoundCheckbox(Canvas &canvas, Theme &theme, const Rect &box, bool on) {
+    canvas.strokeRoundedRect(box, box.w / 2, std::max(1, theme.px(2)),
+                             theme.highContrast() ? theme.textMuted : Color::rgb(0x17315F));
+    if (!on) return;
+    const int inset = box.w / 4;
+    const Rect dot{box.x + inset, box.y + inset, box.w - 2 * inset, box.h - 2 * inset};
+    canvas.fillRoundedRect(dot, dot.w / 2, Color::rgb(0xD6D8DE));
+}
+
 std::string settingHelp(const std::string &label) {
     if (label == "TheGamesDB")
         return "Looks up box art, screenshots and release year for PlayStation and Saturn discs. Add your API key to /media/fat/mister-pat/thegamesdb-settings.ini as apikey=\"YOUR_KEY\", then select this row to test it. Without a key or a matching result, artwork falls back to Libretro.";
@@ -52,8 +65,12 @@ std::string settingHelp(const std::string &label) {
         return "Use the Space Grotesk typeface. If its files are missing, choose this row to download them.";
     if (label == "Font size")
         return "Change text size across the interface. The new size takes effect immediately.";
+    if (label == "Hint size")
+        return "Change the size of the button hints at the bottom left: Standard, Larger or Largest. Long hints shrink a little if they would not fit.";
+    if (label == "High contrast color")
+        return "Choose the color High contrast uses for the selection outline, progress bars and highlighted values: White, Pink, Yellow, Cyan, Lime Green, Electric Blue, Orange or Lavender. Pick the one you see best. Turn on High contrast first.";
     if (label == "High contrast")
-        return "Use brighter text, darker backgrounds, and stronger focus outlines throughout the interface.";
+        return "Black background, brighter text, a highlight color of your choice for the selection and progress, and white borders around the search bar and the Settings lists. With White as the highlight color the extra borders are left out.";
     if (label == "Time format")
         return "Choose whether the clock uses 24-hour time or 12-hour time with AM and PM.";
     if (label == "Time zone")
@@ -337,6 +354,20 @@ void SettingsScreen::buildRows() {
                          if (context_.onThemeChanged) context_.onThemeChanged();
                      }});
 
+    accessibility.push_back({"Hint size",
+                     [this] {
+                         const int scale = context_.preferences.hintSizeScale();
+                         return scale == 130 ? std::string("Largest")
+                             : scale == 115 ? std::string("Larger") : std::string("Standard");
+                     },
+                     [this] {
+                         const int scale = context_.preferences.hintSizeScale();
+                         const int next = scale == 100 ? 115 : scale == 115 ? 130 : 100;
+                         context_.preferences.setHintSizeScale(next);
+                         context_.theme.setHintSizeScale(next);
+                         if (context_.onThemeChanged) context_.onThemeChanged();
+                     }});
+
     accessibility.push_back({"High contrast",
                      [this] { return std::string(context_.preferences.highContrast() ? "On" : "Off"); },
                      [this] {
@@ -345,6 +376,15 @@ void SettingsScreen::buildRows() {
                          context_.theme.setHighContrast(enabled);
                          if (context_.onThemeChanged) context_.onThemeChanged();
                      }});
+
+    accessibility.push_back({"High contrast color",
+                     [this] { return std::string(Theme::highContrastColorName(context_.preferences.highContrastColor())); },
+                     [this] {
+                         const int next = (context_.preferences.highContrastColor() + 1) % Theme::kHighContrastColors;
+                         context_.preferences.setHighContrastColor(next);
+                         context_.theme.setHighContrastColor(next);
+                         if (context_.onThemeChanged) context_.onThemeChanged();
+                     }, context_.preferences.highContrast()});
 
     // Time display is part of system configuration, next to the operating system actions.
     auto &system = categories_[5].rows;
@@ -634,6 +674,11 @@ void SettingsScreen::update(float deltaSeconds) {
                         ".", 7.0f);
     }
     previousTheGamesDbCheckState_ = gamesDbCheckState;
+    if (categories_.size() > 3) {
+        // The color only matters while High contrast is on, so it is greyed out otherwise.
+        for (Row &row : categories_[3].rows)
+            if (row.label == "High contrast color") row.enabled = context_.preferences.highContrast();
+    }
     if (categories_.size() > 5) {
         auto &systemRows = categories_[5].rows;
         const auto wifiRow = std::find_if(systemRows.begin(), systemRows.end(),
@@ -744,7 +789,7 @@ void SettingsScreen::handle(Action action) {
             if (optionCursor_ > 0) --optionCursor_;
         } else if (categoryCursor_ > 0) {
             --categoryCursor_;
-            optionCursor_ = std::min(optionCursor_, int(categories_[size_t(categoryCursor_)].rows.size()) - 1);
+            optionCursor_ = 0; // a category always opens on its first row
         }
         break;
     case Action::Down:
@@ -752,7 +797,7 @@ void SettingsScreen::handle(Action action) {
             if (optionCursor_ + 1 < int(categories_[size_t(categoryCursor_)].rows.size())) ++optionCursor_;
         } else if (categoryCursor_ + 1 < int(categories_.size())) {
             ++categoryCursor_;
-            optionCursor_ = std::min(optionCursor_, int(categories_[size_t(categoryCursor_)].rows.size()) - 1);
+            optionCursor_ = 0; // a category always opens on its first row
         }
         break;
     case Action::Left:
@@ -1395,6 +1440,8 @@ void SettingsScreen::renderCategories(Canvas &canvas, const Rect &area) {
         canvas.fillRoundedRect(frame, theme.px(8),
                                active ? theme.surfaceHi :
                                selected ? theme.surface.withAlpha(190) : theme.surface.withAlpha(110));
+        if (theme.highContrastBorders())
+            canvas.strokeRoundedRect(frame, theme.px(8), std::max(1, theme.px(2)), Color::rgb(0xFFFFFF));
         if (active) {
             canvas.fillRoundedRect({frame.x, frame.y, theme.px(4), frame.h}, theme.px(2),
                                    theme.accent);
@@ -1430,6 +1477,8 @@ void SettingsScreen::renderOptions(Canvas &canvas, const Rect &area) {
             canvas.fillRoundedRect(frame, theme.px(8),
                                    active ? theme.surfaceHi : theme.surface.withAlpha(190));
         }
+        if (theme.highContrastBorders())
+            canvas.strokeRoundedRect(frame, theme.px(8), std::max(1, theme.px(2)), Color::rgb(0xFFFFFF));
         if (active) {
             canvas.fillRoundedRect({frame.x, frame.y, theme.px(4), frame.h}, theme.px(2),
                                    theme.accent);
@@ -1461,16 +1510,7 @@ void SettingsScreen::renderOptions(Canvas &canvas, const Rect &area) {
         if (toggleValue) {
             const int x = right - valueWidth - checkboxGap - checkboxSize;
             const int y = frame.y + (frame.h - checkboxSize) / 2;
-            const Rect outer{x, y, checkboxSize, checkboxSize};
-            const int border = std::max(1, theme.px(2));
-            canvas.strokeRoundedRect(outer, checkboxSize / 2, border,
-                                     Color::rgb(0x17315F));
-            if (value == "On") {
-                const int inset = theme.px(5);
-                const Rect inner{x + inset, y + inset,
-                                 checkboxSize - 2 * inset, checkboxSize - 2 * inset};
-                canvas.fillRoundedRect(inner, inner.w / 2, Color::rgb(0xD6D8DE));
-            }
+            drawRoundCheckbox(canvas, theme, Rect{x, y, checkboxSize, checkboxSize}, value == "On");
         }
     }
 

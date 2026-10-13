@@ -82,6 +82,8 @@ bool GameSearch::handle(Action action, bool atTop, const SubmitHandler &onSubmit
 void GameSearch::renderField(Canvas &canvas, Theme &theme, const Rect &area,
                              const std::string &placeholder) const {
     canvas.fillRoundedRect(area, theme.radius(), theme.surfaceHi);
+    if (theme.highContrastBorders())
+        canvas.strokeRoundedRect(area, theme.radius(), theme.px(2), Color::rgb(0xFFFFFF));
     if (focused_ || keyboardVisible_)
         canvas.strokeRoundedRect(area, theme.radius(), theme.px(2), theme.accent);
     const std::string value = keyboardVisible_ ? keyboard_.value() : submittedQuery_;

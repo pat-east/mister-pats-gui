@@ -54,19 +54,56 @@ bool Theme::spaceGroteskActive() const {
     return bold_.path() == kSpaceBold && regular_.path() == kSpaceMedium;
 }
 
+namespace {
+
+struct HighContrastColor { const char *name; uint32_t rgb; };
+// Light, saturated colors that stand out on the black high-contrast background. They differ in
+// hue so a viewer can pick the one that is easiest to see with their eyes.
+const HighContrastColor kHighContrastPalette[Theme::kHighContrastColors] = {
+    {"White", 0xFFFFFF},
+    {"Pink", 0xFF8FD8},
+    {"Yellow", 0xFFE66D}, // the default, see Theme::kDefaultHighContrastColor
+    {"Cyan", 0x6FEAFF},
+    {"Lime Green", 0xB4FF3C},
+    {"Electric Blue", 0x5B9BFF},
+    {"Orange", 0xFFA64D},
+    {"Lavender", 0xC9B3FF},
+};
+
+int clampedHighContrastColor(int index) {
+    return index >= 0 && index < Theme::kHighContrastColors ? index : Theme::kDefaultHighContrastColor;
+}
+
+} // namespace
+
+const char *Theme::highContrastColorName(int index) {
+    return kHighContrastPalette[clampedHighContrastColor(index)].name;
+}
+
 void Theme::setHighContrast(bool enabled) {
     highContrast_ = enabled;
-    if (enabled) {
+    applyPalette();
+}
+
+void Theme::setHighContrastColor(int index) {
+    highContrastColor_ = clampedHighContrastColor(index);
+    if (highContrast_) applyPalette();
+}
+
+void Theme::applyPalette() {
+    if (highContrast_) {
+        // One color carries every highlight: focus outline, progress, hints, selected values.
+        const Color highlight = Color::rgb(kHighContrastPalette[highContrastColor_].rgb);
         background = Color::rgb(0x000000);
         backgroundLo = Color::rgb(0x000000);
         surface = Color::rgb(0x111111);
         surfaceHi = Color::rgb(0x292929);
-        accent = Color::rgb(0x78B7FF);
+        accent = highlight;
         textPrimary = Color::rgb(0xFFFFFF);
         textMuted = Color::rgb(0xD0D0D0);
         warning = Color::rgb(0xFF9A8E);
-        favorite = Color::rgb(0x78B7FF);
-        focus = Color::rgb(0xFFE66D);
+        favorite = highlight;
+        focus = highlight;
     } else {
         background = Color::rgb(0x0B0D14);
         backgroundLo = Color::rgb(0x05070C);

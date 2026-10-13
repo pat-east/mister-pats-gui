@@ -38,6 +38,11 @@ public:
 
     // How far a focused tile of this size reaches past its own frame. Layouts must leave
     // this much room, or the highlight is clipped along the edge it grew into.
+    // How far a tile's focus value moves toward its target in one frame. Focus on a tile is a
+    // border (cover art does not grow), so it switches at once: easing it took ~0.4 s and made
+    // moving between games feel laggy, and every frame of it repainted the tiles involved.
+    static float focusStep(float /*deltaSeconds*/) { return 1.0f; }
+
     static int focusMarginX(const Rect &frame);
     static int focusMarginY(const Rect &frame);
 

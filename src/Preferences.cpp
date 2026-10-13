@@ -1,4 +1,5 @@
 #include "Preferences.h"
+#include "Theme.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -89,7 +90,9 @@ bool Preferences::load(const std::string &file) {
     menuSoundsEnabled_ = true;
     useSpaceGrotesk_ = true;
     fontSizeScale_ = 100;
+    hintSizeScale_ = 100;
     highContrast_ = false;
+    highContrastColor_ = Theme::kDefaultHighContrastColor;
     defaultView_ = "grid";
     homeView_ = favoritesView_ = consolesView_ = gamesView_ = "grid";
     faceButtonStyle_ = "xbox";
@@ -124,7 +127,14 @@ bool Preferences::load(const std::string &file) {
         else if (line == "useSpaceGrotesk=0") useSpaceGrotesk_ = false;
         else if (line == "fontSizeScale=115") fontSizeScale_ = 115;
         else if (line == "fontSizeScale=130") fontSizeScale_ = 130;
+        else if (line == "hintSizeScale=115") hintSizeScale_ = 115;
+        else if (line == "hintSizeScale=130") hintSizeScale_ = 130;
         else if (line == "highContrast=1") highContrast_ = true;
+        else if (line.compare(0, 18, "highContrastColor=") == 0) {
+            // Stored by name, so reordering the colors never changes anyone's choice.
+            for (int i = 0; i < Theme::kHighContrastColors; ++i)
+                if (line.substr(18) == Theme::highContrastColorName(i)) highContrastColor_ = i;
+        }
         else if (line == "checkForUpdates=1") checkForUpdates_ = true;
         else if (line == "use24HourClock=0") use24HourClock_ = false;
         else if (line.compare(0, 9, "timeZone=") == 0) {
@@ -224,6 +234,18 @@ void Preferences::setUseSpaceGrotesk(bool use) {
 void Preferences::setFontSizeScale(int scale) {
     if (scale != 100 && scale != 115 && scale != 130) return;
     fontSizeScale_ = scale;
+    save();
+}
+
+void Preferences::setHighContrastColor(int index) {
+    if (index < 0 || index >= Theme::kHighContrastColors) return;
+    highContrastColor_ = index;
+    save();
+}
+
+void Preferences::setHintSizeScale(int scale) {
+    if (scale != 100 && scale != 115 && scale != 130) return;
+    hintSizeScale_ = scale;
     save();
 }
 
@@ -328,7 +350,10 @@ bool Preferences::save() const {
     if (!menuSoundsEnabled_) out << "menuSounds=0\n";
     if (!useSpaceGrotesk_) out << "useSpaceGrotesk=0\n";
     if (fontSizeScale_ != 100) out << "fontSizeScale=" << fontSizeScale_ << "\n";
+    if (hintSizeScale_ != 100) out << "hintSizeScale=" << hintSizeScale_ << "\n";
     if (highContrast_) out << "highContrast=1\n";
+    if (highContrastColor_ != Theme::kDefaultHighContrastColor)
+        out << "highContrastColor=" << Theme::highContrastColorName(highContrastColor_) << "\n";
     if (defaultView_ != "grid") out << "defaultView=" << defaultView_ << "\n";
     if (homeView_ != "grid") out << "homeView=" << homeView_ << "\n";
     if (favoritesView_ != "grid") out << "favoritesView=" << favoritesView_ << "\n";

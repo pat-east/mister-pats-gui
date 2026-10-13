@@ -382,7 +382,7 @@ void HomeScreen::update(float deltaSeconds) {
         searchResults_.update(deltaSeconds);
         return;
     }
-    const float speed = std::min(1.0f, deltaSeconds * 9.0f);
+    const float speed = Tile::focusStep(deltaSeconds);
 
     for (size_t r = 0; r < rows_.size(); ++r) {
         Row &row = rows_[r];

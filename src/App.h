@@ -144,6 +144,9 @@ private:
     DiscCoreInstaller discCoreInstaller_;
     DiscCoreManager::Status discCoreStatus_;
     float discCoreRefreshTimer_ = 0.0f;
+    float framebufferWatchTimer_ = 0.0f;
+    long framebufferResCount_ = -1;
+    int framebufferResLogged_ = 0;
     ImageCache images_;
     Icons icons_;
     std::unique_ptr<SystemIconDownload> systemIconDownload_;
