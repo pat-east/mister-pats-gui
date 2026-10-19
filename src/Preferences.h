@@ -79,6 +79,12 @@ public:
     bool checkForUpdates() const { return checkForUpdates_; }
     void setCheckForUpdates(bool check);
 
+    // Written once when the first-use onboarding is completed or skipped.
+    bool onboardingComplete() const { return onboardingComplete_; }
+    bool onboardingStarted() const { return onboardingStarted_; }
+    void setOnboardingStarted(bool started);
+    void setOnboardingComplete(bool complete);
+
     bool use24HourClock() const { return use24HourClock_; }
     void setUse24HourClock(bool value);
 
@@ -114,6 +120,8 @@ private:
     std::string gamesView_ = "grid";
     std::string faceButtonStyle_ = "xbox";
     bool checkForUpdates_ = false;
+    bool onboardingComplete_ = false;
+    bool onboardingStarted_ = false;
     bool use24HourClock_ = true;
     std::string timeZone_; // empty follows MiSTer's system time zone
     std::string file_ = kDefaultFile;

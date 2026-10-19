@@ -18,6 +18,13 @@ class LibraryScan {
 public:
     enum class State { Idle, Discovering, Scanning, Writing, Done, Failed };
 
+    struct ProgressItem {
+        std::string name;
+        std::string status;
+        bool active = false;
+        bool done = false;
+    };
+
     // The database directory is a parameter so a scan can be run against a scratch folder
     // during testing; the application uses the default.
     explicit LibraryScan(const std::string &databaseDirectory = GameDatabase::kDirectory)
@@ -25,6 +32,9 @@ public:
 
     // Roots are found automatically when none are given.
     void start(const std::vector<std::string> &roots = {});
+    // First-use sample with bounded titles per console and working Arcade entries.
+    void startJumpStart(const std::vector<std::string> &roots = {},
+                        size_t maxTitlesPerSystem = 20, size_t maxArcadeTitles = 20);
 
     // Where Arcade ROM zips are looked for, in order. Left alone, this is MiSTer's own order
     // for the roots being scanned; only a test with scratch folders has a reason to set it.
@@ -50,6 +60,7 @@ public:
 
     size_t systemsFound() const { return written_; }
     size_t gamesFound() const { return games_; }
+    const std::vector<ProgressItem> &progressItems() const { return progressItems_; }
     const std::string &error() const { return error_; }
 
     // The volumes worth looking at: the SD card plus whatever USB volumes are mounted.
@@ -57,6 +68,8 @@ public:
 
 private:
     std::vector<std::string> scanOne(const CatalogEntry &system) const;
+    void startWithLimits(const std::vector<std::string> &roots, size_t maxTitlesPerSystem,
+                         size_t maxArcadeTitles);
     void fail(std::string message);
 
     // Arcade is scanned after the ordinary systems, and differently: its games are the
@@ -80,6 +93,10 @@ private:
     std::vector<DatabaseGroup> manufacturers_;
     std::vector<DatabaseGroup> categories_;
     bool arcadePrepared_ = false;
+    bool hasArcade_ = false;
+    size_t maxTitlesPerSystem_ = 0;
+    size_t maxArcadeTitles_ = 0;
+    std::vector<ProgressItem> progressItems_;
 
     State state_ = State::Idle;
     GameDatabase database_;

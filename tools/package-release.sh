@@ -25,6 +25,7 @@ strings "$MAIN" | grep -Fq '/media/fat/mister-pat/logs/loader.log' || {
 }
 arm-unknown-linux-gnueabihf-nm -D "build/$LIB" | grep -Eq '[[:space:]]mister_gui_main_v1$' || { echo 'missing GUI entry point' >&2; exit 1; }
 arm-unknown-linux-gnueabihf-nm -D "build/$LIB" | grep -Eq '[[:space:]]mister_gui_disc_probe_v1$' || { echo 'missing bounded disc-probe entry point' >&2; exit 1; }
+arm-unknown-linux-gnueabihf-nm -D "build/$LIB" | grep -Eq '[[:space:]]mister_gui_core_setup_v1$' || { echo 'missing first-install core setup entry point' >&2; exit 1; }
 if arm-unknown-linux-gnueabihf-readelf -d "build/$LIB" | grep -q 'Shared library: \[libstdc++'; then
     echo 'libstdc++ must not be a dynamic dependency' >&2; exit 1
 fi

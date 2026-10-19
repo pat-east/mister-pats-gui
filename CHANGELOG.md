@@ -5,6 +5,53 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.4] - 2026-10-19
+
+### Added
+
+- **Fresh MiSTer Fusion installation.** A new `install-mister-pat.sh` path installs the latest
+  published GUI, verifies release files, prepares the `[MiSTer]` startup entries and restarts
+  MiSTer. It backs up an existing `MiSTer.ini`, creates a minimal one when needed, and leaves the
+  stock MiSTer binary and `MiSTer_example.ini` in place. The fresh-card procedure and prerequisites
+  are documented in [INSTALL.md](docs/INSTALL.md).
+- **First-use onboarding wizard.** When no game database exists and onboarding is incomplete,
+  the first launch introduces the dashboard, changing button hints and Settings. Skipping is
+  remembered, and an existing installation with a game database is not interrupted.
+- **Jump-Start choice.** The wizard offers Jump-Start or Skip. Before starting, it explains the
+  sample size, Arcade checks, artwork downloads and that the full library is not read. The full
+  library remains available later under Settings → Library.
+- **Bounded sample scan.** Jump-Start reads up to 20 titles per available system and up to 20
+  Arcade titles that pass the existing core, ROM and CRC checks. A progress screen lists systems,
+  can be scrolled when the list is longer than the screen, and can be cancelled.
+- **Sample box art.** After the scan, the GUI prepares existing covers and looks up matching
+  artwork for the sample titles only. The progress screen reports cover work; artwork failures
+  do not prevent continuing, and covers can be prepared again later.
+- **Ready overview.** The completion screen confirms the sample is ready, includes a brief game
+  quote, and points to reading the full library, preparing its box art and configuring the
+  controller. Its only continue action is **Start using MiSTer Pat's GUI**. An empty result has
+  its own message and suggests adding games and reading the library later.
+- **Scan recovery.** Failed or cancelled scans explain that no game list was saved and offer a
+  retry or exit. The regular full-library scan also explains which drives it will read and that
+  it does not modify their contents.
+
+### Changed
+
+- **First-install guidance.** Document a clean 32 GB MiSTer Fusion card, internet during setup,
+  a 1080p display and a connected controller. External USB storage is recommended for games and
+  BIOS files, while games can also be stored on the SD card; NVMe is an option with the
+  PowerStation One Dock.
+- **Project introduction.** Describe the goal in personal, plain language and make the project
+  premises explicit: easy to use, understand, configure and maintain.
+
+### Known limitations
+
+- The fresh-card installer does not download cores or install the optional Physical Disc package.
+  Core updates remain available in Settings; automatic all-core preparation during onboarding is
+  not included yet.
+- The fresh-card procedure and installer have not yet been validated on MiSTer hardware. In
+  particular, copying the script to the MiSTer Fusion card before its first boot still needs
+  confirmation.
+
 ## [0.8.3] - 2026-10-14
 
 ### Added
@@ -55,10 +102,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Known limitations
 
-- Installing a core or MRA with the new updater next to the official Downloader has been tried
-  only once on hardware (five Arcade cores, nine MRAs and one Console core installed and matched
-  the official hashes); a run of the official Downloader afterwards has not been checked. Old core
-  versions stay next to the new ones. See [UPDATER.md](docs/UPDATER.md).
 - The Home screen can stay blank after a cold start until a button is pressed; the cause is
   suspected but not fixed. See [ISSUES.md](docs/ISSUES.md).
 - The tile caption height is fixed; with the larger fonts it needs a visual check at the largest

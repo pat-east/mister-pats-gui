@@ -97,6 +97,8 @@ bool Preferences::load(const std::string &file) {
     homeView_ = favoritesView_ = consolesView_ = gamesView_ = "grid";
     faceButtonStyle_ = "xbox";
     checkForUpdates_ = false;
+    onboardingComplete_ = false;
+    onboardingStarted_ = false;
     use24HourClock_ = true;
     timeZone_.clear();
 
@@ -136,6 +138,8 @@ bool Preferences::load(const std::string &file) {
                 if (line.substr(18) == Theme::highContrastColorName(i)) highContrastColor_ = i;
         }
         else if (line == "checkForUpdates=1") checkForUpdates_ = true;
+        else if (line == "onboardingComplete=1") onboardingComplete_ = true;
+        else if (line == "onboardingStarted=1") onboardingStarted_ = true;
         else if (line == "use24HourClock=0") use24HourClock_ = false;
         else if (line.compare(0, 9, "timeZone=") == 0) {
             const std::string zone = line.substr(9);
@@ -295,6 +299,19 @@ void Preferences::setCheckForUpdates(bool check) {
     save();
 }
 
+void Preferences::setOnboardingStarted(bool started) {
+    if (onboardingStarted_ == started) return;
+    onboardingStarted_ = started;
+    save();
+}
+
+void Preferences::setOnboardingComplete(bool complete) {
+    if (onboardingComplete_ == complete && !onboardingStarted_) return;
+    onboardingComplete_ = complete;
+    onboardingStarted_ = false;
+    save();
+}
+
 void Preferences::setUse24HourClock(bool value) {
     use24HourClock_ = value;
     save();
@@ -361,6 +378,8 @@ bool Preferences::save() const {
     if (gamesView_ != "grid") out << "gamesView=" << gamesView_ << "\n";
     if (faceButtonStyle_ != "xbox") out << "faceButtonStyle=" << faceButtonStyle_ << "\n";
     if (checkForUpdates_) out << "checkForUpdates=1\n";
+    if (onboardingComplete_) out << "onboardingComplete=1\n";
+    if (onboardingStarted_) out << "onboardingStarted=1\n";
     if (!use24HourClock_) out << "use24HourClock=0\n";
     if (!timeZone_.empty()) out << "timeZone=" << timeZone_ << "\n";
     return true;

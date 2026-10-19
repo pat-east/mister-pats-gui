@@ -4,9 +4,10 @@
 
 The updater work is split into two independent features and release scopes:
 
-1. **Core updates — version 0.8.3:** install selected Arcade and Console core RBF files, together
-   with Arcade MRA files. MRA updates are part of the Core Updates feature and this document
-   specifies the combined scope.
+1. **Core updates — version 0.8.3:** install selected official core RBF files, together with
+   Arcade MRA files. MRA updates are part of the Core Updates feature and this document specifies
+   the combined scope. An automatic core-setup entry point is also available, but is not connected
+   to the fresh-install installer or onboarding flow.
 2. **System updates — release version TBD:** update MiSTer system files using the official system
    update mechanism. They require a separate specification and process-safety analysis; they are
    not implemented by Core and MRA Updates.
@@ -16,7 +17,8 @@ Updater must not be treated as the source or mechanism for Core and MRA updates.
 
 ## Goal
 
-MiSTer Pat's GUI can identify official Arcade and Console cores and Arcade MRAs in the MiSTer
+MiSTer Pat's GUI can identify official Arcade, Console, Computer, Other, Service, and Utility
+cores and Arcade MRAs in the MiSTer
 Distribution, check their status, and install selected or all missing/outdated files. The user can
 review what will change before anything is written and must explicitly start the update.
 
@@ -35,19 +37,19 @@ information.
 
 Select only manifest files that match either of these scopes:
 
-1. **Arcade and Console cores:** have the `.rbf` extension and the official
-   `arcadecores` or `consolecores` tag.
+1. **Official cores:** have the `.rbf` extension and the official `cores` tag, or an official
+   core-category tag such as `arcadecores`, `consolecores`, `computer-cores`, `other-cores`,
+   `service-cores`, or `utility`. Files tagged `essential` are excluded.
 2. **Arcade MRAs:** are `.mra` files directly under `_Arcade/`, excluding nested directories
    such as `_Arcade/cores/`.
 
-Classification uses manifest tags, not guessed paths or filenames. This is necessary because
-Arcade and Console cores can live in different locations. A core carrying additional tags is
-included if it matches either target tag. MRA classification uses the manifest path and extension.
+Classification uses manifest tags, not guessed paths or filenames. Core files can live in
+different locations. MRA classification uses the manifest path and extension.
 
 The selection excludes, in particular, `essential` files such as the menu core and MiSTer
-firmware, `computer-cores`, `other-cores`, `service-cores`, files outside the Arcade MRA path,
-and ROM/BIOS files. The selection comes from the official manifest; alternative databases from
-Update All and custom Downloader databases are not included.
+firmware, files outside the Arcade MRA path, ROM/BIOS files, and system-update files. The
+selection comes from the official manifest; alternative databases from Update All and custom
+Downloader databases are not included.
 
 Official documentation:
 
@@ -125,7 +127,7 @@ The steps are:
    and points to Settings → System → Connect to Wi-Fi; **A** starts the check when online.
 2. **Checking:** a progress bar and a live list of the files being compared. **B** stops it.
 3. **Choose what to update:** tabs for Needs update, All, Up to date and Changed; a list grouped by
-   Arcade cores, Console cores and Arcade MRAs with round checkboxes; the number of files and the
+   Arcade cores, Console cores, Other official cores and Arcade MRAs with round checkboxes; the number of files and the
    download size. **A** selects, **X** selects everything that needs an update, **Start** continues.
 4. **Confirm installation:** every selected file with its path and size, scrolling; **A** installs.
 5. **Installing:** per-file and overall progress. **Result:** what was installed or what failed.
@@ -198,8 +200,8 @@ At minimum, handle and clearly report these cases without uncontrolled file chan
 - a core or MRA file was changed, deleted, or manually replaced;
 - download succeeds but predecessor cleanup fails.
 
-The result list ("Choose what to update") groups files under Arcade cores, Console cores and
-Arcade MRAs. Each row has a readable name (the date and extension are dropped from core names), the
+The result list ("Choose what to update") groups files under Arcade cores, Console cores, Other
+official cores, and Arcade MRAs. Each row has a readable name (the date and extension are dropped from core names), the
 file path, its state (Up to date, Not installed, Changed, Cannot be checked) and its download
 size. Only files that can be installed have a round checkbox; Up to date and Cannot be checked
 rows have none, because they cannot be selected. Tabs at the top (Needs update, All, Up to date, Changed) filter by state with ←/→; the active tab has the same colored underline as the main navigation. The
@@ -265,7 +267,7 @@ anything.
 
 ## Acceptance criteria
 
-- Only manifest RBFs tagged `arcadecores` or `consolecores`, and `.mra`
+- Only manifest RBFs tagged `cores` or an official core-category tag, excluding `essential`, and `.mra`
   files directly under `_Arcade/`, appear in Core and MRA Updates.
 - Console and Arcade files are identified through manifest tags, not hard-coded filenames.
 - Check reports Missing, Modified/invalid, and Up to date based on the actual filesystem and

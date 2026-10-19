@@ -1,17 +1,18 @@
 # Installation
 
-This sets up MiSTer Pat's GUI so that the device boots straight into it. It takes about ten
-minutes and everything is done from a terminal on your computer — the MiSTer needs to be on
-your network, and you need to be able to SSH into it.
+This sets up MiSTer Pat's GUI so that the device boots straight into it. Use the fresh-card
+procedure for a new MiSTer Fusion installation, or the SSH procedure below for an existing setup.
 
 The commands below install the latest *published* release. The source checkout may include
 unreleased changes that are not present in the latest release assets. To install the source
 version, follow [Building from source](#building-from-source).
 
-> **What it changes.** The setup script creates `/media/fat/mister-pat` and installs the GUI
-> files there. It only checks `MiSTer.ini` and prints any boot-path lines that need adding;
-> you make those changes yourself. `/etc/inittab` and the stock MiSTer binary stay untouched.
-> Uninstalling is deleting that directory and the two INI lines — see [Uninstalling](#uninstalling).
+> **What it changes.** The fresh-card installer creates `/media/fat/mister-pat`, installs the
+> GUI, configures the `[MiSTer]` startup entries and restarts MiSTer. The existing-install
+> procedure installs or updates the GUI files but leaves
+> `MiSTer.ini` unchanged; you add the boot-path lines yourself. Both procedures leave
+> `/etc/inittab` and the stock MiSTer binary untouched. Uninstalling is deleting the GUI
+> directory and its two INI lines — see [Uninstalling](#uninstalling).
 
 | | |
 | --- | --- |
@@ -24,18 +25,49 @@ version, follow [Building from source](#building-from-source).
 
 ## Requirements
 
-- A MiSTer with a working SD card setup, on your network, with SSH access (the stock login is
-  `root`, and unless you changed it the password is `1`)
+- A MiSTer with a working SD card setup. SSH access is required for the existing-installation
+  procedure below (the stock login is `root`, and unless changed the password is `1`).
 - The games on a USB drive or the SD card, wherever the MiSTer already finds them
 - To build from source instead of using the release: macOS or Linux with the cross-toolchain,
   see [Building from source](#building-from-source)
 
-Console Mode is **not required**, for anything. See
-[Console Mode is not required](#console-mode-is-not-required).
+## Fresh MiSTer Fusion card
+
+For a first setup, use a new SD card with **at least 32 GB** of capacity, prepared with MiSTer
+Fusion. Keep the card in your computer after writing it. Copy `tools/install-mister-pat.sh` from
+this project to `/Scripts/install-mister-pat.sh` on the card. The MiSTer needs internet access
+while the script runs. Connect a controller, preferably by cable, and use a TV or monitor
+capable of at least 1080p. An external USB drive is recommended for your own games and BIOS
+files; an SD card can also store games. With a PowerStation One Dock, an NVMe drive is another
+option.
+
+After MiSTer Fusion has completed its first boot, open **Scripts** and run `update.sh` to bring
+MiSTer up to date. Let it finish and restart MiSTer if requested. Then open **Scripts** again and
+run `install-mister-pat.sh`. It installs the latest published GUI and adds its startup entries in
+the `[MiSTer]` section of `MiSTer.ini`. If `MiSTer.ini` already exists, the script saves it as
+`MiSTer.ini.bak.mister-pat` before adding the startup entries. If it is missing, the script creates
+a minimal file containing only `[MiSTer]`, `main=mister-pat/MiSTer_gui`, and
+`gui=mister-pat/mister-gui`; it leaves `MiSTer_example.ini` unchanged. This happens after the GUI
+has installed successfully. When updating an existing file, it converts CRLF line endings to LF.
+The script opens with an ASCII version of the project logo, then shows four numbered setup steps and
+reports the GUI download, configuration and restart status. During GUI setup, a spinner names the
+file being downloaded or checksum being checked. It also names checks and downloads for optional
+system icons, tab icons and fonts. Once those files are ready, it continues with startup
+configuration and restart. It does not download cores; after the restart, the GUI onboarding
+guides the next steps. The script restarts MiSTer automatically. If the reboot command is
+unavailable or fails, it tells you to restart manually.
+
+If the GUI download or installation fails, the script stops before changing the startup entries.
+Run it again to retry. This fresh-card path currently does not install the optional Physical Disc
+package. For an existing MiSTer setup, use the separate SSH procedure below; fresh-card installs
+do not need to run the SSH installer manually.
 
 Replace `<mister-ip>` with your MiSTer's address in every command below.
 
-## Install
+## Existing MiSTer setup (SSH)
+
+Use this manual procedure only for an existing MiSTer setup. For a fresh MiSTer Fusion card, use
+the first-time setup above; it runs the updater as part of `install-mister-pat.sh`.
 
 ### 1. Connect to your MiSTer
 
@@ -46,7 +78,7 @@ ssh root@<mister-ip>
 Run steps 2 and 4 in the SSH session. Step 3 is optional and uses files on your computer. The
 remaining steps are completed on the MiSTer itself.
 
-### 2. Run the install/update script
+### 2. Install or update the GUI files
 
 On the MiSTer:
 
@@ -113,29 +145,35 @@ previous setup.
 
 ### 6. Build your library, then fetch box art
 
-The first start has nothing to show, so a wizard opens by itself. It lists the volumes it
-found, explains what it is about to do, and waits: **A** starts the scan, **B** postpones it.
+When no game list exists and onboarding has not been completed, the first start opens a
+controller-operated guide. It explains the main dashboard areas, the context-sensitive hints
+at the bottom left, and where to find common setup options. **B** skips onboarding; that choice
+is remembered so an empty library does not reopen the wizard on every boot.
 
-The scan reads one system per frame rather than racing through the drives. That is not
-politeness — walking a large library flat out is what drops a marginally powered USB drive off
-the bus, and it is the failure this whole design is built around. Expect a few minutes with a
-large library, and watch the counter rather than the clock.
+The guide offers **Jump-Start**. **A** reads up to 20 game titles for each available system,
+including up to 20 Arcade titles that pass the core, ROM and CRC checks. It then prepares
+existing covers and looks up matching box art for those sample games. Matching artwork may be
+downloaded, as the Jump-Start screen explains before you start. This creates a small sample
+library for a first look at the GUI; it does not read the full collection. The system list in
+progress can be scrolled with Up and Down. **B** cancels the current scan or cover work.
 
-Arcade is part of the same scan, and the slowest part of it: for every `.mra` it checks that the
-core is installed and that the ROM zip is there with the right CRCs, and lists only the games
-that pass. With a few thousand `.mra` files that adds a couple of minutes. The Arcade tab appears
-once there is at least one working Arcade game. If a game you expected is missing,
-**Settings → Manage Arcade → Arcade Games** shows what is wrong with it.
+Afterward, the overview confirms what is ready, suggests reading the full library and preparing
+its box art later, and points to controller setup. **A** starts using the GUI. Choose
+**Settings → Library → Build game list** to replace the sample with the complete library. The
+scan reads one system per frame to keep storage access paced. Arcade is checked in small batches
+and only working games are listed; if a game is missing, **Settings → Manage Arcade → Arcade
+Games** explains why.
 
-The result lands in `/media/fat/mister-pat/gamesdb/`: a small `catalog.tsv` read at every
-start, and one `<System>.tsv` per system, read only when you open that system.
+The game list is stored in `/media/fat/mister-pat/gamesdb/`: a small `catalog.tsv` read at every
+start and one `<System>.tsv` per system, read only when you open that system. The scan does not
+change game files.
 
-Then choose **Settings → Library → Prepare box art**. The GUI converts existing covers into five
-view-sized BMP variants and downloads missing artwork when the thumbnail server has a match.
-It can be interrupted and resumed; completed covers stay in place. The progress screen shows
-an approximate completion clock time after the first game is processed. Budget up to about
-1.7 MB per cover for the BMP variants, in addition to the existing JPEG/PNG files. See
-[BOXART.md](BOXART.md) for the exact sizes and fallbacks.
+Choose **Settings → Library → Prepare box art** to prepare covers for the full library. The GUI
+converts existing covers into five view-sized BMP variants and downloads missing artwork when
+the thumbnail server has a match. It can be interrupted and resumed; completed covers stay in
+place. The progress screen shows an approximate completion clock time after the first game is
+processed. Budget up to about 1.7 MB per cover for the BMP variants, in addition to the existing
+JPEG/PNG files. See [BOXART.md](BOXART.md) for the exact sizes and fallbacks.
 
 If system pictures or tab icons are missing, choose **Settings → System → Download Assets**.
 The GUI downloads only missing BMPs and can still display older PNG system icons while BMPs are
@@ -152,52 +190,15 @@ and a half to leave the game: the menu core is reloaded and the GUI comes back o
 
 ## Updating
 
-In **Settings → Updates**, select **Check now**, then **Update now**. Confirm the release notes.
-Download and hash verification run in the background. **B** cancels before the new `.so` is
-published. The existing loader and patched MiSTer executable stay in place. With no version
-pin, restart MiSTer to load the newest installed library. The Settings screen shows the running
-version, the version selected for the next start, and whether a symlink pins that selection.
-When pinned, the update check compares GitHub's version with the pinned version, even if a
-higher library is already present. Downloading a newer library leaves the pin in effect.
-After installation, the success dialog offers **A** to restart MiSTer, **B** to continue
-without restarting, and **X** to remove the pin and restart when a pin exists. It shows the
-version each choice will load. **Restart options** opens the dialog again after B. Removing
-the pin selects the highest versioned library currently installed; that can differ from the
-version just downloaded.
-**Remove pinned version** remains available in Settings → Updates whenever a pin exists,
-including after a later GUI restart. It removes the symlink and offers an immediate restart
-or the option to continue running the current GUI. The newest installed library is selected
-for the next start.
-With automatic checks enabled, Settings shows **Waiting for Internet** for about 60 seconds
-while trying the GitHub HTTPS request. Only a successful response changes it to **Checking
-GitHub**. A timeout shows an error and makes **Check now** available for a manual retry.
-Switching automatic checks off also stops the wait.
+Open **Settings → Updates**, choose **Check now**, review the release notes, then choose
+**Update now**. The download is verified before installation. Restart MiSTer to load the new
+version; choosing to continue without restarting keeps the current version running until the
+next restart.
 
-To pin an installed version manually, use a relative link in the installation directory:
-
-```sh
-cd /media/fat/mister-pat
-rm -f mister-pats-gui.so.new
-ln -s mister-pats-gui-0.5.0.so mister-pats-gui.so.new
-mv -f mister-pats-gui.so.new mister-pats-gui.so
-```
-
-Replace `0.5.0` with the desired installed version and restart MiSTer. To return to automatic
-selection of the newest installed library, remove `mister-pats-gui.so` and restart. Older
-versioned libraries remain in place, so choosing one does not require another download.
-
-The SSH installer uses the same release contract and is also available for recovery:
-
-```sh
-curl --proto '=https' --proto-redir '=https' --fail --location --output /tmp/install-update.sh https://raw.githubusercontent.com/pat-east/mister-pats-gui/main/tools/install-update.sh
-sh /tmp/install-update.sh
-```
-
-The script leaves `MiSTer.ini` untouched and does not reboot. It rejects an unknown installation,
-a different same-version library, and a downgrade.
-
-If the confirmation warns of a database format change, choose **Settings → Build game list**
-after restarting. Updating never silently deletes or rebuilds the database.
+If an older version is pinned, remove the pin in **Settings → Updates** to use the newest
+installed version. If the update asks you to rebuild the game list, choose **Settings → Library
+→ Build game list** after restarting. For manual recovery, use the
+[existing setup SSH procedure](#existing-mister-setup-ssh).
 
 ### Hardware validation status
 
@@ -273,17 +274,3 @@ The device then boots exactly as it did before. Nothing else was modified.
 
 A reboot is always the safe way back, and removing the two INI lines always returns the
 device to its stock behaviour.
-
-## Console Mode is not required
-
-All four things the GUI needs are covered without it:
-
-| What | Where |
-| --- | --- |
-| System catalogue | **built here**, `/media/fat/mister-pat/gamesdb/catalog.tsv` |
-| Game index | **built here**, one `<System>.tsv` per system |
-| Box art and backgrounds | **prepared/fetched here** — Settings → Library → Prepare box art |
-| Fonts | Space Grotesk and its license are downloaded by the setup/update script or from Settings → Accessibility; the built-in fallback remains available |
-
-Console Mode itself never runs once this GUI is installed: `main=` sends the boot path to the
-patched binary instead. The GUI uses its own Space Grotesk files, installed alongside it.

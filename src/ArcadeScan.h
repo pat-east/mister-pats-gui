@@ -21,7 +21,8 @@ public:
     // whose scratch folders are not MiSTer's real mount points, passes `romSearchOrder` to
     // say otherwise.
     void start(const std::vector<std::string> &roots = {},
-               const std::vector<std::string> &romSearchOrder = {});
+               const std::vector<std::string> &romSearchOrder = {},
+               size_t maxWorkingEntries = 0);
 
     // One unit of work — while still finding files, a small batch of directories listed; once
     // that is done, a small batch of .mra files, each fully resolved. Call until finished().
@@ -39,6 +40,7 @@ public:
     const std::vector<ArcadeEntry> &entries() const { return entries_; }
     size_t total() const { return files_.size(); }
     size_t done() const { return position_; }
+    size_t workingFound() const { return workingFound_; }
 
 private:
     void discoverBatch();
@@ -48,5 +50,7 @@ private:
     std::vector<std::string> files_;
     std::vector<std::string> gameSearchRoots_;
     size_t position_ = 0;
+    size_t maxWorkingEntries_ = 0;
+    size_t workingFound_ = 0;
     std::vector<ArcadeEntry> entries_;
 };

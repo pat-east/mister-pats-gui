@@ -9,7 +9,7 @@
 
 #include "VerifiedDownloader.h"
 
-enum class CoreMraType { ArcadeCore, ConsoleCore, ArcadeMra };
+enum class CoreMraType { ArcadeCore, ConsoleCore, OtherCore, ArcadeMra };
 enum class CoreMraStatus { UpToDate, Missing, UpdateAvailable, Modified, Error };
 enum class CoreMraPhase { Idle, Checking, Ready, Installing, Complete, Failed };
 
@@ -60,6 +60,7 @@ public:
     bool startInstall();
     void cancelCheck();
     void selectAllMissingOrOutdated();
+    void selectAllCoreFiles();
     bool toggleSelected(size_t index);
     CoreMraSnapshot snapshot() const;
     bool busy() const;

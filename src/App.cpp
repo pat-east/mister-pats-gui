@@ -267,7 +267,8 @@ bool App::initialize(const Options &options) {
     discCoreStatus_ = discCores_.snapshot();
 
     scanScreen_ = std::make_unique<ScanScreen>(
-        *context_, scan_, scraper_, [this] { reloadLibrary(); }, [this] { closeScan(); });
+        *context_, scan_, scraper_, [this] { reloadLibrary(); }, [this] { closeScan(); },
+        [this] { preferences_.setOnboardingComplete(true); });
 
     visibilityScreen_ =
         std::make_unique<SystemVisibilityScreen>(*context_, [this] { closeVisibility(); });
@@ -296,10 +297,18 @@ bool App::initialize(const Options &options) {
     launcher_.setDryRun(options_.dryRun);
     if (options_.launchNow) gamesScreen_->launchCurrent();
 
-    // Without a database there is nothing to show and no obvious way to fix that, so the
-    // wizard opens by itself. It can be dismissed, which falls back to whatever Console Mode
-    // left behind.
-    if (options_.wizard && !library_.usingDatabase()) openScan(true);
+    // Offer first-use guidance once. Skipping it is remembered, so an empty library does not
+    // trap the user in the wizard on every later boot; the full scan remains in Settings.
+    if (options_.wizard && !preferences_.onboardingComplete()) {
+        if (library_.usingDatabase() && !preferences_.onboardingStarted()) {
+            // A library already present on an older installation is evidence that this is
+            // not its first setup. Do not interrupt existing users with a new welcome flow.
+            preferences_.setOnboardingComplete(true);
+        } else {
+            preferences_.setOnboardingStarted(true);
+            openScan(true);
+        }
+    }
 
     {
         std::string token;

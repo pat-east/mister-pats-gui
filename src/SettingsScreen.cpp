@@ -75,7 +75,7 @@ std::string settingHelp(const std::string &label) {
     if (label == "Arcade game status")
         return "See which Arcade games are ready to launch and why others are unavailable.";
     if (label == "Core and MRA updates")
-        return "Check and update official Arcade and Console cores and Arcade MRAs.";
+        return "Check and update official Arcade, Console, Computer, Other, Service and Utility cores and Arcade MRAs.";
     if (label == "Controllers")
         return "Test connected controllers, change how far a stick must move, or set up button controls.";
     if (label == "Face-button labels")
@@ -1039,7 +1039,7 @@ void SettingsScreen::renderCoreUpdater(Canvas &canvas, const Rect &area) {
     y += theme.bold().lineHeight(titleSize) + theme.px(16);
 
     if (coreUpdaterDialog_ == CoreUpdaterDialog::Intro) {
-        line("Check the official MiSTer Distribution for Arcade cores, Console cores and Arcade MRAs.");
+        line("Check the official MiSTer Distribution for current cores and Arcade MRAs.");
         line("Only selected core and MRA files are downloaded. BIOS files and ROMs are not included.", theme.textMuted);
         line("The check reads the installed files and does not change them.", theme.textMuted);
         y += theme.px(14);
@@ -1193,7 +1193,9 @@ void SettingsScreen::renderCoreUpdater(Canvas &canvas, const Rect &area) {
             const ListLine &l = lines[size_t(li)];
             if (l.header) {
                 const char *group = l.type == CoreMraType::ArcadeCore ? "Arcade cores"
-                                  : l.type == CoreMraType::ConsoleCore ? "Console cores" : "Arcade MRAs";
+                                  : l.type == CoreMraType::ConsoleCore ? "Console cores"
+                                  : l.type == CoreMraType::OtherCore ? "Other official cores"
+                                  : "Arcade MRAs";
                 theme.bold().draw(canvas, left + theme.px(4), rowY + theme.px(6), group, theme.sizeBody(), theme.textPrimary);
                 const std::string count = std::to_string(l.count) + (l.count == 1 ? " file" : " files");
                 theme.regular().draw(canvas, contentRight - theme.regular().measure(count, small), rowY + theme.px(10), count, small, theme.textMuted);

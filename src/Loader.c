@@ -80,7 +80,10 @@ static int launch(const char *name, int argc, char **argv, int *load_error, int 
     }
     dlerror();
     const int probe_mode = argc > 1 && strcmp(argv[1], "--disc-probe-once") == 0;
-    const char *entry_name = probe_mode ? "mister_gui_disc_probe_v1" : "mister_gui_main_v1";
+    const int core_setup_mode = argc > 1 && strcmp(argv[1], "--core-setup") == 0;
+    const char *entry_name = probe_mode ? "mister_gui_disc_probe_v1"
+                           : core_setup_mode ? "mister_gui_core_setup_v1"
+                                             : "mister_gui_main_v1";
     int (*entry)(int, char **) = (int (*)(int, char **))dlsym(library, entry_name);
     const char *symbol_error = dlerror();
     if (symbol_error || !entry) {

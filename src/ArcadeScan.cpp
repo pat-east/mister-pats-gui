@@ -25,12 +25,15 @@ bool hasMraSuffix(const std::string &s) {
 } // namespace
 
 void ArcadeScan::start(const std::vector<std::string> &roots,
-                       const std::vector<std::string> &romSearchOrder) {
+                       const std::vector<std::string> &romSearchOrder,
+                       size_t maxWorkingEntries) {
     state_ = State::Idle;
     pendingDirs_.clear();
     files_.clear();
     entries_.clear();
     position_ = 0;
+    maxWorkingEntries_ = maxWorkingEntries;
+    workingFound_ = 0;
 
     const std::vector<std::string> mounted = roots.empty() ? MraFile::mountedRoots() : roots;
     gameSearchRoots_ =
@@ -82,19 +85,24 @@ void ArcadeScan::step() {
 
     if (state_ != State::Scanning) return;
 
-    for (size_t i = 0; i < kBatchPerStep && position_ < files_.size(); ++i, ++position_) {
+    for (size_t i = 0; i < kBatchPerStep && position_ < files_.size() &&
+                        (!maxWorkingEntries_ || workingFound_ < maxWorkingEntries_);
+         ++i, ++position_) {
         ArcadeEntry entry;
         if (MraFile::parse(files_[position_], entry)) {
             MraFile::resolveCore(entry);
             MraFile::resolveRom(entry, gameSearchRoots_);
+            if (maxWorkingEntries_ && entry.mightWork()) ++workingFound_;
             entries_.push_back(std::move(entry));
         }
     }
 
-    if (position_ >= files_.size()) state_ = State::Done;
+    if (position_ >= files_.size() ||
+        (maxWorkingEntries_ && workingFound_ >= maxWorkingEntries_)) state_ = State::Done;
 }
 
 float ArcadeScan::progress() const {
+    if (state_ == State::Done) return 1.0f;
     if (state_ == State::Discovering) return 0.0f;
     if (files_.empty()) return 1.0f;
     return float(position_) / float(files_.size());

@@ -38,8 +38,21 @@ bool folderHasGame(const std::string &path, const std::vector<std::string> &exte
 } // namespace
 
 void LibraryScan::start(const std::vector<std::string> &roots) {
+    startWithLimits(roots, 0, 0);
+}
+
+void LibraryScan::startJumpStart(const std::vector<std::string> &roots,
+                                 size_t maxTitlesPerSystem, size_t maxArcadeTitles) {
+    startWithLimits(roots, maxTitlesPerSystem, maxArcadeTitles);
+}
+
+void LibraryScan::startWithLimits(const std::vector<std::string> &roots,
+                                 size_t maxTitlesPerSystem, size_t maxArcadeTitles) {
     roots_ = roots.empty() ? detectRoots() : roots;
+    maxTitlesPerSystem_ = maxTitlesPerSystem;
+    maxArcadeTitles_ = maxArcadeTitles;
     queue_.clear();
+    progressItems_.clear();
     position_ = written_ = games_ = 0;
     current_.clear();
     error_.clear();
@@ -47,6 +60,7 @@ void LibraryScan::start(const std::vector<std::string> &roots) {
     arcadeStarted_ = false;
     arcadeKept_ = 0;
     arcadePrepared_ = false;
+    hasArcade_ = false;
     arcadeLists_.clear();
     arcadeListsDone_ = 0;
     manufacturers_.clear();
@@ -67,8 +81,8 @@ float LibraryScan::progress() const {
         const size_t total = database_.finishTotal();
         return total ? float(database_.finishDone()) / float(total) : 1.0f;
     }
-    if (queue_.empty()) return 0.0f;
     if (position_ >= queue_.size() && arcadeStarted_) return arcade_.progress();
+    if (queue_.empty()) return 0.0f;
     return float(position_) / float(queue_.size());
 }
 
@@ -92,7 +106,7 @@ std::string LibraryScan::statusLine() const {
             return "Arcade  ·  " + arcade_.statusLine();
         }
         std::snprintf(buffer, sizeof(buffer), "System %zu of %zu: %s  ·  %zu games found",
-                      position_, queue_.size(), current_.c_str(), games_);
+                      position_ + 1, queue_.size(), current_.c_str(), games_);
         return buffer;
     case State::Writing:
         std::snprintf(buffer, sizeof(buffer), "Saving game lists: %zu of %zu",
@@ -134,12 +148,22 @@ std::vector<std::string> LibraryScan::scanOne(const CatalogEntry &system) const 
             } else {
                 subdirectories.push_back(full);
             }
+            if (maxTitlesPerSystem_ && games.size() >= maxTitlesPerSystem_) break;
             continue;
         }
 
         if (SystemCatalog::looksLikeGame(name, system.extensions)) games.push_back(full);
+        if (maxTitlesPerSystem_ && games.size() >= maxTitlesPerSystem_) break;
     }
     closedir(d);
+    if (maxTitlesPerSystem_ && games.size() >= maxTitlesPerSystem_) {
+        std::sort(games.begin(), games.end(), [](const std::string &a, const std::string &b) {
+            const size_t sa = a.find_last_of('/'), sb = b.find_last_of('/');
+            return strcasecmp(a.c_str() + (sa == std::string::npos ? 0 : sa + 1),
+                              b.c_str() + (sb == std::string::npos ? 0 : sb + 1)) < 0;
+        });
+        return games;
+    }
 
     // One level down, and no further. Libraries are sometimes sorted into A/B/C folders;
     // they are never nested deeply, and unbounded recursion on a large drive is exactly the
@@ -156,8 +180,10 @@ std::vector<std::string> LibraryScan::scanOne(const CatalogEntry &system) const 
             if (isDirectory(full)) continue;
             if (SystemCatalog::looksLikeGame(name, system.extensions) &&
                 !SystemCatalog::isSystemFile(system.key, name)) games.push_back(full);
+            if (maxTitlesPerSystem_ && games.size() >= maxTitlesPerSystem_) break;
         }
         closedir(inner);
+        if (maxTitlesPerSystem_ && games.size() >= maxTitlesPerSystem_) break;
     }
 
     std::sort(games.begin(), games.end(), [](const std::string &a, const std::string &b) {
@@ -165,6 +191,8 @@ std::vector<std::string> LibraryScan::scanOne(const CatalogEntry &system) const 
         return strcasecmp(a.c_str() + (sa == std::string::npos ? 0 : sa + 1),
                           b.c_str() + (sb == std::string::npos ? 0 : sb + 1)) < 0;
     });
+    if (maxTitlesPerSystem_ && games.size() > maxTitlesPerSystem_)
+        games.resize(maxTitlesPerSystem_);
 
     return games;
 }
@@ -268,6 +296,8 @@ bool LibraryScan::prepareArcade() {
     std::sort(kept.begin(), kept.end(), [](const ArcadeEntry *a, const ArcadeEntry *b) {
         return nameLess(a->mraPath, b->mraPath);
     });
+    if (maxArcadeTitles_ && kept.size() > maxArcadeTitles_)
+        kept.resize(maxArcadeTitles_);
 
     // A game with no manufacturer or category is still a game. Dropping it from those two
     // views would make it findable in one place only, without saying so.
@@ -351,6 +381,7 @@ void LibraryScan::step() {
         bool hasArcade = false;
         for (const std::string &root : roots_)
             if (isDirectory(root + "/_Arcade")) hasArcade = true;
+        hasArcade_ = hasArcade;
 
         cores_.scan(roots_);
         if (cores_.empty() && !hasArcade) {
@@ -369,6 +400,11 @@ void LibraryScan::step() {
             return;
         }
 
+        progressItems_.reserve(queue_.size() + (hasArcade_ ? 1 : 0));
+        for (const CatalogEntry &entry : queue_)
+            progressItems_.push_back({entry.name, "Waiting", false, false});
+        if (hasArcade_) progressItems_.push_back({"Arcade", "Waiting", false, false});
+
         std::printf("scan: %zu candidate systems on %zu volumes\n", queue_.size(),
                     roots_.size());
         state_ = State::Scanning;
@@ -385,8 +421,16 @@ void LibraryScan::step() {
         if (position_ >= queue_.size()) {
             if (!arcadeStarted_) {
                 arcadeStarted_ = true;
-                arcade_.start(roots_, romSearchOrder_);
-                current_ = "Arcade";
+                if (hasArcade_) {
+                    arcade_.start(roots_, romSearchOrder_, maxArcadeTitles_);
+                    current_ = "Arcade";
+                    if (!progressItems_.empty()) {
+                        progressItems_.back().active = true;
+                        progressItems_.back().status = "Checking working games…";
+                    }
+                } else {
+                    arcadePrepared_ = true;
+                }
                 return;
             }
             if (arcade_.running()) {
@@ -395,6 +439,13 @@ void LibraryScan::step() {
             }
             if (!arcadePrepared_) {
                 prepareArcade();
+                if (hasArcade_ && !progressItems_.empty()) {
+                    ProgressItem &item = progressItems_.back();
+                    item.active = false;
+                    item.done = true;
+                    item.status = arcadeKept_ ? std::to_string(arcadeKept_) + " titles ready"
+                                              : "No working titles found";
+                }
                 return;
             }
             if (writeArcadeStep()) return;
@@ -404,8 +455,19 @@ void LibraryScan::step() {
 
         const CatalogEntry &system = queue_[position_];
         current_ = system.name;
+        if (position_ < progressItems_.size()) {
+            progressItems_[position_].active = true;
+            progressItems_[position_].status = "Reading titles…";
+        }
 
         const std::vector<std::string> games = scanOne(system);
+        if (position_ < progressItems_.size()) {
+            ProgressItem &item = progressItems_[position_];
+            item.active = false;
+            item.done = true;
+            item.status = games.empty() ? "No titles found"
+                                        : std::to_string(games.size()) + " titles ready";
+        }
         if (!games.empty()) {
             DatabaseSystem record;
             record.key = system.key;

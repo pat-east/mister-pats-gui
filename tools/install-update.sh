@@ -9,8 +9,8 @@ BASE=https://github.com/pat-east/mister-pats-gui/releases/download
 MODE=${1:-install}
 case "$MODE" in install|--migrate-legacy) :;; *) echo "unknown option: $MODE" >&2; exit 2;; esac
 [ "$#" -le 1 ] || { echo 'too many arguments' >&2; exit 2; }
-fail() { echo "mister-pat update: $*" >&2; exit 1; }
-for tool in sha256sum od mktemp readlink awk; do command -v "$tool" >/dev/null 2>&1 || fail "missing $tool"; done
+fail() { printf '\n[STOP] MiSTer Pat update: %s\n' "$*" >&2; exit 1; }
+for tool in sha256sum od mktemp readlink awk sleep; do command -v "$tool" >/dev/null 2>&1 || fail "missing $tool"; done
 [ -w /media/fat ] || fail '/media/fat is not writable'
 mkdir -p "$ROOT" || fail "cannot create $ROOT"
 [ -d "$ROOT" ] && [ ! -L "$ROOT" ] || fail "unsafe installation root: $ROOT"
@@ -60,6 +60,7 @@ active_target() {
 }
 elf() { [ "$(od -An -tx1 -N4 "$1" | tr -d ' \n')" = 7f454c46 ]; }
 sha() { sha256sum "$1" | awk '{print $1}'; }
+verify_sha() { [ "$(sha "$1")" = "$2" ]; }
 ini_value() {
     awk -v wanted="$1" '
         function trim(s) {sub(/^[ \t\r]+/, "", s); sub(/[ \t\r]+$/, "", s); return s}
@@ -119,14 +120,47 @@ curl_https() {
     if [ -n "$CA_BUNDLE" ]; then curl --cacert "$CA_BUNDLE" "$@"
     else curl "$@"; fi
 }
+progress_run() {
+    progress_hint=$1; shift
+    if [ ! -t 1 ]; then
+        printf '  %s\n' "$progress_hint"
+        "$@"
+        return $?
+    fi
+    "$@" &
+    progress_pid=$!
+    progress_frame=0
+    while kill -0 "$progress_pid" 2>/dev/null; do
+        case $((progress_frame % 4)) in
+            0) progress_spinner='|' ;;
+            1) progress_spinner='/' ;;
+            2) progress_spinner='-' ;;
+            3) progress_spinner='\' ;;
+        esac
+        printf '\r\033[2K  %s %s' "$progress_spinner" "$progress_hint"
+        progress_frame=$((progress_frame+1))
+        sleep 0.4
+    done
+    if wait "$progress_pid"; then
+        printf '\r\033[2K  [OK] %s\n' "$progress_hint"
+        return 0
+    else
+        progress_status=$?
+        printf '\r\033[2K'
+        return "$progress_status"
+    fi
+}
 STAGE=$(mktemp -d "$ROOT/.update-staging/run-XXXXXX") || fail 'cannot create staging'
 fetch() {
     fetch_url=$1; fetch_out=$2; fetch_limit=$3; fetch_timeout=$4
     case "$fetch_url" in https://*) :;; *) fail "non-HTTPS URL: $fetch_url";; esac
+    fetch_name=${fetch_url##*/}
+    if [ "$fetch_url" = "$API" ]; then fetch_hint='Checking GitHub for the latest GUI release'
+    else fetch_hint="Downloading $fetch_name"; fi
     fetch_attempt=0
     while [ "$fetch_attempt" -lt 2 ]; do
         rm -f "$fetch_out"
-        if curl_https --proto '=https' --proto-redir '=https' --fail --location --max-redirs 5 \
+        if progress_run "$fetch_hint" curl_https --proto '=https' --proto-redir '=https' --fail --location --max-redirs 5 \
             --silent --show-error --connect-timeout 12 --max-time "$fetch_timeout" \
             --max-filesize "$fetch_limit" --output "$fetch_out" --url "$fetch_url"; then
             fetch_size=$(wc -c < "$fetch_out")
@@ -282,7 +316,7 @@ if [ "$ROUTINE" -eq 1 ]; then
     fetch "$url/$LIB" "$STAGE/$LIB" 67108864 120
     elf "$STAGE/$LIB" || fail "not an ELF file: $LIB"
     expected=$(awk -v n="$LIB" '$2==n {print $1}' "$STAGE/SHA256SUMS")
-    [ "$(sha "$STAGE/$LIB")" = "$expected" ] || fail "hash mismatch: $LIB"
+    progress_run "Verifying SHA-256 for $LIB" verify_sha "$STAGE/$LIB" "$expected" || fail "hash mismatch: $LIB"
     destination="$ROOT/$LIB"
     if [ -e "$destination" ] || [ -L "$destination" ]; then
         [ -f "$destination" ] && [ ! -L "$destination" ] &&
@@ -300,6 +334,8 @@ if [ "$ROUTINE" -eq 1 ]; then
     sync
     if [ -L "$LINK" ]; then
         echo "v$VERSION installed. Version pin $(readlink "$LINK") remains active."
+    elif [ "${MISTER_PAT_FIRST_INSTALL:-0}" = 1 ]; then
+        echo "[GUI] v$VERSION installed; returning to first-time setup."
     else
         echo "v$VERSION installed. Restart MiSTer to load the newest library."
     fi
@@ -337,7 +373,7 @@ for name in mister-gui MiSTer_gui "$LIB"; do
     fetch "$url/$name" "$STAGE/$name" 67108864 120
     elf "$STAGE/$name" || fail "not an ELF file: $name"
     expected=$(awk -v n="$name" '$2==n {print $1}' "$STAGE/SHA256SUMS")
-    [ "$(sha "$STAGE/$name")" = "$expected" ] || fail "hash mismatch: $name"
+    progress_run "Verifying SHA-256 for $name" verify_sha "$STAGE/$name" "$expected" || fail "hash mismatch: $name"
 done
 if [ "${partial:-0}" -eq 1 ]; then
     for name in mister-gui MiSTer_gui "$LIB"; do
@@ -356,7 +392,11 @@ if [ "${partial:-0}" -eq 1 ]; then
     done
     install_disc_assets
     sync
-    echo "v$VERSION installed. Restart MiSTer to load the newest library."
+    if [ "${MISTER_PAT_FIRST_INSTALL:-0}" = 1 ]; then
+        echo "[GUI] v$VERSION installed; returning to first-time setup."
+    else
+        echo "v$VERSION installed. Restart MiSTer to load the newest library."
+    fi
     exit 0
 fi
 if [ "${relation:--1}" -eq 0 ]; then
@@ -389,23 +429,23 @@ done
 install_disc_assets
 sync
 sync
-echo "v$VERSION installed. Newest library will load after a manual restart."
+echo "[GUI] Main GUI files are ready. Checking and downloading optional interface assets..."
 # Optional assets run only after the release has committed.
 ICON_COMMIT=2fcc05a0695326e25451d1e66c8db08f4d20e928
 FONT_VERSION=2.0.0
-if curl_https --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --connect-timeout 12 --max-time 15 --max-filesize 1048576 \
+if progress_run 'Checking available system icons' curl_https --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --connect-timeout 12 --max-time 15 --max-filesize 1048576 \
     "https://api.github.com/repos/pat-east/mister-pats-gui/contents/assets/icons?ref=$ICON_COMMIT" -o "$STAGE/icons.json"; then
     sed -n 's/^[[:space:]]*"name":[[:space:]]*"\([A-Za-z0-9._-]*\.bmp\)".*/\1/p' "$STAGE/icons.json" > "$STAGE/icons.txt"
     while IFS= read -r name; do
         [ -n "$name" ] || continue
         if [ -s "$ROOT/icons/$name" ] && [ "$(od -An -tx1 -N2 "$ROOT/icons/$name" | tr -d ' \n')" = 424d ]; then continue; fi
-        if curl_https --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --connect-timeout 12 --max-time 15 --max-filesize 1048576 \
+        if progress_run "Downloading system icon $name" curl_https --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --connect-timeout 12 --max-time 15 --max-filesize 1048576 \
             "https://raw.githubusercontent.com/pat-east/mister-pats-gui/$ICON_COMMIT/assets/icons/$name" -o "$STAGE/$name" && \
             [ "$(od -An -tx1 -N2 "$STAGE/$name" | tr -d ' \n')" = 424d ]; then
-            cp "$STAGE/$name" "$ROOT/icons/$name.new-$$" && mv "$ROOT/icons/$name.new-$$" "$ROOT/icons/$name" || echo "warning: icon $name" >&2
-        else echo "warning: icon $name" >&2; fi
+            cp "$STAGE/$name" "$ROOT/icons/$name.new-$$" && mv "$ROOT/icons/$name.new-$$" "$ROOT/icons/$name" || echo "[WARN] Could not install system icon $name." >&2
+        else echo "[WARN] Could not download system icon $name." >&2; fi
     done < "$STAGE/icons.txt"
-else echo 'warning: system icons unavailable' >&2; fi
+else echo '[WARN] System icons are unavailable; continuing without them.' >&2; fi
 tabiconbase="https://raw.githubusercontent.com/pat-east/mister-pats-gui/v$VERSION/assets/tab-icons"
 tab_icon_valid() {
     [ -s "$1" ] && [ "$(od -An -tx1 -N2 "$1" | tr -d ' \n')" = 424d ] && \
@@ -414,31 +454,35 @@ tab_icon_valid() {
         [ "$(od -An -tx1 -j28 -N2 "$1" | tr -d ' \n')" = 1800 ] && \
         [ "$(od -An -tx1 -j30 -N4 "$1" | tr -d ' \n')" = 00000000 ]
 }
-if curl_https --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --connect-timeout 12 --max-time 15 --max-filesize 65536 \
+if progress_run 'Checking available tab icons' curl_https --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --connect-timeout 12 --max-time 15 --max-filesize 65536 \
     "$tabiconbase/manifest.tsv" -o "$STAGE/tab-icons.tsv"; then
     awk -F '\t' 'NF >= 2 && $1 ~ /^[a-z0-9-]+\.bmp$/ {print $1}' "$STAGE/tab-icons.tsv" > "$STAGE/tab-icons.txt"
     while IFS= read -r name; do
         [ -n "$name" ] || continue
         if tab_icon_valid "$ROOT/tab-icons/$name"; then continue; fi
-        if curl_https --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --connect-timeout 12 --max-time 15 --max-filesize 1048576 \
+        if progress_run "Downloading tab icon $name" curl_https --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --connect-timeout 12 --max-time 15 --max-filesize 1048576 \
             "$tabiconbase/$name" -o "$STAGE/$name" && \
             tab_icon_valid "$STAGE/$name"; then
-            cp "$STAGE/$name" "$ROOT/tab-icons/$name.new-$$" && mv "$ROOT/tab-icons/$name.new-$$" "$ROOT/tab-icons/$name" || echo "warning: tab icon $name" >&2
-        else echo "warning: tab icon $name" >&2; fi
+            cp "$STAGE/$name" "$ROOT/tab-icons/$name.new-$$" && mv "$ROOT/tab-icons/$name.new-$$" "$ROOT/tab-icons/$name" || echo "[WARN] Could not install tab icon $name." >&2
+        else echo "[WARN] Could not download tab icon $name." >&2; fi
     done < "$STAGE/tab-icons.txt"
-else echo 'warning: tab icon manifest unavailable' >&2; fi
+else echo '[WARN] Tab icons are unavailable; continuing without them.' >&2; fi
 fontbase="https://raw.githubusercontent.com/floriankarsten/space-grotesk/$FONT_VERSION"
 for name in SpaceGrotesk-Bold.ttf SpaceGrotesk-Medium.ttf; do
-    if curl_https --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --connect-timeout 12 --max-time 15 --max-filesize 10485760 \
+    if progress_run "Downloading font $name" curl_https --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --connect-timeout 12 --max-time 15 --max-filesize 10485760 \
         "$fontbase/fonts/ttf/static/$name" -o "$STAGE/$name" && \
         [ "$(od -An -tx1 -N4 "$STAGE/$name" | tr -d ' \n')" = 00010000 ]; then
-        cp "$STAGE/$name" "$ROOT/fonts/$name.new-$$" && mv "$ROOT/fonts/$name.new-$$" "$ROOT/fonts/$name" || echo "warning: font $name" >&2
-    else echo "warning: font $name" >&2; fi
+        cp "$STAGE/$name" "$ROOT/fonts/$name.new-$$" && mv "$ROOT/fonts/$name.new-$$" "$ROOT/fonts/$name" || echo "[WARN] Could not install font $name." >&2
+    else echo "[WARN] Could not download or validate font $name." >&2; fi
 done
-if curl_https --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --connect-timeout 12 --max-time 15 --max-filesize 1048576 \
+if progress_run 'Downloading font license' curl_https --proto '=https' --proto-redir '=https' --fail --location --silent --show-error --connect-timeout 12 --max-time 15 --max-filesize 1048576 \
     "$fontbase/OFL.txt" -o "$STAGE/OFL.txt" && [ -s "$STAGE/OFL.txt" ]; then
-    cp "$STAGE/OFL.txt" "$ROOT/fonts/SpaceGrotesk-OFL.txt.new-$$" && mv "$ROOT/fonts/SpaceGrotesk-OFL.txt.new-$$" "$ROOT/fonts/SpaceGrotesk-OFL.txt" || echo 'warning: font license' >&2
-else echo 'warning: font license' >&2; fi
+    cp "$STAGE/OFL.txt" "$ROOT/fonts/SpaceGrotesk-OFL.txt.new-$$" && mv "$ROOT/fonts/SpaceGrotesk-OFL.txt.new-$$" "$ROOT/fonts/SpaceGrotesk-OFL.txt" || echo '[WARN] Could not install font license.' >&2
+else echo '[WARN] Could not download the font license.' >&2; fi
+if [ "${MISTER_PAT_FIRST_INSTALL:-0}" = 1 ]; then
+    echo '[GUI] GUI files and optional assets are ready. Returning to setup...'
+    exit 0
+fi
 INI=/media/fat/MiSTer.ini
 if [ -r "$INI" ]; then
     [ "$(ini_value main)" = 'mister-pat/MiSTer_gui' ] || echo "Add to [MiSTer] in $INI: main=mister-pat/MiSTer_gui"

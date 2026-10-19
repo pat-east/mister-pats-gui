@@ -1190,6 +1190,11 @@ overview is named **Arcade game status**. Updates use the official distribution 
 above ([Distribution_MiSTer's `db.json`](#where-cores-and-mras-would-come-from-if-this-ever-fetches-them))
 and the project downloader, with a narrowly scoped manifest parser and MD5 verification.
 
+The updater also has an automatic core-setup entry point that checks all current Arcade, Console,
+Computer, Other, Service, and Utility core files and installs only those that are missing or
+modified, without per-core selection. It does not install MRAs, firmware, Linux updates, ROMs, or
+BIOS files. This entry point is not currently part of the fresh-card installer or onboarding flow.
+
 ### The starting point is the manifest, not your ROM library
 
 **The first version of this section had the direction backwards.** It proposed scanning

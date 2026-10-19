@@ -385,18 +385,30 @@ bool parseManifest(const std::string &text, std::vector<CoreMraEntry> &entries, 
         bool include = false;
         const Json *tagList = field(item.second, "tags");
         if (!tagList || tagList->type != Json::Type::Array) continue;
-        bool arcadeCore = false, consoleCore = false;
+        bool arcadeCore = false, consoleCore = false, otherCore = false;
+        bool allCores = false, essential = false;
         for (const Json &tag : tagList->array) {
             if (tag.type != Json::Type::Number) continue;
             char *end = nullptr; long long id = std::strtoll(tag.text.c_str(), &end, 10);
             if (!end || *end) continue;
             auto found = tagNames.find(id);
             if (found == tagNames.end()) continue;
-            arcadeCore = arcadeCore || found->second == "arcadecores";
-            consoleCore = consoleCore || found->second == "consolecores";
+            allCores = allCores || found->second == "cores";
+            essential = essential || found->second == "essential";
+            arcadeCore = arcadeCore || found->second == "arcadecores" ||
+                         found->second == "arcade-cores";
+            consoleCore = consoleCore || found->second == "consolecores" ||
+                          found->second == "console-cores";
+            otherCore = otherCore || found->second == "computer-cores" ||
+                        found->second == "computercores" || found->second == "other-cores" ||
+                        found->second == "othercores" || found->second == "service-cores" ||
+                        found->second == "servicecores" || found->second == "utility" ||
+                        found->second == "utility-cores";
         }
-        if (lower.size() > 4 && lower.compare(lower.size() - 4, 4, ".rbf") == 0 && (arcadeCore || consoleCore)) {
-            type = arcadeCore ? CoreMraType::ArcadeCore : CoreMraType::ConsoleCore;
+        if (lower.size() > 4 && lower.compare(lower.size() - 4, 4, ".rbf") == 0 && !essential &&
+            (allCores || arcadeCore || consoleCore || otherCore)) {
+            type = arcadeCore ? CoreMraType::ArcadeCore
+                 : consoleCore ? CoreMraType::ConsoleCore : CoreMraType::OtherCore;
             include = true;
         } else if (lower.compare(0, 8, "_arcade/") == 0 && lower.find('/', 8) == std::string::npos &&
                    lower.size() > 4 && lower.compare(lower.size() - 4, 4, ".mra") == 0) {
@@ -631,6 +643,17 @@ void CoreMraUpdater::selectAllMissingOrOutdated() {
         entry.selected = entry.status == CoreMraStatus::Missing ||
                          entry.status == CoreMraStatus::UpdateAvailable ||
                          entry.status == CoreMraStatus::Modified;
+}
+
+void CoreMraUpdater::selectAllCoreFiles() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (state_.phase != CoreMraPhase::Ready) return;
+    for (auto &entry : state_.entries) {
+        const bool core = entry.type != CoreMraType::ArcadeMra;
+        entry.selected = core && (entry.status == CoreMraStatus::Missing ||
+                                  entry.status == CoreMraStatus::UpdateAvailable ||
+                                  entry.status == CoreMraStatus::Modified);
+    }
 }
 
 bool CoreMraUpdater::toggleSelected(size_t index) {

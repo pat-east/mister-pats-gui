@@ -1,12 +1,13 @@
 # MiSTer Pat's GUI
 
-A modern game launcher for the [MiSTer FPGA](https://github.com/MiSTer-devel/Main_MiSTer),
-written in plain C++ for the device's own Linux side. It boots straight into a 1080p tiled
-interface with box art, favourites and history — and hands control back to the MiSTer as soon
-as you start a game.
+MiSTer Pat's GUI is a friendlier way to use your [MiSTer](https://github.com/MiSTer-devel/Main_MiSTer).
+It helps you find something to play, make the system feel like your own, and take care of the
+usual setup without needing to learn MiSTer's inner workings first.
 
-It is not a core. Nothing about the FPGA changes. This is a frontend that picks a game and
-asks the MiSTer to load it, the same way the stock menu does.
+The goal is a GUI that's easy to use, easy to understand, straightforward to configure, and easy
+to maintain. Browse and start games, adjust settings, and handle common setup tasks without first
+learning MiSTer's inner workings. When something needs attention, the GUI explains what to do.
+MiSTer still loads and runs the games; this project makes the experience around them easier.
 
 <!-- screenshots:start -->
 
@@ -54,35 +55,68 @@ Settings, including Interface, Accessibility, System, the Changelog, the update 
 
 ## Why
 
-The MiSTer's stock menu is a file browser. It is fast, precise and does exactly what it was
-built to do — but it looks like a file browser, and on a television across a room it reads
-like one too.
+Some of my favorite games are the ones I grew up with. I still come back to the games that
+shaped me as a kid or teenager, and I love discovering the classics I somehow missed. Maybe
+you know that feeling too: a game can take you back, or make you wonder how you missed it the
+first time.
 
-This project takes the other approach: box art first, a tile grid you can cross with a
-D-pad, and the things you actually reach for — recently played, favourites — on the first
-screen. It aims to look like a console's own dashboard rather than a directory listing.
+A few years ago, I built an arcade cabinet from a kit, fitted it with arcade joysticks and
+buttons, and added a mini PC. It runs [Lakka](https://www.lakka.tv/), and it still does exactly
+what I need. But playing at an arcade cabinet feels different from settling in with a console.
+When the SuperStation One was announced, I wanted that kind of experience too.
 
-The constraint that shapes everything: the DE10-Nano has two Cortex-A9 cores at 800 MHz and
-**no GPU**. Every pixel is drawn by the CPU into a framebuffer. That rules out the usual
-toolkits and rules in careful, measured software rendering — see
+The MiSTer was exciting to set up, and Console Mode made it much easier to approach. Still, I
+kept running into questions: Why would one Arcade game start and another not? Why could a large
+library bring the MiSTer down? Why did my controller's buttons behave differently in some
+cores? And where was I supposed to set the deadzone? If you've asked yourself questions like
+these, you know how quickly the fun of playing can turn into a search through settings and
+documentation.
+
+I learned the answers one by one: how to work with a large library without overwhelming the
+storage, what an Arcade game needs in order to work, and how to sort out controller layouts and
+deadzones. I began writing those things down and building a small program to make my own setup
+easier to understand and use. That little personal project became MiSTer Pat's GUI.
+
+Since then, the project has grown beyond my own setup. I want it to help you spend less time
+figuring out MiSTer and more time playing: to make the whole system feel like a console, even if
+you don't want to learn every detail under the hood. That's the experience I'm working toward
+with MiSTer Pat's GUI.
+
+## Project principles
+
+These are the premises behind the project, not just aspirations for individual features:
+
+- **Easy to use:** a controller should be enough to browse and launch games from the couch.
+- **Easy to understand:** every screen, setting, status and next step should explain itself in
+  plain language.
+- **Easy to configure:** make useful choices available in the GUI instead of requiring people
+  to find and edit configuration files by hand.
+- **Easy to maintain:** make installation, updates, library care and recovery understandable
+  and safe to carry out.
+
+Manuals and configuration files should not be prerequisites for using the features the GUI
+provides. Clear focus, context-sensitive button hints, predictable navigation and useful status
+messages are part of that promise. When two approaches work equally well, prefer the simpler
+one.
+
+The interface also has to respect the hardware: the DE10-Nano has two Cortex-A9 cores at
+800 MHz and **no GPU**. Every pixel is drawn by the CPU into a framebuffer. That rules out the
+usual toolkits and calls for careful, measured software rendering — see
 [PERFORMANCE.md](docs/PERFORMANCE.md) for what that costs and where the budget went.
-
-## The premise: easy to use, easy to understand
-
-Every decision is measured against one principle: **easy to use, easy to understand, and
-accessible to anyone.** A controller should be enough to browse and launch games from the
-couch, without a keyboard or a manual.
-
-That means clear focus and button hints, predictable ordering, and visible counts when they
-help explain what is on screen. Prefer the simpler behavior when two choices work equally well.
-Setup should be straightforward too: Settings handles the Physical Disc package download and
-checks whether compatible PlayStation or Saturn FPGA cores are installed.
 
 ## Features
 
 - **Browse the library:** Home shows recently played games and favourites. Consoles opens each
   system's games, while Games provides one alphabetized list across the library. Hide systems or
   the Games tab when they are not useful.
+- **Get started with Jump-Start:** a first-use guide explains the dashboard, then reads up to 20
+  games per system and prepares matching box art for that sample. Arcade is capped at 20 games
+  that pass the working-game checks. Read the full library and prepare its artwork later in
+  Settings → Library.
+- **Start from a fresh MiSTer Fusion card:** run MiSTer's `Scripts/update.sh`, then
+  `tools/install-mister-pat.sh`. The installer sets up the GUI and startup path; continue with
+  the first-use guide to build a small game sample. Core and MRA updates are available later in
+  Settings → Library. The installer does not download ROMs or BIOS files.
 - **Choose a game view:** use Grid, Boxart small or List, with a shared setting or a remembered
   view for each game area.
 - **Find games quickly:** search within Home, Favorites, a console, Arcade or Games. L2/R2 jump
@@ -101,7 +135,7 @@ checks whether compatible PlayStation or Saturn FPGA cores are installed.
 - **Make the interface yours:** choose tab names or icons, larger text, larger button hints, and high contrast with a
   highlight color you pick (eight to choose from), and separate startup and menu sounds. Settings also includes clock and time-zone controls, Wi-Fi
   setup, asset downloads, artwork visibility and a confirmed reboot action.
-- **Keep Arcade and Console cores current:** Settings → Library → Core and MRA updates compares
+- **Keep official cores current:** Settings → Library → Core and MRA updates compares
   the official MiSTer distribution with what is installed, lets you pick what to update and
   verifies every download against the official hash before it replaces anything. No BIOS files,
   ROMs or system files are touched.
@@ -114,7 +148,8 @@ checks whether compatible PlayStation or Saturn FPGA cores are installed.
 ## Requirements
 
 - A MiSTer (Terasic DE10-Nano) with a working SD card setup
-- SSH access to the device
+- SSH access for the existing-installation procedure; a new MiSTer Fusion card can use the
+  guided first-install script in [INSTALL.md](docs/INSTALL.md)
 - Your game library on the SD card or one or more USB volumes, wherever the MiSTer finds it
 
 ## Installation
@@ -237,33 +272,6 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 | [UPDATER.md](docs/UPDATER.md) | Core and MRA updates: scope, checking, verified installation, safety rules and what was verified on hardware |
 | [ISSUES.md](docs/ISSUES.md) | Known issues and open investigations, with the evidence collected so far |
 
-## Status
-
-Working: booting into the GUI, browsing every system, box art, favourites, history, letter
-navigation, launching games, returning from a game with a long press on the menu button, and
-hiding systems or the Games tab from Settings for a large library. The 0.6 series adds controller-
-operated search, clock and time-zone settings, Wi-Fi setup, interface sound controls, per-game
-artwork actions, a confirmed system reboot action, and selectable face-button labels. Version
-0.6.3 extended the existing three-phase boxart reveal to Home's recent and favorite covers and
-fixed repeated fallback reloads. Version 0.6.4 adds a fading tab underline, selectable tab icons,
-a unified asset download action, clearer toggle indicators, and the Consoles tab changes. Version
-0.6.5 adds accessibility controls, a GitHub changelog viewer, explanations for settings and
-clearer library and cover-art progress messages, the revised Settings layout and a Wi-Fi
-activation fix. Version 0.7.0 adds a shared or individually remembered game view for Home,
-Favorites, console game lists and Games. It also simplifies the List view's artwork panel,
-shows each favorite's system, and avoids repainting unchanged list content. Version 0.8.0 adds
-regional and language game-version grouping, physical PlayStation and Saturn disc detection and
-launch, offline disc-title lookup, TheGamesDB artwork with Libretro fallback, local caching, and
-a per-disc artwork reload action. Hardware acceptance details and current scraper limitations are
-documented with the feature notes.
-Version 0.8.3 adds Core and MRA updates for Arcade cores, Console cores and Arcade MRAs, a faster
-box-art path (a directory index, border-only cover focus that moves instantly), larger text, a high-
-contrast highlight color and button-hint size, and a shared design system.
-See
-[CHANGELOG.md](CHANGELOG.md),
-[GUI.md](docs/GUI.md), [BOXART.md](docs/BOXART.md), [DISCDRIVE.md](docs/DISCDRIVE.md), and
-[THEGAMEDB.md](docs/THEGAMEDB.md).
-
 ## Roadmap
 
 **This roadmap is not set in stone.** It is a statement of intent, not a promise: what goes
@@ -374,6 +382,8 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.5.0 change list.
 
 #### Backlog
 
+- [ ] **Themes:** Nintendo, PlayStation and Xbox themes so the interface can take on the look
+      and feel of each platform.
 - [ ] **Option to swap Confirm and Back buttons**, with the current European mapping as the
       default.
 - [ ] **Fade in tab content when switching tabs** instead of sliding it into view.

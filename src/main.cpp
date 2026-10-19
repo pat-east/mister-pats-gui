@@ -1,5 +1,6 @@
 #include <csignal>
 #include <cerrno>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -10,10 +11,12 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <typeinfo>
+#include <thread>
 #include <ucontext.h>
 #include <unistd.h>
 
 #include "App.h"
+#include "CoreMraUpdater.h"
 #include "CrashScreen.h"
 #include "DebugLog.h"
 #include "DiscDriveService.h"
@@ -564,5 +567,73 @@ int mister_gui_disc_probe_v1(int argc, char **argv) noexcept {
         DebugLog::error("disc probe process: uncaught non-standard exception");
         appendDiscProbeException("non-standard");
         return 70;
+    }
+}
+
+extern "C" __attribute__((visibility("default")))
+int mister_gui_core_setup_v1(int argc, char **argv) noexcept {
+    if (argc != 2 || std::strcmp(argv[1], "--core-setup") != 0) {
+        std::fprintf(stderr, "Core setup: invalid command.\n");
+        return 64;
+    }
+    try {
+        CoreMraUpdater updater;
+        if (!updater.startCheck(true)) {
+            std::fprintf(stderr, "Core setup could not start. Try again after restarting MiSTer.\n");
+            return 1;
+        }
+        size_t shown = size_t(-1);
+        while (updater.busy()) {
+            const CoreMraSnapshot state = updater.snapshot();
+            if (shown != state.completed) {
+                shown = state.completed;
+                std::fprintf(stderr, "\rChecking official cores: %zu / %zu",
+                             state.completed, state.totalFiles);
+                std::fflush(stderr);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        }
+        CoreMraSnapshot state = updater.snapshot();
+        std::fputc('\n', stderr);
+        if (state.phase != CoreMraPhase::Ready) {
+            std::fprintf(stderr, "The official core list could not be checked. Check the internet connection and run setup again.\n");
+            if (!state.detail.empty()) std::fprintf(stderr, "Details: %s\n", state.detail.c_str());
+            return 1;
+        }
+        updater.selectAllCoreFiles();
+        state = updater.snapshot();
+        size_t selected = 0;
+        for (const CoreMraEntry &entry : state.entries) if (entry.selected) ++selected;
+        if (selected == 0) {
+            std::fprintf(stderr, "All current official cores are already installed.\n");
+            return 0;
+        }
+        std::fprintf(stderr, "Preparing %zu current official cores.\n", selected);
+        if (!updater.startInstall()) {
+            std::fprintf(stderr, "Core downloads could not start. Nothing was installed.\n");
+            return 1;
+        }
+        shown = size_t(-1);
+        while (updater.busy()) {
+            state = updater.snapshot();
+            if (shown != state.current) {
+                shown = state.current;
+                std::fprintf(stderr, "\rDownloading and verifying cores: %zu / %zu",
+                             state.completed, state.totalFiles);
+                std::fflush(stderr);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        }
+        state = updater.snapshot();
+        std::fputc('\n', stderr);
+        std::fprintf(stderr, "Core setup finished: %zu installed, %zu failed.\n",
+                     state.installed, state.failed);
+        return state.phase == CoreMraPhase::Complete ? 0 : 1;
+    } catch (const std::exception &error) {
+        std::fprintf(stderr, "Core setup could not finish: %s\n", error.what());
+        return 1;
+    } catch (...) {
+        std::fprintf(stderr, "Core setup could not finish.\n");
+        return 1;
     }
 }
