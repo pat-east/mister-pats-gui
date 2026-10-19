@@ -121,24 +121,24 @@ curl_https() {
 }
 STAGE=$(mktemp -d "$ROOT/.update-staging/run-XXXXXX") || fail 'cannot create staging'
 fetch() {
-    url=$1; out=$2; limit=$3; timeout=$4
-    case "$url" in https://*) :;; *) fail "non-HTTPS URL: $url";; esac
-    attempt=0
-    while [ "$attempt" -lt 2 ]; do
-        rm -f "$out"
+    fetch_url=$1; fetch_out=$2; fetch_limit=$3; fetch_timeout=$4
+    case "$fetch_url" in https://*) :;; *) fail "non-HTTPS URL: $fetch_url";; esac
+    fetch_attempt=0
+    while [ "$fetch_attempt" -lt 2 ]; do
+        rm -f "$fetch_out"
         if curl_https --proto '=https' --proto-redir '=https' --fail --location --max-redirs 5 \
-            --silent --show-error --connect-timeout 12 --max-time "$timeout" \
-            --max-filesize "$limit" --output "$out" --url "$url"; then
-            size=$(wc -c < "$out")
-            [ "$size" -gt 0 ] && [ "$size" -le "$limit" ] || fail "invalid download size: $out"
+            --silent --show-error --connect-timeout 12 --max-time "$fetch_timeout" \
+            --max-filesize "$fetch_limit" --output "$fetch_out" --url "$fetch_url"; then
+            fetch_size=$(wc -c < "$fetch_out")
+            [ "$fetch_size" -gt 0 ] && [ "$fetch_size" -le "$fetch_limit" ] || fail "invalid download size: $fetch_out"
             return
         else
-            code=$?
+            fetch_code=$?
         fi
-        case "$code" in 1|2|22|35|60|63|77) break;; esac
-        attempt=$((attempt+1))
+        case "$fetch_code" in 1|2|22|35|60|63|77) break;; esac
+        fetch_attempt=$((fetch_attempt+1))
     done
-    fail "verified HTTPS download failed: $url (check CA bundle and curl options)"
+    fail "verified HTTPS download failed: $fetch_url (check CA bundle and curl options)"
 }
 # A recursive awk tokenizer reads only top-level release fields and assets[].name.
 cat > "$STAGE/release-json.awk" <<'AWK'
