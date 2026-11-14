@@ -21,6 +21,8 @@ struct ReleaseInfo {
     Version version;
     uint16_t gamesDbFormat = 0;
     uint16_t discIndexFormat = 0;
+    std::string backupScriptHash;
+    std::string restoreScriptHash;
 };
 
 struct ReleaseCandidate {

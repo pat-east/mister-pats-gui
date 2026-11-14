@@ -19,6 +19,11 @@ namespace {
 constexpr int kTargetFrameMs = 33;   // ~30 fps; the CPU renders every pixel in software
 constexpr char kDpadHintToken[] = "{DPAD}";
 
+Color contrastingText(Color color) {
+    const int luminance = (color.r * 299 + color.g * 587 + color.b * 114) / 1000;
+    return luminance >= 150 ? Color::rgb(0x111318) : Color::rgb(0xFFFFFF);
+}
+
 int hintTextWidth(Font &font, const std::string &text, int size, int iconSize, int gap) {
     int width = 0;
     size_t start = 0;
@@ -98,10 +103,11 @@ std::vector<std::string> artworkDirectories(const std::vector<GameSystem> &syste
 
 } // namespace
 
-App::App() : discArtwork_(theGamesDB_) {}
+App::App() : discArtwork_(theGamesDB_), gameScreenshots_(theGamesDB_) {}
 
 bool App::initialize(const Options &options) {
     options_ = options;
+    screensaverSeed_ = unsigned(nowMs()) ^ unsigned(getpid());
     discDrive_.start();
 
     DebugLog::info(std::string("starting mister-gui v") + kAppVersion);
@@ -131,6 +137,8 @@ bool App::initialize(const Options &options) {
     preferences_.load();
     theme_->setFontSizeScale(preferences_.fontSizeScale());
     theme_->setHintSizeScale(preferences_.hintSizeScale());
+    theme_->setColorTheme(preferences_.colorTheme());
+    theme_->setDarkMode(preferences_.darkMode());
     theme_->setHighContrastColor(preferences_.highContrastColor());
     theme_->setHighContrast(preferences_.highContrast());
     setFaceButtonStyle(preferences_.faceButtonStyle());
@@ -140,13 +148,19 @@ bool App::initialize(const Options &options) {
                          library_.load();
                          if (preferences_.organizeGameVersions())
                              library_.prepareGameCache();
-                         // Read the box-art folders once, with the splash still up.
-                         ArtworkIndex::instance().build(artworkDirectories(library_.systems()));
+                         // Load the saved box-art index, or scan the folders while the splash
+                         // is still up when no usable index exists.
+                         const auto directories = artworkDirectories(library_.systems());
+                         if (!ArtworkIndex::instance().loadPersistent(directories))
+                             ArtworkIndex::instance().build(directories, true);
                      });
         if (preferences_.startSoundEnabled()) UiSounds::play();
     } else {
         library_.load();
         if (preferences_.organizeGameVersions()) library_.prepareGameCache();
+        const auto directories = artworkDirectories(library_.systems());
+        if (!ArtworkIndex::instance().loadPersistent(directories))
+            ArtworkIndex::instance().build(directories, true);
     }
 
     systemIconDownload_ = std::make_unique<SystemIconDownload>(icons_);
@@ -189,6 +203,14 @@ bool App::initialize(const Options &options) {
     arcadeLibraryScreen_ = std::make_unique<GamesScreen>(*context_);
     allGamesScreen_ = std::make_unique<GamesScreen>(*context_);
     favoritesScreen_ = std::make_unique<GamesScreen>(*context_);
+
+    if (!options_.tabExplicit) {
+        const std::string &start = preferences_.startTab();
+        if (start == "favorites") options_.tab = Tab::Favorites;
+        else if (start == "systems") options_.tab = Tab::Systems;
+        else if (start == "games" && preferences_.showGamesTab()) options_.tab = Tab::Games;
+        else if (start == "arcade" && arcadeTabShown()) options_.tab = Tab::Arcade;
+    }
 
     const auto initialView = [this](const std::string &individualView) {
         if (options_.viewExplicit) return options_.view;
@@ -253,7 +275,12 @@ bool App::initialize(const Options &options) {
         [this](bool removePin) { restartMisterAfterUpdate(removePin); },
         [this] { return spaceGroteskStatus(); }, [this] { activateSpaceGrotesk(); },
         [this] { return updateService_.startChangelog(); },
-        [this] { rebootMister(); });
+        [this] { rebootMister(); }, [this] {
+            if (backupTask_.start()) {
+                backupStateReported_ = BackupTask::State::Idle;
+                context_->notify("Creating settings backup…", 30.0f);
+            }
+        });
     settingsScreen_->setFramebufferInfo(framebuffer_.describe());
     settingsScreen_->setUpdateSnapshot(updateSnapshot_);
 
@@ -328,7 +355,7 @@ bool App::initialize(const Options &options) {
 void App::reloadLibrary() {
     library_.clearPersistentGameCache();
     library_.load();
-    // The folders may have changed: drop the index and read them again in the background.
+    // The folders may have changed: rebuild in the background and save the finished index.
     ArtworkIndex::instance().buildAsync(artworkDirectories(library_.systems()));
     if (preferences_.organizeGameVersions()) library_.prepareGameCache();
     favorites_.load();
@@ -653,9 +680,28 @@ void App::openGameActions() {
     if (!canonical) canonical = selectedSystem;
     gameActionSystem_ = canonical;
     gameActionGame_ = std::move(selectedGame);
+    // The action panel uses the same fixed-size detail artwork as the List view.
+    // Keep the organized ROM choices while resolving the artwork for this larger slot.
+    {
+        const auto versions = gameActionGame_.versions;
+        gameActionGame_ = Library::makeGame(*canonical, gameActionGame_.path,
+                                             ArtworkVariant::Detail);
+        gameActionGame_.versions = versions;
+    }
+    std::stable_sort(gameActionGame_.versions.begin(), gameActionGame_.versions.end(),
+        [](const Game::Variant &a, const Game::Variant &b) { return a.label < b.label; });
+    gameActionSelectedVersion_ = 0;
+    for (size_t i = 0; i < gameActionGame_.versions.size(); ++i)
+        if (gameActionGame_.versions[i].path == gameActionGame_.path)
+            gameActionSelectedVersion_ = int(i);
     gameActionCursor_ = 0;
     gameVersionScroll_ = 0;
-    gameActionWorking_ = false;
+    gameActionScreenshotCursor_ = 0;
+    gameActionScreenshotReady_ = false;
+    gameActionScreenshotOverlay_ = false;
+    gameActionScreenshotPaths_.clear();
+    gameScreenshots_.request(canonical->dbKey.empty() ? canonical->name : canonical->dbKey,
+                             gameActionGame_.name, gameActionGame_.backgroundCandidates);
     gameActionsActive_ = true;
     input_.cancelFavoriteHold();
     favoriteHoldScreen_ = nullptr;
@@ -666,10 +712,26 @@ void App::openGameActions() {
 void App::openGameVersionChooser(const GameSystem &system, const Game &game) {
     gameActionSystem_ = &system;
     gameActionGame_ = game;
+    {
+        const auto versions = gameActionGame_.versions;
+        gameActionGame_ = Library::makeGame(system, gameActionGame_.path,
+                                             ArtworkVariant::Detail);
+        gameActionGame_.versions = versions;
+    }
     gameActionCursor_ = 0;
     gameVersionScroll_ = 0;
-    gameActionWorking_ = false;
-    gameVersionChooserActive_ = true;
+    gameActionScreenshotCursor_ = 0;
+    gameActionScreenshotReady_ = false;
+    gameActionScreenshotOverlay_ = false;
+    gameActionScreenshotPaths_.clear();
+    gameScreenshots_.request(system.dbKey.empty() ? system.name : system.dbKey,
+                             gameActionGame_.name, gameActionGame_.backgroundCandidates);
+    gameActionSelectedVersion_ = 0;
+    std::stable_sort(gameActionGame_.versions.begin(), gameActionGame_.versions.end(),
+        [](const Game::Variant &a, const Game::Variant &b) { return a.label < b.label; });
+    for (size_t i = 0; i < gameActionGame_.versions.size(); ++i)
+        if (gameActionGame_.versions[i].path == gameActionGame_.path)
+            gameActionSelectedVersion_ = int(i);
     gameActionsActive_ = true;
     needsFullRedraw_ = true;
 }
@@ -681,93 +743,156 @@ void App::renderGameActions() {
     const Rect bounds = canvas.bounds();
     canvas.fillRect(bounds, theme.shadow.withAlpha(175));
 
-    const int width = std::min(theme.px(650), bounds.w - theme.px(64));
-    const int height = theme.px(gameActionWorking_ ? 380 : gameVersionChooserActive_
-        ? std::min(620, 150 + int(gameActionGame_.versions.size()) * 50) : 360);
+    const int width = std::min(theme.px(1776), bounds.w - theme.px(64));
+    const int height = std::min(theme.px(800), bounds.h - theme.px(120));
     const Rect panel{bounds.x + (bounds.w - width) / 2, bounds.y + (bounds.h - height) / 2,
                      width, height};
     canvas.dropShadow(panel, theme.radius(), theme.px(24), theme.shadow.withAlpha(160));
     canvas.fillRoundedRect(panel, theme.radius(), theme.surfaceHi);
 
-    const int left = panel.x + theme.px(36);
-    const int textWidth = panel.w - 2 * theme.px(36);
-    int y = panel.y + theme.px(32);
+    const int pad = theme.px(28);
+    const int left = panel.x + pad;
+    int y = panel.y + pad;
     theme.bold().draw(canvas, left, y, "Game options", theme.sizeHeading(), theme.textPrimary);
-    y += theme.px(42);
-    theme.regular().draw(canvas, left, y,
-                         theme.regular().elide(gameActionGame_.name, theme.sizeBody(), textWidth),
-                         theme.sizeBody(), theme.textMuted);
-    y += theme.px(36);
+    y += theme.px(48);
 
-    if (gameVersionChooserActive_) {
-        y += theme.px(8);
-        const int visibleRows = std::max(1, (panel.bottom() - theme.px(56) - y) / theme.px(48));
-        const int lastVisible = std::min(int(gameActionGame_.versions.size()),
-                                         gameVersionScroll_ + visibleRows);
-        for (int rowIndex = gameVersionScroll_; rowIndex < lastVisible; ++rowIndex) {
-            const size_t i = size_t(rowIndex);
-            const auto &version = gameActionGame_.versions[i];
-            const Rect row{left - theme.px(12), y - theme.px(7), width - theme.px(48), theme.px(42)};
-            if (rowIndex == gameActionCursor_) canvas.fillRoundedRect(row, theme.px(8), theme.accent.withAlpha(45));
-            theme.bold().draw(canvas, left, y,
-                theme.regular().elide(version.label, theme.sizeBody(), textWidth), theme.sizeBody(),
-                rowIndex == gameActionCursor_ ? theme.textPrimary : theme.textMuted);
-            y += theme.px(48);
+    const int artW = theme.px(689);
+    const int gap = theme.px(36);
+    const Rect artBox{left, y, artW, theme.px(624)};
+    canvas.fillRoundedRect(artBox, theme.px(8), theme.surface);
+    ImagePtr boxart = context_->images.requestAsyncCandidates(gameActionGame_.boxartCandidates,
+                                                               artBox.w, artBox.h, true);
+    if (boxart) {
+        const int x = artBox.x + (artBox.w - boxart->width()) / 2;
+        const int imageY = artBox.y + (artBox.h - boxart->height()) / 2;
+        canvas.drawImage(*boxart, {x, imageY, boxart->width(), boxart->height()}, 255,
+                         theme.px(8));
+    } else {
+        const bool pending = context_->images.isPendingCandidates(
+            gameActionGame_.boxartCandidates, artBox.w, artBox.h);
+        theme.regular().drawCentered(canvas, artBox,
+            pending ? "Loading box art…" : "No box art available",
+            theme.sizeBody(), theme.textMuted);
+    }
+
+    const int rightX = artBox.right() + gap;
+    const int rightW = panel.right() - pad - rightX;
+    const int titleY = y + theme.px(4);
+    theme.bold().draw(canvas, rightX, titleY,
+        theme.regular().elide(gameActionGame_.name, theme.sizeTitle(), rightW),
+        theme.sizeTitle(), theme.textPrimary);
+    int contentY = titleY + theme.px(66);
+
+    theme.bold().draw(canvas, rightX, contentY, "AVAILABLE ROMS", theme.sizeSmall(), theme.textMuted);
+    contentY += theme.px(28);
+    const int shotsY = artBox.bottom() - theme.px(128);
+    const int startH = theme.px(62);
+    const int startY = shotsY - theme.px(20) - startH;
+    std::vector<Game::Variant> versions = gameActionGame_.versions;
+    if (versions.empty()) versions.push_back({gameActionGame_.path, "Standard"});
+    const int listBottom = startY - theme.px(16);
+    const int rowH = theme.px(44);
+    const int rowGap = theme.px(5);
+    const int visibleRows = std::max(1, (listBottom - contentY) / (rowH + rowGap));
+    const int lastVisible = std::min(int(versions.size()), gameVersionScroll_ + visibleRows);
+    for (int rowIndex = gameVersionScroll_; rowIndex < lastVisible; ++rowIndex) {
+        const auto &version = versions[size_t(rowIndex)];
+        const Rect row{rightX, contentY, rightW, rowH};
+        if (gameActionCursor_ == rowIndex + 1)
+            canvas.fillRoundedRect(row, theme.px(8), theme.surfaceHi);
+        const bool selected = gameActionGame_.versions.empty()
+            ? version.path == gameActionGame_.path
+            : rowIndex == gameActionSelectedVersion_;
+        theme.regular().draw(canvas, rightX + theme.px(14), contentY + theme.px(9),
+            theme.regular().elide(version.label, theme.sizeBody(), rightW - theme.px(160)),
+            theme.sizeBody(), gameActionCursor_ == rowIndex + 1 ? theme.textPrimary : theme.textMuted);
+        if (selected)
+            theme.regular().draw(canvas, row.right() - theme.px(138), contentY + theme.px(12),
+                "Selected", theme.sizeSmall(), theme.accent);
+        contentY += rowH + rowGap;
+    }
+
+    const Rect start{rightX, startY, rightW, startH};
+    const bool startFocused = gameActionCursor_ == 0;
+    if (startFocused) canvas.fillRoundedRect(start, theme.radius(), theme.accent);
+    else canvas.fillRoundedRect(start, theme.radius(), theme.surface);
+    const bool silverTheme = std::string(Theme::colorThemeName(theme.colorTheme())) == "Silver";
+    const Color startText = theme.highContrast() ? contrastingText(theme.accent) :
+        theme.darkMode() ? (silverTheme ? Color::rgb(0x111318) : Color::rgb(0xFFFFFF)) :
+        contrastingText(theme.accent);
+    if (startFocused) {
+        const int inset = std::max(1, theme.px(2));
+        canvas.strokeRoundedRect({start.x + inset, start.y + inset, start.w - 2 * inset,
+                                  start.h - 2 * inset}, std::max(0, theme.radius() - inset),
+                                 std::max(1, theme.px(1)), startText);
+    }
+    theme.bold().draw(canvas, start.x + theme.px(22),
+                      start.y + (start.h - theme.sizeBody()) / 2,
+                      "Start game", theme.sizeBody(), startText);
+
+    theme.bold().draw(canvas, rightX, shotsY, "SCREENSHOTS", theme.sizeSmall(), theme.textMuted);
+    const int shotY = shotsY + theme.px(24);
+    const int shotGap = theme.px(10);
+    const int shotW = (rightW - shotGap * 3) / 4;
+    const int shotH = theme.px(104);
+    const auto screenshots = gameScreenshots_.snapshot();
+    if (!gameActionScreenshotOverlay_ &&
+        screenshots.state == GameScreenshotService::State::Ready)
+        gameActionScreenshotPaths_ = screenshots.screenshots;
+    gameActionScreenshotReady_ = false;
+    for (int i = 0; i < 4; ++i) {
+        Rect thumb{rightX + i * (shotW + shotGap), shotY, shotW, shotH};
+        canvas.fillRoundedRect(thumb, theme.px(5), theme.surface);
+        if (i < int(gameActionScreenshotPaths_.size()) ||
+            (i == 0 && gameActionScreenshotPaths_.empty() &&
+             !gameActionGame_.backgroundCandidates.empty())) {
+            ImagePtr shot = gameActionScreenshotPaths_.empty()
+                ? context_->images.requestAsyncCandidates(
+                    gameActionGame_.backgroundCandidates, thumb.w, thumb.h, true)
+                : context_->images.requestAsync(gameActionScreenshotPaths_[size_t(i)], "",
+                                                thumb.w, thumb.h, true);
+            if (shot) {
+                canvas.drawImage(*shot, thumb, 255, theme.px(5));
+                gameActionScreenshotReady_ = true;
+            }
         }
-        theme.regular().draw(canvas, left, panel.bottom() - theme.px(34),
-            formatButtonLabels("A  Start version     B  Back"), theme.sizeSmall(), theme.textMuted);
-        return;
+        const bool focused = gameActionScreenshotReady_ && i == gameActionScreenshotCursor_ &&
+                             gameActionCursor_ == 100 + i;
+        canvas.strokeRoundedRect(thumb, theme.px(5), std::max(1, theme.px(2)),
+                                 focused ? theme.focus : theme.surfaceHi);
     }
+    if (!gameActionScreenshotReady_)
+        theme.regular().drawCentered(canvas, {rightX, shotY, rightW, shotH},
+                                     (screenshots.state == GameScreenshotService::State::Searching ||
+                                      !gameActionScreenshotPaths_.empty())
+                                         ? "Loading screenshots…" : "No screenshots available",
+                                     theme.sizeSmall(),
+                                     theme.textMuted);
 
-    if (gameActionWorking_) {
-        const bool done = scraper_.finished();
-        const bool succeeded = scraper_.state() == MediaScraper::State::Done;
-        theme.bold().draw(canvas, left, y,
-                          done ? (succeeded ? "Cover art ready" : "Could not prepare cover art")
-                               : "Preparing cover art",
-                          theme.sizeBody(), theme.textPrimary);
-        y += theme.px(34);
-        theme.regular().draw(canvas, left, y,
-                             theme.regular().elide(scraper_.statusLine(), theme.sizeSmall(),
-                                                   textWidth),
-                             theme.sizeSmall(), theme.textMuted);
-        y = panel.bottom() - theme.px(50);
-        theme.regular().draw(canvas, left, y,
-                             formatButtonLabels(done ? "A / B  Close" : "B  Cancel"),
-                             theme.sizeSmall(), theme.textMuted);
-        return;
+    if (gameActionScreenshotOverlay_ && gameActionScreenshotReady_) {
+        canvas.fillRect(bounds, theme.shadow.withAlpha(230));
+        const Rect imageArea{bounds.x + theme.px(70), bounds.y + theme.px(36),
+                             bounds.w - theme.px(140), bounds.h - theme.px(100)};
+        ImagePtr shot = gameActionScreenshotPaths_.empty()
+            ? context_->images.requestAsyncCandidates(
+                gameActionGame_.backgroundCandidates, imageArea.w, imageArea.h, true)
+            : context_->images.requestAsync(
+                gameActionScreenshotPaths_[size_t(gameActionScreenshotCursor_)], "",
+                imageArea.w, imageArea.h, true);
+        if (shot) {
+            const int imageX = imageArea.x + (imageArea.w - shot->width()) / 2;
+            const int imageY = imageArea.y + (imageArea.h - shot->height()) / 2;
+            canvas.drawImage(*shot, {imageX, imageY, shot->width(), shot->height()}, 255, 0);
+        } else theme.regular().drawCentered(canvas, imageArea, "Loading screenshot…",
+                                            theme.sizeBody(), theme.textMuted);
+        theme.bold().drawCentered(canvas,
+            {bounds.x, bounds.bottom() - theme.px(60), bounds.w, theme.px(32)},
+            std::to_string(gameActionScreenshotCursor_ + 1) + " / " +
+                std::to_string(std::max<size_t>(1, gameActionScreenshotPaths_.size())),
+            theme.sizeBody(), theme.textPrimary);
     }
-
-    const char *items[] = {"Play this game", "Choose version", "Find or prepare cover art"};
-    const int itemCount = gameActionGame_.versions.size() > 1 ? 3 : 2;
-    for (int i = 0; i < itemCount; ++i) {
-        const char *label = itemCount == 2 && i == 1 ? items[2] : items[i];
-        const Rect row{left - theme.px(12), y - theme.px(7), width - theme.px(48),
-                       theme.px(44)};
-        if (i == gameActionCursor_)
-            canvas.fillRoundedRect(row, theme.px(8), theme.accent.withAlpha(45));
-        theme.bold().draw(canvas, left, y, label, theme.sizeBody(),
-                          i == gameActionCursor_ ? theme.textPrimary : theme.textMuted);
-        y += theme.px(52);
-    }
-    theme.regular().draw(canvas, left, panel.bottom() - theme.px(34),
-                         formatButtonLabels("A  Choose     B  Close"), theme.sizeSmall(),
-                         theme.textMuted);
-}
-
-void App::refreshGameActionArtwork() {
-    if (gameActionSystem_) {
-        const ArtworkVariant variants[] = {ArtworkVariant::Full, ArtworkVariant::Home,
-                                           ArtworkVariant::Grid, ArtworkVariant::Small,
-                                           ArtworkVariant::Detail, ArtworkVariant::Arcade};
-        for (ArtworkVariant variant : variants) {
-            const Game game = Library::makeGame(*gameActionSystem_, gameActionGame_.path, variant);
-            context_->images.invalidateCandidates(game.boxartCandidates);
-        }
-    }
-    // Repaint the current screen around the same selection. Its existing Game entries keep
-    // their paths and candidate lists; only the stale decoded/missing image is discarded.
-    needsFullRedraw_ = true;
+    renderBottomBar({0, canvas.height() - theme.bottomBarHeight(), canvas.width(),
+                     theme.bottomBarHeight()});
 }
 
 void App::dispatch(Action action) {
@@ -833,62 +958,75 @@ void App::dispatch(Action action) {
     }
 
     if (gameActionsActive_) {
-        if (action == Action::Back && gameVersionChooserActive_) {
-            gameVersionChooserActive_ = false;
-            gameActionCursor_ = 1;
+        if (gameActionScreenshotOverlay_) {
+            const int screenshotCount = gameActionScreenshotReady_ ?
+                int(std::max<size_t>(1, gameActionScreenshotPaths_.size())) : 0;
+            if (action == Action::Quit) stop();
+            else if (action == Action::Back || action == Action::Confirm)
+                gameActionScreenshotOverlay_ = false;
+            else if (action == Action::Left && gameActionScreenshotCursor_ > 0)
+                --gameActionScreenshotCursor_;
+            else if (action == Action::Right &&
+                     gameActionScreenshotCursor_ + 1 < screenshotCount)
+                ++gameActionScreenshotCursor_;
             needsFullRedraw_ = true;
-        } else if (action == Action::Quit || action == Action::Back) {
-            if (gameActionWorking_ && scraper_.running()) scraper_.cancel();
+            return;
+        }
+        if (action == Action::Quit || action == Action::Back) {
             gameActionsActive_ = false;
-            gameVersionChooserActive_ = false;
-            gameActionWorking_ = false;
             needsFullRedraw_ = true;
-        } else if (gameActionWorking_) {
-            if ((action == Action::Confirm || action == Action::Select) && scraper_.finished()) {
-                gameActionsActive_ = false;
-                gameActionWorking_ = false;
-                needsFullRedraw_ = true;
-            }
         } else if (action == Action::Up || action == Action::Down) {
-            if (gameVersionChooserActive_) {
-                gameActionCursor_ = std::max(0, std::min(int(gameActionGame_.versions.size()) - 1,
-                    gameActionCursor_ + (action == Action::Down ? 1 : -1)));
-                const int visibleRows = std::max(1, (theme_->px(620) - theme_->px(170)) / theme_->px(48));
-                if (gameActionCursor_ < gameVersionScroll_) gameVersionScroll_ = gameActionCursor_;
-                if (gameActionCursor_ >= gameVersionScroll_ + visibleRows)
-                    gameVersionScroll_ = gameActionCursor_ - visibleRows + 1;
-            } else gameActionCursor_ = std::max(0, std::min(
-                gameActionGame_.versions.size() > 1 ? 2 : 1,
-                gameActionCursor_ + (action == Action::Down ? 1 : -1)));
+            const int displayedVersions = int(std::max<size_t>(1, gameActionGame_.versions.size()));
+            if (gameActionCursor_ == 0) {
+                if (action == Action::Up) gameActionCursor_ = displayedVersions;
+                else if (gameActionScreenshotReady_) {
+                    gameActionScreenshotCursor_ = 0;
+                    gameActionCursor_ = 100;
+                }
+            } else if (gameActionCursor_ >= 100) {
+                if (action == Action::Up) gameActionCursor_ = 0;
+            } else {
+                if (action == Action::Up)
+                    gameActionCursor_ = std::max(1, gameActionCursor_ - 1);
+                else
+                    gameActionCursor_ = gameActionCursor_ < displayedVersions
+                        ? gameActionCursor_ + 1 : 0;
+            }
+            if (gameActionCursor_ > 0 && gameActionCursor_ < 100) {
+                const int visibleRows = std::max(1, theme_->px(300) / theme_->px(49));
+                const int row = gameActionCursor_ - 1;
+                if (row < gameVersionScroll_) gameVersionScroll_ = row;
+                if (row >= gameVersionScroll_ + visibleRows)
+                    gameVersionScroll_ = row - visibleRows + 1;
+            }
+        } else if ((action == Action::Left || action == Action::Right) &&
+                   gameActionScreenshotReady_ &&
+                   gameActionCursor_ >= 100) {
+            if (action == Action::Left && gameActionScreenshotCursor_ > 0)
+                --gameActionScreenshotCursor_;
+            else if (action == Action::Right &&
+                     gameActionScreenshotCursor_ + 1 < int(std::max<size_t>(1,
+                         gameActionScreenshotPaths_.size())))
+                ++gameActionScreenshotCursor_;
+            gameActionCursor_ = 100 + gameActionScreenshotCursor_;
         } else if (action == Action::Confirm) {
-            if (gameVersionChooserActive_) {
-                const Game::Variant &variant = gameActionGame_.versions[size_t(gameActionCursor_)];
-                Game selected = Library::makeGame(*gameActionSystem_, variant.path);
+            if (gameActionScreenshotReady_ && gameActionCursor_ >= 100) {
+                gameActionScreenshotOverlay_ = true;
+            } else if (gameActionCursor_ == 0) {
+                const std::string path = gameActionGame_.versions.empty()
+                    ? gameActionGame_.path
+                    : gameActionGame_.versions[size_t(gameActionSelectedVersion_)].path;
+                Game selected = Library::makeGame(*gameActionSystem_, path);
                 if (context_->launcher.launchGame(*gameActionSystem_, selected)) {
                     history_.remember(gameActionSystem_->name, selected.path, gameActionGame_.name);
                     gameActionsActive_ = false;
-                    gameVersionChooserActive_ = false;
                     context_->standDown = true;
                 } else context_->showError("Could not start " + gameActionGame_.name,
                                            context_->launcher.lastError());
-            } else if (gameActionCursor_ == 0) {
-                gameActionsActive_ = false;
-                needsFullRedraw_ = true;
-                activeScreen()->handle(Action::Confirm);
-            } else if (gameActionCursor_ == 1 && gameActionGame_.versions.size() > 1) {
-                gameVersionChooserActive_ = true;
-                gameActionCursor_ = 0;
-            } else if (gameActionSystem_ && library_.usingDatabase() && !scraper_.running()) {
-                MediaScraper::Options options;
-                options.boxart = true;
-                options.backgrounds = false;
-                scraper_.startGame(library_.database(), options, gameActionSystem_->dbKey,
-                                   gameActionGame_.path);
-                gameActionWorking_ = true;
-                gameActionScrapePendingRefresh_ = true;
             } else {
-                context_->notify("First build the game list in Settings → Library.");
-                gameActionsActive_ = false;
+                if (!gameActionGame_.versions.empty())
+                    gameActionSelectedVersion_ = gameActionCursor_ - 1;
+                gameActionCursor_ = 0;
                 needsFullRedraw_ = true;
             }
         }
@@ -971,10 +1109,19 @@ void App::renderBackground(Canvas &target) {
 
     target.verticalGradient(target.bounds(), theme.background, theme.backgroundLo);
 
-    // A soft band behind the top bar lifts the status row off the content.
-    const Rect band{0, 0, target.width(), theme.topBarHeight()};
-    target.verticalGradient(band, theme.backgroundLo.withAlpha(210),
-                            theme.background.withAlpha(0));
+    if (theme.darkMode() || theme.highContrast()) {
+        // A soft band behind the top bar lifts the status row off the content.
+        const Rect band{0, 0, target.width(), theme.topBarHeight()};
+        target.verticalGradient(band, theme.backgroundLo.withAlpha(210),
+                                theme.background.withAlpha(0));
+    } else {
+        // Keep the existing light icons legible, then fade the black bar into the theme tint.
+        const Color bar = Color::rgb(0x07090D);
+        const Rect barRect{0, 0, target.width(), theme.topBarHeight()};
+        target.fillRect(barRect, bar);
+        const Rect fade{0, barRect.bottom(), target.width(), theme.px(112)};
+        target.verticalGradient(fade, bar.withAlpha(238), theme.background.withAlpha(0));
+    }
 
     target.clearDamage();
 }
@@ -986,7 +1133,19 @@ void App::renderBottomBar(const Rect &area) {
     const bool favoriteHolding = input_.favoriteHoldActive() &&
                                  favoriteHoldScreen_ == activeScreen() &&
                                  !favoriteHoldPath_.empty();
-    const std::string hints = formatButtonLabels(activeScreen()->hints());
+    std::string activeHints = activeScreen()->hints();
+    if (gameActionsActive_) {
+        if (gameActionScreenshotOverlay_)
+            activeHints = "←/→ Browse screenshots   A/B Close";
+        else if (gameActionScreenshotReady_ && gameActionCursor_ >= 100)
+            activeHints = "↑ Start game   ←/→ Browse screenshots   A View screenshot   B Close";
+        else if (gameActionCursor_ == 0)
+            activeHints = gameActionScreenshotReady_
+                ? "↑ Choose ROM   ↓ View screenshots   A Start game   B Close"
+                : "↑ Choose ROM   A Start game   B Close";
+        else activeHints = "↑/↓ Choose ROM   A Select version   B Close";
+    }
+    const std::string hints = formatButtonLabels(activeHints);
     const int iconSize = theme.hintIconSize();
     const int iconGap = theme.px(5);
     // The hints use their own size setting. If a long hint line would run into the version text
@@ -1058,7 +1217,7 @@ void App::renderBottomBar(const Rect &area) {
         const int reserved = versionWidth + theme.gap();
         theme.regular().draw(canvas, area.right() - theme.marginX() - reserved - width, y,
                              context_->message, theme.sizeSmall(),
-                             theme.accent.withAlpha(alpha));
+                             theme.success.withAlpha(alpha));
     }
 }
 
@@ -1111,6 +1270,18 @@ int App::run() {
 
         const bool suppressActions = controllersActive_ && controllersScreen_->wantsRawInput();
         std::vector<Action> actions = input_.poll(kTargetFrameMs);
+        if (!actions.empty()) {
+            idleSeconds_ = 0.0f;
+            if (screensaverActive_) {
+                screensaverActive_ = false;
+                screensaverDrawn_ = false;
+                screensaverArt_.reset();
+                needsFullRedraw_ = true;
+                actions.clear();
+            }
+        } else {
+            idleSeconds_ += dt;
+        }
         if (!suppressActions) {
             if (input_.favoriteHoldActive()) {
                 Screen *screen = activeScreen();
@@ -1202,10 +1373,6 @@ int App::run() {
             }
         }
 
-        if (gameActionScrapePendingRefresh_ && scraper_.finished()) {
-            if (scraper_.fetched() || scraper_.prepared()) refreshGameActionArtwork();
-            gameActionScrapePendingRefresh_ = false;
-        }
 
         if (!autoCheckDecisionMade_) {
             updateCheckDelay_ -= dt;
@@ -1241,21 +1408,26 @@ int App::run() {
                 needsFullRedraw_ = true;
             }
         }
-        // Only logs; never redraws. At most 20 lines, so a misbehaving loop elsewhere cannot
-        // turn this into log traffic.
+        // Check for framebuffer mode changes every two seconds. MiSTer_fb can clear the
+        // framebuffer when Main_MiSTer reapplies the mode, so request one full redraw for
+        // each observed counter change. Updating the saved count below prevents repeated
+        // redraws while the counter stays unchanged. Diagnostic logging remains bounded.
         framebufferWatchTimer_ -= dt;
         if (framebufferWatchTimer_ <= 0.0f) {
             framebufferWatchTimer_ = 2.0f;
             const long count = readFramebufferResCount();
-            if (count != framebufferResCount_ && framebufferResLogged_ < 20) {
-                ++framebufferResLogged_;
-                char message[160];
-                std::snprintf(message, sizeof(message),
-                              "framebuffer: MiSTer_fb res_count %ld -> %ld (kernel uptime %.1f s, tab=%d)",
-                              framebufferResCount_, count, uptimeSeconds(), int(tab_));
-                DebugLog::info(message);
+            if (count >= 0 && count != framebufferResCount_) {
+                if (framebufferResCount_ >= 0) needsFullRedraw_ = true;
+                if (framebufferResLogged_ < 20) {
+                    ++framebufferResLogged_;
+                    char message[160];
+                    std::snprintf(message, sizeof(message),
+                                  "framebuffer: MiSTer_fb res_count %ld -> %ld (kernel uptime %.1f s, tab=%d)",
+                                  framebufferResCount_, count, uptimeSeconds(), int(tab_));
+                    DebugLog::info(message);
+                }
+                framebufferResCount_ = count;
             }
-            framebufferResCount_ = count;
         }
         if (tab_ == Tab::Disc) {
             const std::vector<Tab> tabs = visibleTabs();
@@ -1264,9 +1436,32 @@ int App::run() {
         }
 
         Theme &theme = *theme_;
+        if (!screensaverActive_ && preferences_.screensaverDelay() > 0 &&
+            idleSeconds_ >= preferences_.screensaverDelay()) {
+            screensaverActive_ = true;
+            screensaverDrawn_ = false;
+            screensaverArt_.reset();
+            screensaverArtTimer_ = 0.0f;
+            screensaverArtPending_ = false;
+            screensaverNeedsBlackout_ = true;
+        }
         topBar_.update(dt, preferences_.use24HourClock());
         activeScreen()->update(dt);
         if (context_->messageTimer > 0.0f) context_->messageTimer -= dt;
+        const auto backup = backupTask_.snapshot();
+        if (backup.state != backupStateReported_ && backup.state != BackupTask::State::Running) {
+            backupStateReported_ = backup.state;
+            if (backup.state == BackupTask::State::Complete) {
+                const size_t slash = backup.path.find_last_of('/');
+                const std::string folder = slash == std::string::npos
+                                               ? std::string("USB backup folder")
+                                               : backup.path.substr(0, slash);
+                context_->notify("Backup saved to " + folder, 10.0f);
+            }
+            else if (backup.state == BackupTask::State::Failed)
+                context_->showError("Backup not created",
+                                    "No settings were changed. Connect one writable USB drive and try again.");
+        }
 
         // Measured on the device against a real scraped cover: ~22ms to decode, well down
         // from the ~47ms a full-size PNG cost before the scraper started shrinking and
@@ -1274,6 +1469,52 @@ int App::run() {
         // of the one the old, PNG-sized budget allowed, which is what "successive loading"
         // actually feels like while browsing a freshly opened system.
         images_.beginFrame(32);
+
+        if (screensaverActive_ && preferences_.screensaverStyle() == "boxart") {
+            screensaverArtTimer_ -= dt;
+            if (screensaverArtPending_) {
+                screensaverArtLoadTimer_ += dt;
+                screensaverArt_ = images_.requestAsyncCandidates(
+                    screensaverArtCandidates_, theme.px(250), theme.px(350));
+                if (screensaverArt_) {
+                    screensaverArtPending_ = false;
+                    screensaverArtTimer_ = 6.0f;
+                } else if (screensaverArtLoadTimer_ >= 3.0f) {
+                    screensaverArtPending_ = false;
+                    screensaverArtTimer_ = 10.0f;
+                }
+            } else if (screensaverArtTimer_ <= 0.0f) {
+                screensaverArt_.reset();
+                screensaverNeedsBlackout_ = true;
+                screensaverArtTimer_ = 10.0f;
+                const auto &systems = library_.systems();
+                if (!systems.empty()) {
+                    screensaverSeed_ = screensaverSeed_ * 1664525u + 1013904223u;
+                    const GameSystem &system = systems[screensaverSeed_ % systems.size()];
+                    const auto paths = library_.pathsOf(system);
+                    if (!paths.empty()) {
+                        screensaverSeed_ = screensaverSeed_ * 1664525u + 1013904223u;
+                        Game game = Library::makeGame(system, paths[screensaverSeed_ % paths.size()],
+                                                      ArtworkVariant::Grid);
+                        screensaverArtCandidates_ = game.boxartCandidates;
+                        screensaverArt_ = images_.requestAsyncCandidates(
+                            screensaverArtCandidates_, theme.px(250), theme.px(350));
+                        if (screensaverArt_) screensaverArtTimer_ = 6.0f;
+                        else {
+                            screensaverArtPending_ = true;
+                            screensaverArtLoadTimer_ = 0.0f;
+                        }
+                        const int margin = theme.px(50);
+                        const int maxX = std::max(margin, canvas_->width() - theme.px(300));
+                        const int maxY = std::max(margin, canvas_->height() - theme.px(400));
+                        screensaverSeed_ = screensaverSeed_ * 1664525u + 1013904223u;
+                        screensaverArtRect_ = {margin + int(screensaverSeed_ % unsigned(maxX - margin + 1)),
+                                               margin + int((screensaverSeed_ >> 8) % unsigned(maxY - margin + 1)),
+                                               theme.px(250), theme.px(350)};
+                    }
+                }
+            }
+        }
 
         const Rect top{0, 0, canvas_->width(), theme.topBarHeight()};
         const Rect bottom{0, canvas_->height() - theme.bottomBarHeight(), canvas_->width(),
@@ -1306,6 +1547,46 @@ int App::run() {
         }
 
         canvas_->clearDamage();
+
+        if (screensaverActive_) {
+            const bool fullSaver = !screensaverDrawn_;
+            if ((!screensaverDrawn_ || screensaverNeedsBlackout_) &&
+                preferences_.screensaverStyle() == "boxart") {
+                canvas_->clear(Color::rgb(0x000000));
+                screensaverNeedsBlackout_ = false;
+            }
+            if (preferences_.screensaverStyle() == "dimmed") {
+                if (!screensaverDrawn_) {
+                    if (needsFullRedraw_ || !options_.incremental || context_->errorActive) {
+                        canvas_->restoreFrom(*background_, canvas_->bounds());
+                        topBar_.render(*canvas_, theme, {0, 0, canvas_->width(), theme.topBarHeight()},
+                                       tab_, preferences_.showGamesTab(), arcadeTabShown(), false,
+                                       tabNavigationAvailable(), preferences_.tabDisplay(), tabIcons_);
+                        renderBottomBar(bottom);
+                        screen->render(*canvas_, content, true);
+                        if (context_->errorActive)
+                            ErrorModal::draw(*canvas_, theme, canvas_->bounds(),
+                                             context_->errorTitle, context_->errorMessage);
+                        else if (gameActionsActive_)
+                            renderGameActions();
+                    }
+                    canvas_->fillRect(canvas_->bounds(), Color::rgb(0x000000).withAlpha(190));
+                }
+            } else if (screensaverArt_) {
+                const float elapsed = 6.0f - screensaverArtTimer_;
+                const float reveal = elapsed < 0.8f ? elapsed / 0.8f * 100.0f
+                                     : elapsed > 5.2f ? (6.0f - elapsed) / 0.8f * 100.0f
+                                                      : 100.0f;
+                canvas_->fillRect(screensaverArtRect_, Color::rgb(0x000000));
+                canvas_->drawImageReveal(*screensaverArt_, screensaverArtRect_, 255,
+                                         theme.px(12), int(std::max(0.0f, std::min(100.0f, reveal))));
+            }
+            if (fullSaver || !canvas_->damage().empty()) framebuffer_.present(*canvas_);
+            screensaverDrawn_ = true;
+            needsFullRedraw_ = false;
+            if (options_.exitAfterFrames > 0 && ++frame >= options_.exitAfterFrames) break;
+            continue;
+        }
 
         const int64_t t0 = nowMs();
         // Instead of repainting the gradient every frame, the prepared background is copied

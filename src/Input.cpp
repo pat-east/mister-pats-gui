@@ -101,6 +101,7 @@ void Input::rescan() {
         probeTrigger(fd, ABS_Z, device.triggerLeftThreshold);
         probeTrigger(fd, ABS_RZ, device.triggerRightThreshold);
         device.hasHat = probeHat(fd);
+        device.genericButtons = probeGenericButtons(fd);
         devices_.push_back(device);
     }
 }
@@ -127,6 +128,34 @@ bool Input::probeHat(int fd) {
     return (bits[ABS_HAT0X / bitsPerWord] >> (ABS_HAT0X % bitsPerWord)) & 1;
 }
 
+namespace {
+// Joystick button n (BTN_TRIGGER + n) -> gamepad button, by physical position on an
+// eight-button pad: 0 bottom, 1 right, 2 left, 3 top, 4/5 shoulders, 6 select, 7 start.
+// This matches the iBuffalo entry in SDL's gamecontrollerdb (b:b0 a:b1 y:b2 x:b3 ...).
+const uint16_t kGenericButtons[8] = {BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST,
+                                     BTN_TL, BTN_TR, BTN_SELECT, BTN_START};
+} // namespace
+
+bool Input::probeGenericButtons(int fd) {
+    unsigned long bits[(KEY_MAX / (8 * sizeof(unsigned long))) + 1] = {};
+    if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(bits)), bits) < 0) return false;
+
+    const size_t bitsPerWord = 8 * sizeof(unsigned long);
+    auto has = [&](unsigned code) { return (bits[code / bitsPerWord] >> (code % bitsPerWord)) & 1; };
+    return has(BTN_TRIGGER) && !has(BTN_SOUTH) && !has(BTN_EAST);
+}
+
+uint16_t Input::gamepadCode(uint16_t code) {
+    if (code >= BTN_TRIGGER && code < BTN_TRIGGER + 8) return kGenericButtons[code - BTN_TRIGGER];
+    return code;
+}
+
+uint16_t Input::joystickCode(uint16_t code) {
+    for (uint16_t i = 0; i < 8; ++i)
+        if (kGenericButtons[i] == code) return uint16_t(BTN_TRIGGER + i);
+    return code;
+}
+
 void Input::emitDirection(Action action, bool pressed, std::vector<Action> &out) {
     if (pressed) {
         if (favoriteDeviceIndex_ >= 0) favoriteCanceled_ = true;
@@ -141,6 +170,7 @@ void Input::emitDirection(Action action, bool pressed, std::vector<Action> &out)
 
 void Input::handleKey(const Device &device, uint16_t code, int32_t value, std::vector<Action> &out) {
     const bool pressed = value != 0;
+    if (device.genericButtons) code = gamepadCode(code);
 
     // On the controllers used with this GUI, the raw north/west codes arrive opposite
     // to their Xbox-labelled physical positions: north is the left X face button.
@@ -360,6 +390,12 @@ bool Input::keyState(int slot, uint16_t code) const {
 
     const size_t bitsPerWord = 8 * sizeof(unsigned long);
     return (bits[code / bitsPerWord] >> (code % bitsPerWord)) & 1;
+}
+
+bool Input::logicalKeyState(int slot, uint16_t code) const {
+    if (slot >= 0 && slot < int(devices_.size()) && devices_[size_t(slot)].genericButtons)
+        return keyState(slot, joystickCode(code));
+    return keyState(slot, code);
 }
 
 int32_t Input::absValue(int slot, uint16_t code) const {

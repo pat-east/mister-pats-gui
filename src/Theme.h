@@ -37,6 +37,14 @@ public:
     void setHighContrastColor(int index);
     bool highContrast() const { return highContrast_; }
 
+    static constexpr int kDefaultColorTheme = 0;
+    static int colorThemeCount();
+    static const char *colorThemeName(int index);
+    void setColorTheme(int index);
+    int colorTheme() const { return colorTheme_; }
+    void setDarkMode(bool enabled);
+    bool darkMode() const { return darkMode_; }
+
     // Colours
     Color background   = Color::rgb(0x0B0D14);
     Color backgroundLo = Color::rgb(0x05070C);
@@ -46,9 +54,13 @@ public:
     Color textPrimary  = Color::rgb(0xFFFFFF);
     Color textMuted    = Color::rgb(0x9AA4C0);
     Color warning      = Color::rgb(0xE06A5A);
+    Color success      = Color::rgb(0x4C8DFF);
     Color favorite     = Color::rgb(0x4C8DFF);
     Color shadow       = Color::rgb(0x000000);
     Color focus        = Color::rgb(0xB9D5FF);
+    Color topBarText   = Color::rgb(0xFFFFFF);
+    Color topBarMuted  = Color::rgb(0x9AA4C0);
+    Color topBarFocus  = Color::rgb(0xB9D5FF);
 
     // Metrics, in design pixels
     int marginX() const { return px(72); }
@@ -79,6 +91,8 @@ private:
     int hintSizeScalePercent_ = 100;
     bool highContrast_ = false;
     int highContrastColor_ = kDefaultHighContrastColor;
+    int colorTheme_ = kDefaultColorTheme;
+    bool darkMode_ = true;
     void applyPalette();
     bool spaceGroteskEnabled_ = true;
     Font regular_;

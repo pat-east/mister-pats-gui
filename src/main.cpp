@@ -419,6 +419,7 @@ bool parse(int argc, char **argv, App::Options &options) {
         if (arg == "--help" || arg == "-h") { usage(); return false; }
 
         if (arg == "--tab" && hasValue) {
+            options.tabExplicit = true;
             const std::string value = argv[++i];
             if (value == "disc") options.tab = Tab::Disc;
             else if (value == "home") options.tab = Tab::Home;

@@ -26,6 +26,14 @@ device are in `build/shots/`. Deviations from this design that came out of the i
   Current covers use view-sized BMPs when available, and a bounded worker decodes them.
 - **Splash and failure handling:** the first second animates to 25%, then icons are loaded
   sequentially; a fatal GUI exit shows a crash screen instead of an automatic boot loop.
+- **Interface settings:** normal color themes adjust the accent and focus palette independently
+  from High contrast. Tab changes fade the new content area in briefly while the navigation bars
+  stay still.
+- **Screensaver:** Settings → System offers Disabled, 30 seconds, 5, 10, 20, 30, or 60 minutes and
+  Dimmed or Boxart. Any controller input wakes it. Boxart covers use the already loaded library
+  and are decoded by the background image worker.
+- **GUI settings backup:** Settings → System can save personal configuration files to a mounted
+  USB drive. `tools/restore-mister-pat.sh <archive>` restores a validated backup from the console.
 
 ## 1. Target Look
 
@@ -298,7 +306,22 @@ Two columns: the list on the left, a large presentation of the focused game on t
   third of a row is left over. In doing so the tile is only compressed, never stretched, and
   the boxart inside it keeps its own proportions anyway.
 
-### 5.3 Contextual search
+### 5.3 Game options
+
+Select opens a large modal over the current game view. It shows the game's fixed-size detail
+box art on the left. On the right, the sorted ROM versions appear first, followed by the
+focused **Start game** action and a row for up to four screenshots. From **Start game**, Up
+opens the ROM list; choose a version with Up/Down and A to return to **Start game**, then press
+A to launch it. Down from **Start game** focuses the screenshots, as on the Disc view. Press A
+on an available screenshot to open the larger modal; A or B closes it. A game with one ROM shows
+**Standard**. B closes the panel. Existing locally prepared background artwork can appear in the
+first screenshot slot while TheGamesDB fetches up to four screenshots for a matching game and
+platform when an API key is configured. When that lookup is unavailable or finds no image, the
+panel uses local background artwork or fetches one Libretro screenshot in the background.
+Downloaded screenshots are cached locally. Left and Right move between available screenshots
+in the row and in the larger modal.
+
+### 5.4 Contextual search
 
 Home, Games, Favorites, a system's game list and Arcade each show the same search field below
 their screen title. The field is not focused on entry; **Up** from the first game row focuses it,
@@ -316,7 +339,7 @@ Commando”. Results use that area's normal game actions, letter jump and availa
 queries remain independent between areas. There is no Search tab, and Settings and the Systems
 overview have no search field.
 
-### 5.4 Settings
+### 5.5 Settings
 
 Settings uses three columns: categories on the left, the selected category's actions and
 options in the middle, and a larger explanation of the selected option on the right. Use
@@ -325,8 +348,9 @@ options. Choose **Settings → System → Info** to open system facts in a modal
 Library, Controllers, Interface, Accessibility, Updates, and System. Library also holds **Core and
 MRA updates**, which compares the official distribution's cores and MRAs with what is installed
 (see [UPDATER.md](UPDATER.md)). Interface settings include
-**Game view**—Grid, Boxart small, List or Individual—tab display as names, icons or both, and
-interface sound controls.
+**Game view**—Grid, Boxart small, List or Individual—**Start tab** (Home, Favorites, Consoles,
+Games or Arcade; a tab that is off or empty falls back to Home), tab display as names, icons or
+both, and interface sound controls.
 Accessibility settings include the Space Grotesk font switch or download action, three font sizes
 (Standard, Larger and Largest), three sizes for the controller hints at the bottom left, and a
 high-contrast switch with a choice of highlight color (White, Pink, Yellow, Cyan, Lime Green,
@@ -491,12 +515,10 @@ boxart looks better against a dark background.
    will be decided by the measured frame rate.
 5. **Favorites and history.** Our own file, or can we piggyback on Console Mode's `.state`?
 
-## 10. Possible extension: game details
+## 10. Game details
 
-The existing **SELECT** action menu could offer a game details view for a selected ROM. It
-could reuse the Disc tab's layout for title metadata, box art and available in-game screenshots.
-Load data asynchronously and cache successful results locally. Keep the view useful without a
-network key by showing available Libretro artwork; TheGamesDB can supply additional metadata
-and images when configured. Keep the existing start, version-choice and artwork actions
-available. See [GAME-VERSIONS.md](GAME-VERSIONS.md) for version choices and
-[THEGAMEDB.md](THEGAMEDB.md) for scraper behavior and matching constraints.
+Select opens the game options panel described in section 5.3. Screenshots load asynchronously
+from TheGamesDB for exact title and platform matches and are cached locally. The panel remains
+usable with local artwork when the key, match or network is unavailable. See
+[GAME-VERSIONS.md](GAME-VERSIONS.md) for version choices and
+[THEGAMEDB.md](THEGAMEDB.md) for scraper behavior.

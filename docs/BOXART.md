@@ -62,13 +62,20 @@ Game Boy Advance `media` folder (about 17,000 files) and about 17 ms in the Nint
 `.jpg`, `.png`), so a cover without a prepared BMP cost several of those scans.
 
 To avoid it, the GUI reads the file names of every system's box-art folders into memory once
-(`ArtworkIndex`) and asks that list before it touches the file system:
+(`ArtworkIndex`) and asks that list before it touches the file system. A versioned copy is also
+stored at `/media/fat/mister-pat/boxart-index.tsv`:
 
-- **When:** at startup while the splash screen is visible, and again, in the background, after a
-  library reload (**Settings → Reload saved game list**), which first drops the old list.
-- **Gentle on storage:** directories are read one after another with a 50 ms pause after each;
-  only names are read (no file contents, nothing is written). Playing or browsing causes no
-  further directory scans for names the list already answers.
+- **At startup:** the GUI reads the saved index. If it is missing, malformed, too large, or from
+  an unsupported format, the GUI uses the existing directory scan while the splash screen is up
+  and saves the resulting index for the next launch.
+- **After a library reload:** **Settings → Reload saved game list** rebuilds the index in the
+  background and atomically saves it for the next launch. This reloads the saved game database;
+  it does not search drives for games. Run it after adding or removing box-art files outside the
+  GUI, or after preparing artwork, to refresh the saved index.
+- **Gentle on storage:** a rebuild reads directories one after another with a 50 ms pause after
+  each; only names are read, not image contents. The index file is written once after the rebuild
+  completes, using a temporary file and rename so an interrupted write leaves the previous index
+  intact. Playing or browsing causes no further directory scans for names the index answers.
 - **How it is used:** a name that is in the list is opened directly; a name that is not is
   skipped without asking the file system. A folder that is not in the list, or a name with
   non-ASCII characters, is asked the old way, so nothing becomes unavailable because of the
@@ -76,8 +83,9 @@ To avoid it, the GUI reads the file names of every system's box-art folders into
 - **Case:** exFAT ignores case, so names are compared in lower case.
 - **Bounds:** at most 300,000 names (a few tens of MB at the very most; a library with 100,000
   covers needs a fraction of that). Folders beyond the limit stay unindexed.
-- **Freshness:** the scraper and **Prepare box art** add the files they write. Files copied to the
-  drive by other means appear after the next library reload.
+- **Freshness:** the scraper and **Prepare box art** add the files they write to the current
+  in-memory index. The persistent copy is refreshed after the next library reload. Files copied to
+  the drive by other means also appear after that reload.
 - The log shows the cost: `artwork index: directories=… names=… elapsed-ms=…`.
 
 ## Boxart fade-in and cache

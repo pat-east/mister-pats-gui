@@ -331,20 +331,43 @@ bool parseReleaseInfo(const std::string &text, ReleaseInfo &out, std::string &er
         text.find('\r') != std::string::npos) {
         error = "invalid release-info.txt length or line endings"; return false;
     }
-    const size_t a = text.find('\n');
-    const size_t b = text.find('\n', a + 1);
-    if (a == std::string::npos || b == std::string::npos ||
-        text.find('\n', b + 1) != text.size() - 1 ||
-        text.compare(0, 8, "version=") != 0 ||
-        text.compare(a + 1, 11, "loader_abi=") != 0 ||
-        text.compare(b + 1, 15, "gamesdb_format=") != 0) {
+    std::vector<std::string> lines;
+    size_t start = 0;
+    while (start < text.size()) {
+        const size_t end = text.find('\n', start);
+        if (end == std::string::npos) break;
+        lines.push_back(text.substr(start, end - start));
+        start = end + 1;
+    }
+    if ((lines.size() != 3 && lines.size() != 5) ||
+        lines[0].compare(0, 8, "version=") != 0 ||
+        lines[1].compare(0, 11, "loader_abi=") != 0 ||
+        lines[2].compare(0, 15, "gamesdb_format=") != 0) {
         error = "invalid release-info.txt fields"; return false;
     }
     uint16_t abi = 0;
-    if (!parseVersion(text.substr(8, a - 8), out.version) ||
-        !decimal(text.substr(a + 12, b - a - 12), abi) || abi != 1 ||
-        !decimal(text.substr(b + 16, text.size() - b - 17), out.gamesDbFormat)) {
+    if (!parseVersion(lines[0].substr(8), out.version) ||
+        !decimal(lines[1].substr(11), abi) || abi != 1 ||
+        !decimal(lines[2].substr(15), out.gamesDbFormat)) {
         error = "invalid release-info.txt values"; return false;
+    }
+    if (lines.size() == 5) {
+        if (lines[3].compare(0, 21, "backup_script_sha256=") != 0 ||
+            lines[4].compare(0, 22, "restore_script_sha256=") != 0) {
+            error = "invalid release script hashes"; return false;
+        }
+        out.backupScriptHash = lines[3].substr(21);
+        out.restoreScriptHash = lines[4].substr(22);
+        for (const std::string *hash : {&out.backupScriptHash, &out.restoreScriptHash}) {
+            if (hash->size() != 64) { error = "invalid release script hash"; return false; }
+            for (char ch : *hash)
+                if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'))) {
+                    error = "invalid release script hash"; return false;
+                }
+        }
+    } else {
+        out.backupScriptHash.clear();
+        out.restoreScriptHash.clear();
     }
     out.discIndexFormat = 1;
     return true;

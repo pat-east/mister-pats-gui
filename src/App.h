@@ -7,11 +7,13 @@
 
 #include "ArcadeGamesScreen.h"
 #include "ArcadeSettingsScreen.h"
+#include "BackupTask.h"
 #include "Canvas.h"
 #include "Console.h"
 #include "ControllersScreen.h"
 #include "DiscScreen.h"
 #include "DiscArtworkService.h"
+#include "GameScreenshotService.h"
 #include "TheGamesDBClient.h"
 #include "DiscCoreManager.h"
 #include "DiscCoreInstaller.h"
@@ -44,6 +46,7 @@ public:
     // capture and review each view without a controller in hand.
     struct Options {
         Tab tab = Tab::Home;
+        bool tabExplicit = false;    // --tab was passed; overrides the saved start tab
         GameView view = GameView::Grid;
         bool viewExplicit = false;   // --view was passed; overrides the saved default view
         std::string system;      // empty picks the first one with games
@@ -122,7 +125,6 @@ private:
     void openGameActions();
     void openGameVersionChooser(const GameSystem &system, const Game &game);
     void renderGameActions();
-    void refreshGameActionArtwork();
     void activateSpaceGrotesk();
     std::string spaceGroteskStatus() const;
 
@@ -141,6 +143,7 @@ private:
     DiscCoreManager discCores_;
     TheGamesDBClient theGamesDB_;
     DiscArtworkService discArtwork_;
+    GameScreenshotService gameScreenshots_;
     DiscCoreInstaller discCoreInstaller_;
     DiscCoreManager::Status discCoreStatus_;
     float discCoreRefreshTimer_ = 0.0f;
@@ -157,6 +160,8 @@ private:
     History history_;
     HiddenSystems hiddenSystems_;
     Preferences preferences_;
+    BackupTask backupTask_;
+    BackupTask::State backupStateReported_ = BackupTask::State::Idle;
     std::unique_ptr<Context> context_;
 
     Input input_;
@@ -180,11 +185,13 @@ private:
     std::unique_ptr<ArcadeSettingsScreen> arcadeSettingsScreen_;
     std::unique_ptr<ArcadeGamesScreen> arcadeGamesScreen_;
     bool gameActionsActive_ = false;
-    bool gameVersionChooserActive_ = false;
-    bool gameActionWorking_ = false;
-    bool gameActionScrapePendingRefresh_ = false;
     int gameActionCursor_ = 0;
     int gameVersionScroll_ = 0;
+    int gameActionSelectedVersion_ = 0;
+    int gameActionScreenshotCursor_ = 0;
+    bool gameActionScreenshotReady_ = false;
+    bool gameActionScreenshotOverlay_ = false;
+    std::vector<std::string> gameActionScreenshotPaths_;
     const GameSystem *gameActionSystem_ = nullptr;
     Game gameActionGame_;
 
@@ -206,6 +213,17 @@ private:
     bool arcadeGamesActive_ = false;    // ...-> Arcade Games owns the screen, on top of that
     bool detailActive_ = false;   // a system was opened from the systems tab
     bool needsFullRedraw_ = true; // set on start and whenever the screen changes
+    float idleSeconds_ = 0.0f;
+    bool screensaverActive_ = false;
+    bool screensaverDrawn_ = false;
+    bool screensaverNeedsBlackout_ = false;
+    float screensaverArtTimer_ = 0.0f;
+    float screensaverArtLoadTimer_ = 0.0f;
+    bool screensaverArtPending_ = false;
+    std::vector<std::string> screensaverArtCandidates_;
+    ImagePtr screensaverArt_;
+    Rect screensaverArtRect_{};
+    unsigned screensaverSeed_ = 1;
 
     Options options_;
     bool running_ = false;

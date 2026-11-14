@@ -328,7 +328,7 @@ void ScanScreen::renderJumpStartWorking(Canvas &canvas, const Rect &panel) {
                 items[i].status, textSize, statusWidth - theme.px(10));
             theme.regular().draw(canvas, row.right() - statusWidth,
                                  row.y + theme.px(8), statusText, textSize,
-                                 items[i].done ? theme.accent : theme.textMuted);
+                                 items[i].done ? theme.success : theme.textMuted);
         }
         canvas.popClip();
 
@@ -420,7 +420,7 @@ void ScanScreen::renderOverview(Canvas &canvas, const Rect &panel) {
         drawParagraph(canvas, body,
                       {"The sample game list and matching box art are ready.",
                        "You can start playing now."},
-                      theme.sizeBody(), theme.accent, y);
+                      theme.sizeBody(), theme.success, y);
     } else {
         drawParagraph(canvas, body,
                       {"The scan did not find any games on the connected storage.",

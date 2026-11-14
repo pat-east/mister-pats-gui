@@ -1,5 +1,19 @@
 # TheGamesDB-Integration
 
+## Game options screenshots
+
+Opening a regular game's options panel starts one background lookup for its title and system.
+The service resolves the system's exact TheGamesDB platform name to an ID, searches that platform
+for an exact main or alternate title, and fetches up to four valid screenshots. Images are
+downloaded from the TheGamesDB CDN and cached under
+`/media/fat/mister-pat/game-screenshots/<game-key>/`. The cache is limited to 80 games or 128 MiB.
+A successful lookup with no match is remembered for 30 days. A configured API key is required;
+cached TheGamesDB images remain available without one. If TheGamesDB cannot supply an image,
+the panel uses existing local background artwork or fetches one matching screenshot from
+Libretro's `Named_Snaps` index over HTTPS. The index is saved once per platform and missing
+matches are remembered for 30 days. The lookup does not fetch ROMs or BIOS files and does not
+block controller input or rendering.
+
 ## Zweck und Ablauf
 
 TheGamesDB ergänzt die Disc-Ansicht um Boxart, Ingame-Screenshots und Spieldaten. Die vorhandene Libretro-Suche bleibt der Fallback, wenn TheGamesDB keinen passenden Treffer oder kein verwendbares Bild liefert.

@@ -129,10 +129,10 @@ void TopBar::render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, 
     // Left: time over date.
     const int left = area.x + theme.marginX();
     const int timeY = area.y + theme.px(16);
-    bold.draw(canvas, left, timeY, time_, theme.sizeClock(), theme.textPrimary);
+    bold.draw(canvas, left, timeY, time_, theme.sizeClock(), theme.topBarText);
     const int dateY = timeY + bold.lineHeight(theme.sizeClock()) + theme.px(6);
     regular.draw(canvas, left, dateY, date_, theme.sizeSmall(),
-                 theme.textMuted.withAlpha(205));
+                 theme.topBarMuted.withAlpha(205));
 
     // Centre: tabs.
     const std::vector<Tab> tabs = visibleTabs(showGames, showArcade, showDisc);
@@ -177,7 +177,7 @@ void TopBar::render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, 
             const Rect dot{x - spacing / 2 - dotSize / 2,
                            tabY + (bold.lineHeight(tabSize) - dotSize) / 2,
                            dotSize, dotSize};
-            canvas.fillRoundedRect(dot, dotSize / 2, theme.textMuted.withAlpha(175));
+            canvas.fillRoundedRect(dot, dotSize / 2, theme.topBarMuted.withAlpha(175));
         }
 
         if (effectiveDisplay != TabDisplay::Names) {
@@ -191,7 +191,7 @@ void TopBar::render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, 
         if (effectiveDisplay != TabDisplay::Icons) {
             const int textX = effectiveDisplay == TabDisplay::Both ? x + iconSize + iconGap : x;
             bold.draw(canvas, textX, tabY, text, tabSize,
-                      isActive ? theme.textPrimary : theme.textMuted);
+                      isActive ? theme.topBarText : theme.topBarMuted);
         }
 
         if (isActive) {
@@ -208,7 +208,7 @@ void TopBar::render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, 
         const Rect underline{int(indicatorX_), tabY + bold.lineHeight(tabSize) + theme.px(4),
                              int(indicatorW_), theme.px(3)};
         canvas.fillRoundedRect(underline, theme.px(2),
-                               (tabsEnabled ? theme.focus : Color::rgb(0xA0A0A0))
+                               (tabsEnabled ? theme.topBarFocus : Color::rgb(0xA0A0A0))
                                    .withAlpha(uint8_t(255.0f * indicatorOpacity_)));
     }
 
@@ -220,12 +220,12 @@ void TopBar::render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, 
 
     const int networkY = area.y + theme.px(18);
     regular.draw(canvas, right - labelWidth, networkY, label, theme.sizeBody(),
-                 online ? theme.textMuted : theme.warning);
+                 online ? theme.topBarMuted : theme.warning);
 
     if (online) {
         const int addressWidth = regular.measure(address_, theme.sizeSmall());
         regular.draw(canvas, right - addressWidth,
                      networkY + regular.lineHeight(theme.sizeBody()) + theme.px(6),
-                     address_, theme.sizeSmall(), theme.textMuted);
+                     address_, theme.sizeSmall(), theme.topBarMuted);
     }
 }

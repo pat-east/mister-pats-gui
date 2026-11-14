@@ -39,7 +39,8 @@ Use the shared `Theme` colors rather than hard-coded colors in screen code.
 | Lower background band | `backgroundLo` | `#05070C` |
 | Standard surface | `surface` | `#161A26` |
 | Raised surface | `surfaceHi` | `#222839` |
-| Primary action and success | `accent` | `#4C8DFF` |
+| Primary action | `accent` | `#4C8DFF` |
+| Success status and messages | `success` | `#4C8DFF` |
 | Main text | `textPrimary` | `#FFFFFF` |
 | Secondary text | `textMuted` | `#9AA4C0` |
 | Focus outline | `focus` | `#B9D5FF` |
@@ -65,7 +66,20 @@ Use the shared `Theme` colors rather than hard-coded colors in screen code.
   outline; the interface then looks like normal mode without them.
 - Never communicate a state by color alone. Include a short label or clear icon and retain
   readable contrast in high-contrast mode.
-- Keep favorite marks blue. Do not add unrelated colors to make the interface more varied.
+- In the default MiSTer Pat theme, favorite marks are blue. Do not add unrelated colors to make
+  the interface more varied.
+- **Color themes** give the background gradient and raised surfaces a subtle hue as well as
+  changing the accent, focus outline, and favorite mark. The **Dark mode** switch is on by
+  default; when off, each theme uses a clear, more saturated light background with dark text and a
+  darker shade of its accent. Nintendo stays neutral gray instead of turning pink. The top bar
+  stays black with white text and fades into the light theme background below its icons. Nintendo
+  uses a neutral black and gray base with red accents and a white focus outline, alongside
+  PlayStation blue and XBOX green.
+- High contrast overrides either mode with its black background and independent highlight color.
+  Success statuses stay blue in normal themes and use the selected highlight in high contrast.
+- The **Dimmed screensaver** overlays the current view with black after the selected idle delay.
+  The **Boxart screensaver** uses the loaded game index and image worker to show random covers on
+  black, fading them in and out without a storage scan loop.
 
 ## Typography and language
 
@@ -200,6 +214,7 @@ it as it is (see [BOXART.md](BOXART.md) and `Artwork.h`).
 | Panel radius | `radius` (10) |
 | Short dialog (update intro, checking, result) | 1120 × 760, centered, at most the screen minus 36 |
 | List dialog (choose, confirm) | 1812 × 860, same limits |
+| Game options panel | 1776 × 800, centered and clear of the footer; 689 × 624 fixed detail-art slot; the screenshot row ends on the same bottom line as the art slot |
 | Error dialog | 620 wide, at most the screen minus 80 |
 | Title to content | 16 below the title (error dialog: 20) |
 | Line spacing in text blocks | line height + 9 |
@@ -287,8 +302,13 @@ Do not draw a primary, secondary, or Cancel button inside a dialog or panel.
   "Start <action>".
 - Do not repeat the hint line inside the dialog.
 - The large focusable action inside a screen (such as **Start game** on the Disc tab) is a
-  separate component: raised gradient surface, muted outline, accent/focus outline and slight
-  growth on focus, like tiles. It is not a dialog button; do not mix the two styles in one view.
+  separate component. When focused and ready, it uses a solid accent fill, contrast-selected
+  text, and one thin inset contrasting border. In Dark mode its label is white for all themes
+  except Silver, which uses dark text. The border stays inside the button bounds; the action does
+  not grow or cast a shadow.
+  When it cannot start yet or is not focused, it uses a raised surface without a border; a focused
+  unavailable action gets a narrow focus-color marker on its left edge. It is not a dialog button;
+  do not mix the two styles in one view.
 
 This is a deliberate simplification for consistency and may be revisited later; if buttons come
 back, define one size, one enabled and one disabled style here first, and use them everywhere.

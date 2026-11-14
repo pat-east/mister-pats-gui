@@ -28,6 +28,11 @@ public:
     bool organizeGameVersions() const { return organizeGameVersions_; }
     void setOrganizeGameVersions(bool enabled);
 
+    // The tab shown at startup: "home" (default), "favorites", "systems" (Consoles), "games"
+    // or "arcade". A tab that is hidden at startup falls back to Home.
+    const std::string &startTab() const { return startTab_; }
+    void setStartTab(const std::string &tab);
+
     TabDisplay tabDisplay() const { return tabDisplay_; }
     void setTabDisplay(TabDisplay display);
 
@@ -57,6 +62,15 @@ public:
     int highContrastColor() const { return highContrastColor_; }
     void setHighContrastColor(int index);
     void setHighContrast(bool enabled);
+
+    int colorTheme() const { return colorTheme_; }
+    void setColorTheme(int index);
+    bool darkMode() const { return darkMode_; }
+    void setDarkMode(bool enabled);
+    int screensaverDelay() const { return screensaverDelay_; }
+    void setScreensaverDelay(int seconds);
+    const std::string &screensaverStyle() const { return screensaverStyle_; }
+    void setScreensaverStyle(const std::string &style);
 
     // A shared game view (grid/list/small) or "individual" for per-tab views.
     const std::string &defaultView() const { return defaultView_; }
@@ -104,6 +118,7 @@ private:
     bool showArcadeInConsoles_ = false;
     bool organizeGameVersions_ = true;
     TabDisplay tabDisplay_ = TabDisplay::Names;
+    std::string startTab_ = "home";
     bool showBoxArt_ = true;
     bool loadSmallBoxartsInGridView_ = false;
     bool startSoundEnabled_ = true;
@@ -113,6 +128,10 @@ private:
     int hintSizeScale_ = 100;
     bool highContrast_ = false;
     int highContrastColor_ = 2; // Theme::kDefaultHighContrastColor (Yellow)
+    int colorTheme_ = 0;
+    bool darkMode_ = true;
+    int screensaverDelay_ = 0;
+    std::string screensaverStyle_ = "dimmed";
     std::string defaultView_ = "grid";
     std::string homeView_ = "grid";
     std::string favoritesView_ = "grid";

@@ -284,10 +284,13 @@ done
 url="$BASE/$TAG"
 fetch "$url/release-info.txt" "$STAGE/release-info.txt" 1024 15
 fetch "$url/SHA256SUMS" "$STAGE/SHA256SUMS" 4096 15
-[ "$(wc -l < "$STAGE/release-info.txt")" -eq 3 ] || fail 'invalid release-info.txt'
+[ "$(wc -l < "$STAGE/release-info.txt")" -eq 3 ] ||
+    [ "$(wc -l < "$STAGE/release-info.txt")" -eq 5 ] || fail 'invalid release-info.txt'
 [ "$(tail -c 1 "$STAGE/release-info.txt" | od -An -tu1 | tr -d ' \n')" = 10 ] || fail 'release-info.txt must end in LF'
-awk -v v="$VERSION" 'NR==1 && $0!="version="v {exit 1} NR==2 && $0!="loader_abi=1" {exit 1} NR==3 && $0 !~ /^gamesdb_format=(0|[1-9][0-9]*)$/ {exit 1} NR>3 {exit 1} END {if(NR!=3) exit 1}' "$STAGE/release-info.txt" || fail 'invalid release-info.txt fields'
+awk -v v="$VERSION" 'NR==1 && $0!="version="v {exit 1} NR==2 && $0!="loader_abi=1" {exit 1} NR==3 && $0 !~ /^gamesdb_format=(0|[1-9][0-9]*)$/ {exit 1} NR==4 && (substr($0,1,21)!="backup_script_sha256=" || length(substr($0,22))!=64 || substr($0,22) ~ /[^0-9a-f]/) {exit 1} NR==5 && (substr($0,1,22)!="restore_script_sha256=" || length(substr($0,23))!=64 || substr($0,23) ~ /[^0-9a-f]/) {exit 1} NR>5 {exit 1} END {if(NR!=3 && NR!=5) exit 1}' "$STAGE/release-info.txt" || fail 'invalid release-info.txt fields'
 format=$(sed -n '3s/^gamesdb_format=//p' "$STAGE/release-info.txt")
+BACKUP_HASH=$(sed -n '4s/^backup_script_sha256=//p' "$STAGE/release-info.txt")
+RESTORE_HASH=$(sed -n '5s/^restore_script_sha256=//p' "$STAGE/release-info.txt")
 case "$format" in ''|*[!0-9]*) fail 'invalid gamesdb format';; esac
 [ "$format" = 0 ] || case "$format" in 0*) fail 'leading zero in gamesdb format';; esac
 [ "$format" -le 65535 ] || fail 'invalid gamesdb format'
@@ -304,6 +307,14 @@ fetch "$url/DISC-INDEX-SOURCE.txt" "$STAGE/DISC-INDEX-SOURCE.txt" 16384 15
 expected=$(awk '$2=="DISC-INDEX-SOURCE.txt" {print $1}' "$STAGE/disc-index.sha256")
 [ "$(sha "$STAGE/DISC-INDEX-SOURCE.txt")" = "$expected" ] || fail 'disc-index attribution hash mismatch'
 awk -F '\t' 'NR==1 && $0 !~ /^#/ && NF!=3 {exit 1} $0 !~ /^#/ && (NF!=3 || ($1!="PSX" && $1!="SATURN") || $2=="" || $3=="") {exit 1} END {if(NR<2) exit 1}' "$STAGE/disc-index.tsv" || fail 'invalid disc-index.tsv'
+if [ -n "$BACKUP_HASH" ] && [ -n "$RESTORE_HASH" ]; then
+    fetch "https://raw.githubusercontent.com/pat-east/mister-pats-gui/$TAG/tools/backup-mister-pat.sh" "$STAGE/backup-mister-pat.sh" 16384 15
+    fetch "https://raw.githubusercontent.com/pat-east/mister-pats-gui/$TAG/tools/restore-mister-pat.sh" "$STAGE/restore-mister-pat.sh" 16384 15
+    [ "$(sha "$STAGE/backup-mister-pat.sh")" = "$BACKUP_HASH" ] || fail 'backup script hash mismatch'
+    [ "$(sha "$STAGE/restore-mister-pat.sh")" = "$RESTORE_HASH" ] || fail 'restore script hash mismatch'
+    head -n 1 "$STAGE/backup-mister-pat.sh" | grep -Fx '#!/bin/sh' >/dev/null || fail 'invalid backup script'
+    head -n 1 "$STAGE/restore-mister-pat.sh" | grep -Fx '#!/bin/sh' >/dev/null || fail 'invalid restore script'
+fi
 install_disc_assets() {
     index_hash=$(awk '$2=="disc-index.tsv" {print $1}' "$STAGE/disc-index.sha256")
     source_hash=$(awk '$2=="DISC-INDEX-SOURCE.txt" {print $1}' "$STAGE/disc-index.sha256")
@@ -311,6 +322,16 @@ install_disc_assets() {
     mv -f "$ROOT/disc-index.tsv.new-$$" "$ROOT/disc-index.tsv" || fail 'cannot install disc index'
     copy_checked "$STAGE/DISC-INDEX-SOURCE.txt" "$ROOT/DISC-INDEX-SOURCE.txt.new-$$" "$source_hash"
     mv -f "$ROOT/DISC-INDEX-SOURCE.txt.new-$$" "$ROOT/DISC-INDEX-SOURCE.txt" || fail 'cannot install disc index attribution'
+    if [ -n "$BACKUP_HASH" ] && [ -n "$RESTORE_HASH" ]; then
+        mkdir -p "$ROOT/tools" || fail 'cannot create tools folder'
+        [ -d "$ROOT/tools" ] && [ ! -L "$ROOT/tools" ] || fail 'unsafe tools folder'
+        for script in backup-mister-pat.sh restore-mister-pat.sh; do
+            cp "$STAGE/$script" "$ROOT/tools/.$script.new-$$" || fail "cannot stage $script"
+            chmod 755 "$ROOT/tools/.$script.new-$$" || fail "cannot chmod $script"
+            [ "$(sha "$ROOT/tools/.$script.new-$$")" = "$(sha "$STAGE/$script")" ] || fail "copy hash mismatch: $script"
+            mv -f "$ROOT/tools/.$script.new-$$" "$ROOT/tools/$script" || fail "cannot install $script"
+        done
+    fi
 }
 if [ "$ROUTINE" -eq 1 ]; then
     fetch "$url/$LIB" "$STAGE/$LIB" 67108864 120

@@ -12,6 +12,7 @@ third_party/freetype-*/
 # The Main_MiSTer fork is cloned by whoever builds it, not carried here.
 # What this project actually owns is patches/0001-autostart-gui.patch.
 third_party/Main_MiSTer/
+third_party/Main_MiSTer_DB9_Fork/
 
 # Proof-of-concept binaries; the sources next to them are the point.
 poc/fbhello

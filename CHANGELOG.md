@@ -5,6 +5,54 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.7] - 2026-11-14
+
+### Added
+
+- **Game options panel.** Select opens a Disc-style view with large box art, sorted available
+  ROMs, a focused **Start game** action, and up to four screenshots. Selecting a screenshot opens
+  it in a larger modal; Left and Right browse available images.
+- **Game screenshots.** With an API key, matching screenshots load from TheGamesDB in the
+  background and are cached locally. Without a key or a match, the panel uses existing local
+  artwork or loads one screenshot from Libretro. The panel remains usable when no image is
+  available.
+- **Color themes and Dark mode.** Settings → Interface offers 22 color themes that change the
+  background, surfaces, accent and focus colors. Dark mode is on by default; turning it off uses a
+  distinct light background for each theme. High contrast keeps its own highlight color.
+- **Start tab.** Settings → Interface → **Start tab** chooses which tab the GUI opens on: Home
+  (default), Favorites, Consoles, Games or Arcade. A tab that is turned off or has no games falls
+  back to Home. (Requested in a user issue.)
+- **Screensaver.** Settings → System offers idle delays from 30 seconds to 60 minutes and a Dimmed
+  or Boxart style. Any controller input wakes the screen.
+- **GUI settings backup.** Settings → System → **Back up GUI settings** saves favorites, history,
+  hidden systems, saved views and preferences to a mounted USB drive. `restore-mister-pat.sh
+  <archive>` restores a validated backup from the console.
+- **Persistent box-art index.** The box-art filename index is stored in
+  `/media/fat/mister-pat/boxart-index.tsv`, so later starts skip the directory scan.
+  **Reload saved game list** rebuilds it.
+- **Tab content fades in** when switching tabs while the navigation bars stay still.
+
+### Changed
+
+- The focused **Start game** button on the Disc screen is clearer across color themes.
+- The fresh-card installation steps in [INSTALL.md](docs/INSTALL.md) are shorter.
+
+### Fixed
+
+- **Home blank after a cold start.** The GUI watches MiSTer_fb's `res_count` and redraws once when
+  MiSTer reapplies the framebuffer mode. The root cause of the late mode change is still unknown;
+  see [ISSUES.md](docs/ISSUES.md).
+- **Simple USB gamepads.** Pads that report plain joystick buttons instead of gamepad buttons, such
+  as the iBuffalo Super Famicom pad, now work for navigation and in the controller test. Buttons
+  are mapped by position. ([#2](https://github.com/pat-east/mister-pats-gui/issues/2))
+
+### Known limitations
+
+- The screenshot lookup, Start tab, backup, screensaver and the simple-gamepad mapping have
+  compiled for the MiSTer ARM target but are still to be checked on MiSTer hardware.
+- In the controller test, the D-pad arrows stay dark for pads that report their D-pad as an analog
+  axis; the movement shows on the stick instead.
+
 ## [0.8.4] - 2026-10-19
 
 ### Added

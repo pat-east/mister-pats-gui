@@ -47,6 +47,22 @@ void drawRoundedGradient(Canvas &canvas, const Rect &rect, int radius, Color top
     }
 }
 
+float linearColorChannel(uint8_t channel) {
+    const float value = float(channel) / 255.0f;
+    return value <= 0.04045f ? value / 12.92f
+                             : std::pow((value + 0.055f) / 1.055f, 2.4f);
+}
+
+Color contrastingText(Color background) {
+    const float luminance = 0.2126f * linearColorChannel(background.r) +
+                            0.7152f * linearColorChannel(background.g) +
+                            0.0722f * linearColorChannel(background.b);
+    const float whiteContrast = 1.05f / (luminance + 0.05f);
+    const float darkLuminance = 0.005f;
+    const float darkContrast = (luminance + 0.05f) / (darkLuminance + 0.05f);
+    return whiteContrast >= darkContrast ? Color::rgb(0xFFFFFF) : Color::rgb(0x111318);
+}
+
 } // namespace
 
 DiscScreen::DiscScreen(Context &context, DiscCoreManager &cores,
@@ -334,30 +350,40 @@ void DiscScreen::render(Canvas &canvas, const Rect &area, bool) {
         launchProbePending_ ? "Rechecking disc and core…" :
         disc.state != DiscDriveService::MediaState::Readable ? "Waiting for supported disc" :
         rbfMissing ? "Install matching FPGA core" : "Configure Physical Disc package";
+    const bool silverTheme = std::string(Theme::colorThemeName(theme.colorTheme())) == "Silver";
+    const Color launchLabelColor = theme.highContrast() ? contrastingText(theme.accent) :
+        theme.darkMode() ? (silverTheme ? Color::rgb(0x111318) : Color::rgb(0xFFFFFF)) :
+        contrastingText(theme.accent);
     const float buttonFocus = cursor_ == 0 ? 1.0f : 0.0f;
-    const int growX = 0;
-    const int growY = int(theme.px(5) * buttonFocus);
-    const Rect buttonFrame{button.x - growX, button.y - growY,
-                           button.w + growX * 2, button.h + growY * 2};
-    const Color buttonTop = Color::lerp(theme.surface, theme.surfaceHi,
-                                        0.35f + 0.65f * buttonFocus);
-    const Color buttonBottom = Color::lerp(theme.backgroundLo, theme.surface,
-                                           0.25f + 0.5f * buttonFocus);
+    const Rect buttonFrame = button;
     canvas.pushClip(area);
-    if (buttonFocus > 0.0f)
-        canvas.dropShadow(buttonFrame, theme.px(8), theme.px(12),
-                          theme.shadow.withAlpha(uint8_t(150 * buttonFocus)));
     const int buttonRadius = theme.radius();
-    drawRoundedGradient(canvas, buttonFrame, buttonRadius, buttonTop, buttonBottom);
-    canvas.strokeRoundedRect(buttonFrame, buttonRadius, std::max(1, theme.px(1)),
-                             theme.textMuted.withAlpha(150));
-    if (buttonFocus > 0.0f)
-        canvas.strokeRoundedRect(buttonFrame, buttonRadius, std::max(1, theme.px(2)),
-                                 Color::lerp(theme.accent, theme.focus, 0.65f));
+    if (buttonFocus > 0.0f && canLaunch) {
+        canvas.fillRoundedRect(buttonFrame, buttonRadius, theme.accent);
+        const int borderInset = std::max(1, theme.px(2));
+        const Rect borderFrame{buttonFrame.x + borderInset, buttonFrame.y + borderInset,
+                               buttonFrame.w - borderInset * 2,
+                               buttonFrame.h - borderInset * 2};
+        const Color borderColor = theme.colorTheme() == Theme::kDefaultColorTheme && theme.darkMode()
+            ? Color::rgb(0xFFFFFF) : contrastingText(theme.accent);
+        canvas.strokeRoundedRect(borderFrame, std::max(0, buttonRadius - borderInset),
+                                 std::max(1, theme.px(1)), borderColor);
+    } else {
+        drawRoundedGradient(canvas, buttonFrame, buttonRadius, theme.surfaceHi, theme.surface);
+        if (buttonFocus > 0.0f) {
+            const int markerW = theme.px(4);
+            canvas.fillRoundedRect({buttonFrame.x, buttonFrame.y, markerW, buttonFrame.h},
+                                   buttonRadius, theme.focus);
+            canvas.fillRect({buttonFrame.x + markerW / 2, buttonFrame.y,
+                             markerW - markerW / 2, buttonFrame.h}, theme.focus);
+        }
+    }
     const int labelWidth = theme.bold().measure(label, theme.sizeBody());
     theme.bold().draw(canvas, buttonFrame.x + (buttonFrame.w - labelWidth) / 2,
                       buttonFrame.y + (buttonFrame.h - theme.sizeBody()) / 2,
-                      label, theme.sizeBody(), canLaunch ? theme.textPrimary : theme.textMuted);
+                      label, theme.sizeBody(), buttonFocus > 0.0f && canLaunch
+                          ? launchLabelColor
+                          : canLaunch ? theme.textPrimary : theme.textMuted);
     canvas.popClip();
 
     for (size_t i = 0; i < 4; ++i) {

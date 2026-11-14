@@ -8,6 +8,7 @@
 #include <thread>
 
 class DiscArtworkService;
+class GameScreenshotService;
 
 class TheGamesDBClient {
 public:
@@ -27,6 +28,7 @@ public:
 
 private:
     friend class DiscArtworkService;
+    friend class GameScreenshotService;
     std::string readKey() const;
     void ensureSettingsFile() const;
     void workerLoop();

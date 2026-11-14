@@ -123,6 +123,10 @@ usual toolkits and calls for careful, measured software rendering — see
   between initial letters in large libraries.
 - **Keep regional and language versions together:** choose a ROM version when needed; the last
   successfully started version is remembered.
+- **Review a game before starting it:** open a detail panel with large box art, sorted ROM
+  versions and up to four screenshots fetched from TheGamesDB when an API key is configured.
+  Without a key or a match, it shows existing local artwork or fetches one Libretro screenshot.
+  The panel starts focused on **Start game**; choose a screenshot to view it larger.
 - **Play Arcade games reliably:** check that the core, ROM and every required CRC are present;
   match artwork to the exact ROM revision and explain missing games in a diagnostic view.
 - **Use physical discs:** the Disc tab identifies PlayStation and Saturn discs offline, shows
@@ -132,9 +136,11 @@ usual toolkits and calls for careful, measured software rendering — see
   remain responsive.
 - **Browse large libraries without waiting:** the GUI builds its own per-system game index and
   fills long lists progressively, including the combined Games view.
-- **Make the interface yours:** choose tab names or icons, larger text, larger button hints, and high contrast with a
-  highlight color you pick (eight to choose from), and separate startup and menu sounds. Settings also includes clock and time-zone controls, Wi-Fi
-  setup, asset downloads, artwork visibility and a confirmed reboot action.
+- **Make the interface yours:** choose from 22 color themes, with Dark mode on by default or
+  Bright mode for distinct, theme-colored light backgrounds and dark text. High contrast has a separate highlight color
+  (eight options). Also choose which tab opens at startup, tab names or icons, larger text, larger button hints, and separate startup
+  and menu sounds. Settings includes clock and time-zone controls, Wi-Fi setup, asset downloads,
+  artwork visibility and a confirmed reboot action.
 - **Keep official cores current:** Settings → Library → Core and MRA updates compares
   the official MiSTer distribution with what is installed, lets you pick what to update and
   verifies every download against the official hash before it replaces anything. No BIOS files,
@@ -382,41 +388,16 @@ See [CHANGELOG.md](CHANGELOG.md) for the complete 0.5.0 change list.
 
 #### Backlog
 
-- [ ] **Themes:** Nintendo, PlayStation and Xbox themes so the interface can take on the look
-      and feel of each platform.
 - [ ] **Option to swap Confirm and Back buttons**, with the current European mapping as the
       default.
-- [ ] **Fade in tab content when switching tabs** instead of sliding it into view.
 - [ ] **Choose the order of consoles** in the Consoles tab. Hiding unused consoles already works.
 - [ ] **Boxart scraping using TheGamesDB**, with a list of titles that have no match and the
       option to retry artwork lookup for one title or all unmatched titles.
-- [ ] **Use `update_all.sh` from the GUI**, showing the installed version, what will be updated
-      and whether a restart is needed.
-- [ ] **Back up and restore settings.** Export favorites, hidden systems, per-tab views and GUI
-      settings, and restore them after a reinstall.
-- [ ] **Screensaver and screen dimming after inactivity.** Dim the display after a period
-      without input and activate a screensaver after a longer idle period.
+- [ ] **System updates from the GUI.** Investigate using the official MiSTer updater or Update All;
+      show what will change, progress and restart needs, and resolve safe pre-update backup and
+      SSH recovery without sourcing or managing ROM or BIOS files.
 - [ ] **Localisation.** Everything is English today, with the strings still inline; extracting
       them is the prerequisite.
-- [ ] **Loader slots for the remaining CD-based cores** (CD-i, Jaguar CD).
-- [ ] **Telling two identical controllers apart**, with separate mappings for each (MiSTer's own
-      `controller_unique_mapping`). Left out of the first pass of controller management on
-      purpose — two same-model pads sharing one mapping is the common case.
-- [ ] **Per-game DIP-switch editing** for Arcade.
-- [ ] **Core selection per console**, so users can choose which cores are included when checking
-      for and installing core updates.
-- [ ] **Remove old core versions** after a core update, once the official replacement data is
-      understood well enough to do it safely.
-- [ ] **Video modes.** `video_mode=` in `MiSTer.ini`, including a clean fallback when a
-      configured mode fails or is not available. Also covers running, and verifying, this GUI
-      at resolutions other than 1080p — it only scales its own design pixels to whatever the
-      framebuffer reports, which is untested outside 1080p despite "scales from 480p to 4K"
-      being listed as a feature.
-- [ ] **Testing more controllers.** See [Tested controllers](#tested-controllers) for what has
-      been confirmed so far and what is still to try.
-- [ ] **Telling HDD/CHD-based Arcade games apart** — boards such as Killer Instinct — from those
-      that start unattended. Nothing found can automate the one-time manual step itself; see
-      [ARCADE.md](docs/ARCADE.md#hddchd-based-games-no-automated-mount-found).
 - [ ] **A web interface for managing the library** from a computer or phone, rather than with
       a game pad: everything under *Library management* above, plus a better search, uploading
       new games to the MiSTer, deleting and renaming them, managing box art, and editing

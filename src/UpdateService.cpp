@@ -542,6 +542,10 @@ void UpdateService::check(bool automatic) {
     found.notes = latest.notes;
     found.gamesDbFormat = info.gamesDbFormat;
     found.hashes = std::move(hashes);
+    if (!info.backupScriptHash.empty()) {
+        found.hashes["backup-mister-pat.sh"] = info.backupScriptHash;
+        found.hashes["restore-mister-pat.sh"] = info.restoreScriptHash;
+    }
     if (!UpdateFiles::sha256(staging.path() + "/SHA256SUMS", found.manifestHash, error, &cancel_)) {
         publishError(error);
         return;

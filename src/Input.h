@@ -84,6 +84,9 @@ public:
     // interferes with the ordinary poll()/Action path above. `slot` is DeviceInfo::slot from
     // the same listDevices() call; an out-of-range slot reads as "not pressed"/0.
     bool keyState(int slot, uint16_t code) const;
+    // Like keyState, but asks for a gamepad button (BTN_SOUTH, BTN_TL, ...) and also answers
+    // for pads that report plain joystick buttons instead (see Device::genericButtons).
+    bool logicalKeyState(int slot, uint16_t code) const;
     int32_t absValue(int slot, uint16_t code) const;
     bool absInfo(int slot, uint16_t code, int32_t &minimum, int32_t &maximum) const;
 
@@ -105,6 +108,11 @@ private:
         // that also has a hat.
         bool hasHat = false;
 
+        // Old and simple pads (an iBuffalo Super Famicom pad, for one) report their eight
+        // buttons as BTN_TRIGGER..BTN_BASE2 (0x120-0x127) and have no gamepad buttons at all.
+        // Those are mapped by physical position to the buttons the rest of the GUI expects.
+        bool genericButtons = false;
+
         // Analogue triggers, when the pad reports them as axes. Zero threshold means the
         // axis is a stick and must not be read as a trigger.
         int triggerLeftThreshold = 0;
@@ -116,6 +124,10 @@ private:
     void handleKey(const Device &device, uint16_t code, int32_t value, std::vector<Action> &out);
     void handleAbs(Device &device, uint16_t code, int32_t value, std::vector<Action> &out);
     static void probeTrigger(int fd, uint16_t code, int &threshold);
+    static bool probeGenericButtons(int fd);
+    // Maps a joystick button of a generic pad to its gamepad equivalent; other codes pass through.
+    static uint16_t gamepadCode(uint16_t code);
+    static uint16_t joystickCode(uint16_t code);
     static bool probeHat(int fd);
     void emitDirection(Action action, bool pressed, std::vector<Action> &out);
     void appendRepeats(std::vector<Action> &out);

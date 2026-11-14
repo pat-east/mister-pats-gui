@@ -3,7 +3,7 @@
 set -eu
 [ "$#" -eq 0 ] || { echo 'deploy.sh does not accept options' >&2; exit 2; }
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-DEVICE=${DEVICE:-root@192.168.64.163}
+DEVICE=${DEVICE:-root@192.168.64.191}
 REMOTE=${REMOTE:-/media/fat/mister-pat}
 case "$REMOTE" in /media/fat/*) :;; *) echo 'REMOTE must be under /media/fat' >&2; exit 2;; esac
 case "$REMOTE" in *[!A-Za-z0-9_./-]*) echo 'unsafe REMOTE' >&2; exit 2;; esac
@@ -33,6 +33,8 @@ h_main=$(sha256sum "$MAIN" | awk '{print $1}')
 h_index=$(sha256sum "$HERE/assets/disc-index.tsv" | awk '{print $1}')
 h_index_source=$(sha256sum "$HERE/assets/DISC-INDEX-SOURCE.txt" | awk '{print $1}')
 h_disc_icon=$(sha256sum "$HERE/assets/tab-icons/disc.bmp" | awk '{print $1}')
+h_backup=$(sha256sum "$HERE/tools/backup-mister-pat.sh" | awk '{print $1}')
+h_restore=$(sha256sum "$HERE/tools/restore-mister-pat.sh" | awk '{print $1}')
 stage=$(ssh $SSH_OPTS "$DEVICE" "umask 077; mkdir -p '$REMOTE/.deploy-staging'; mktemp -d '$REMOTE/.deploy-staging/run-XXXXXX'")
 case "$stage" in "$REMOTE"/.deploy-staging/run-*) :;; *) echo 'unsafe remote stage' >&2; exit 1;; esac
 case "$stage" in *[!A-Za-z0-9_./-]*) echo 'unsafe remote stage characters' >&2; exit 1;; esac
@@ -42,10 +44,12 @@ scp $SSH_OPTS -q "$MAIN" "$DEVICE:$stage/MiSTer_gui"
 scp $SSH_OPTS -q "$HERE/assets/disc-index.tsv" "$DEVICE:$stage/disc-index.tsv"
 scp $SSH_OPTS -q "$HERE/assets/DISC-INDEX-SOURCE.txt" "$DEVICE:$stage/DISC-INDEX-SOURCE.txt"
 scp $SSH_OPTS -q "$HERE/assets/tab-icons/disc.bmp" "$DEVICE:$stage/disc.bmp"
+scp $SSH_OPTS -q "$HERE/tools/backup-mister-pat.sh" "$DEVICE:$stage/backup-mister-pat.sh"
+scp $SSH_OPTS -q "$HERE/tools/restore-mister-pat.sh" "$DEVICE:$stage/restore-mister-pat.sh"
 old_boot=$(ssh $SSH_OPTS "$DEVICE" 'cat /proc/sys/kernel/random/boot_id')
-if ! ssh $SSH_OPTS "$DEVICE" /bin/sh -s -- "$REMOTE" "$stage" "$VERSION" "$h_loader" "$h_gui" "$h_main" "$h_index" "$h_index_source" "$h_disc_icon" <<'REMOTE_SCRIPT'
+if ! ssh $SSH_OPTS "$DEVICE" /bin/sh -s -- "$REMOTE" "$stage" "$VERSION" "$h_loader" "$h_gui" "$h_main" "$h_index" "$h_index_source" "$h_disc_icon" "$h_backup" "$h_restore" <<'REMOTE_SCRIPT'
 set -eu
-ROOT=$1; STAGE=$2; VERSION=$3; H_LOADER=$4; H_GUI=$5; H_MAIN=$6; H_INDEX=$7; H_INDEX_SOURCE=$8; H_DISC_ICON=$9
+ROOT=$1; STAGE=$2; VERSION=$3; H_LOADER=$4; H_GUI=$5; H_MAIN=$6; H_INDEX=$7; H_INDEX_SOURCE=$8; H_DISC_ICON=$9; H_BACKUP=${10}; H_RESTORE=${11}
 LOCK=$ROOT/.update-lock
 fail() { echo "deploy: $*" >&2; exit 1; }
 sha() { sha256sum "$1" | awk '{print $1}'; }
@@ -73,6 +77,10 @@ done
     [ "$(sha "$STAGE/DISC-INDEX-SOURCE.txt")" = "$H_INDEX_SOURCE" ] || fail 'invalid staged disc index attribution'
 [ -f "$STAGE/disc.bmp" ] && [ ! -L "$STAGE/disc.bmp" ] &&
     [ "$(sha "$STAGE/disc.bmp")" = "$H_DISC_ICON" ] || fail 'invalid staged disc icon'
+for pair in "backup-mister-pat.sh:$H_BACKUP" "restore-mister-pat.sh:$H_RESTORE"; do
+    name=${pair%%:*}; hash=${pair#*:}
+    [ -f "$STAGE/$name" ] && [ ! -L "$STAGE/$name" ] && [ "$(sha "$STAGE/$name")" = "$hash" ] || fail "invalid staged $name"
+done
 : > /tmp/mister-pat-suspend-gui
 launcher_pids=$(ps -o pid,comm,args | awk '$2=="script" && $0 ~ /\/tmp\/script/ {print $1}')
 for pid in $launcher_pids; do kill -KILL "$pid" 2>/dev/null || :; done
@@ -97,6 +105,10 @@ install_file "$STAGE/disc-index.tsv" "$ROOT/disc-index.tsv" "$H_INDEX" 644
 install_file "$STAGE/DISC-INDEX-SOURCE.txt" "$ROOT/DISC-INDEX-SOURCE.txt" "$H_INDEX_SOURCE" 644
 mkdir -p "$ROOT/tab-icons" || fail 'cannot create tab icon directory'
 install_file "$STAGE/disc.bmp" "$ROOT/tab-icons/disc.bmp" "$H_DISC_ICON" 644
+mkdir -p "$ROOT/tools" || fail 'cannot create tools directory'
+[ -d "$ROOT/tools" ] && [ ! -L "$ROOT/tools" ] || fail 'unsafe tools directory'
+install_file "$STAGE/backup-mister-pat.sh" "$ROOT/tools/backup-mister-pat.sh" "$H_BACKUP"
+install_file "$STAGE/restore-mister-pat.sh" "$ROOT/tools/restore-mister-pat.sh" "$H_RESTORE"
 rm -f "$ROOT/mister-pats-gui.so.new-$$"
 ln -s "mister-pats-gui-$VERSION.so" "$ROOT/mister-pats-gui.so.new-$$"
 mv -f "$ROOT/mister-pats-gui.so.new-$$" "$ROOT/mister-pats-gui.so"

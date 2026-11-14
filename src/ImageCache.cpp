@@ -21,8 +21,8 @@ constexpr uint64_t kFailureRetryTicks = 90;
 constexpr size_t kMaxQueuedArtwork = 32;
 // Leave breathing room for the MiSTer's CPU and storage while a user scrolls through
 // artwork-heavy views. Decodes still happen off the render thread, but the worker won't
-// immediately start another image as soon as one finishes.
-constexpr useconds_t kArtworkWorkerPauseUs = 100000;
+// immediately start another image as soon as one finishes. Keep a 50 ms pause between covers.
+constexpr useconds_t kArtworkWorkerPauseUs = 50000;
 
 int64_t monotonicMs() {
     timespec ts{};
@@ -431,7 +431,7 @@ void ImageCache::workerLoop() {
             }
         }
         // Missing artwork only costs candidate-path checks. Do not throttle the entire
-        // visible queue by 100 ms for each coverless game; keep the pacing after actual decode.
+        // visible queue for each coverless game; keep the pacing after actual decode.
         if (loadedArtwork) usleep(kArtworkWorkerPauseUs);
     }
 }

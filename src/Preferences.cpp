@@ -84,6 +84,7 @@ bool Preferences::load(const std::string &file) {
     showArcadeInConsoles_ = false;
     organizeGameVersions_ = true;
     tabDisplay_ = TabDisplay::Names;
+    startTab_ = "home";
     showBoxArt_ = true;
     loadSmallBoxartsInGridView_ = false;
     startSoundEnabled_ = true;
@@ -93,6 +94,10 @@ bool Preferences::load(const std::string &file) {
     hintSizeScale_ = 100;
     highContrast_ = false;
     highContrastColor_ = Theme::kDefaultHighContrastColor;
+    colorTheme_ = Theme::kDefaultColorTheme;
+    darkMode_ = true;
+    screensaverDelay_ = 0;
+    screensaverStyle_ = "dimmed";
     defaultView_ = "grid";
     homeView_ = favoritesView_ = consolesView_ = gamesView_ = "grid";
     faceButtonStyle_ = "xbox";
@@ -120,6 +125,9 @@ bool Preferences::load(const std::string &file) {
         else if (line == "showArcadeTab=0") showArcadeTab_ = false;
         else if (line == "showArcadeInConsoles=1") showArcadeInConsoles_ = true;
         else if (line == "organizeGameVersions=0") organizeGameVersions_ = false;
+        else if (line == "startTab=favorites" || line == "startTab=systems" ||
+                 line == "startTab=games" || line == "startTab=arcade")
+            startTab_ = line.substr(9);
         else if (line == "tabDisplay=icons") tabDisplay_ = TabDisplay::Icons;
         else if (line == "tabDisplay=both") tabDisplay_ = TabDisplay::Both;
         else if (line == "showBoxArt=0") showBoxArt_ = false;
@@ -137,6 +145,23 @@ bool Preferences::load(const std::string &file) {
             for (int i = 0; i < Theme::kHighContrastColors; ++i)
                 if (line.substr(18) == Theme::highContrastColorName(i)) highContrastColor_ = i;
         }
+        else if (line.compare(0, 11, "colorTheme=") == 0) {
+            const std::string name = line.substr(11);
+            if (name == "MiSTer Blue") colorTheme_ = Theme::kDefaultColorTheme;
+            else {
+                for (int i = 0; i < Theme::colorThemeCount(); ++i)
+                    if (name == Theme::colorThemeName(i)) colorTheme_ = i;
+            }
+        }
+        else if (line == "darkMode=0") darkMode_ = false;
+        else if (line.compare(0, 17, "screensaverDelay=") == 0) {
+            const int value = std::atoi(line.c_str() + 17);
+            if (value == 0 || value == 30 || value == 300 || value == 600 ||
+                value == 1200 || value == 1800 || value == 3600)
+                screensaverDelay_ = value;
+        }
+        else if (line == "screensaverStyle=boxart") screensaverStyle_ = "boxart";
+        else if (line == "screensaverStyle=dimmed") screensaverStyle_ = "dimmed";
         else if (line == "checkForUpdates=1") checkForUpdates_ = true;
         else if (line == "onboardingComplete=1") onboardingComplete_ = true;
         else if (line == "onboardingStarted=1") onboardingStarted_ = true;
@@ -205,6 +230,11 @@ void Preferences::setOrganizeGameVersions(bool enabled) {
     save();
 }
 
+void Preferences::setStartTab(const std::string &tab) {
+    startTab_ = tab;
+    save();
+}
+
 void Preferences::setTabDisplay(TabDisplay display) {
     tabDisplay_ = display;
     save();
@@ -255,6 +285,30 @@ void Preferences::setHintSizeScale(int scale) {
 
 void Preferences::setHighContrast(bool enabled) {
     highContrast_ = enabled;
+    save();
+}
+
+void Preferences::setColorTheme(int index) {
+    if (index < 0 || index >= Theme::colorThemeCount()) return;
+    colorTheme_ = index;
+    save();
+}
+
+void Preferences::setDarkMode(bool enabled) {
+    darkMode_ = enabled;
+    save();
+}
+
+void Preferences::setScreensaverDelay(int seconds) {
+    if (seconds != 0 && seconds != 30 && seconds != 300 && seconds != 600 &&
+        seconds != 1200 && seconds != 1800 && seconds != 3600) return;
+    screensaverDelay_ = seconds;
+    save();
+}
+
+void Preferences::setScreensaverStyle(const std::string &style) {
+    if (style != "dimmed" && style != "boxart") return;
+    screensaverStyle_ = style;
     save();
 }
 
@@ -359,6 +413,7 @@ bool Preferences::save() const {
     if (!showArcadeTab_) out << "showArcadeTab=0\n";
     if (showArcadeInConsoles_) out << "showArcadeInConsoles=1\n";
     if (!organizeGameVersions_) out << "organizeGameVersions=0\n";
+    if (startTab_ != "home") out << "startTab=" << startTab_ << "\n";
     if (tabDisplay_ == TabDisplay::Icons) out << "tabDisplay=icons\n";
     else if (tabDisplay_ == TabDisplay::Both) out << "tabDisplay=both\n";
     if (!showBoxArt_) out << "showBoxArt=0\n";
@@ -371,6 +426,11 @@ bool Preferences::save() const {
     if (highContrast_) out << "highContrast=1\n";
     if (highContrastColor_ != Theme::kDefaultHighContrastColor)
         out << "highContrastColor=" << Theme::highContrastColorName(highContrastColor_) << "\n";
+    if (colorTheme_ != Theme::kDefaultColorTheme)
+        out << "colorTheme=" << Theme::colorThemeName(colorTheme_) << "\n";
+    if (!darkMode_) out << "darkMode=0\n";
+    if (screensaverDelay_ != 0) out << "screensaverDelay=" << screensaverDelay_ << "\n";
+    if (screensaverStyle_ != "dimmed") out << "screensaverStyle=" << screensaverStyle_ << "\n";
     if (defaultView_ != "grid") out << "defaultView=" << defaultView_ << "\n";
     if (homeView_ != "grid") out << "homeView=" << homeView_ << "\n";
     if (favoritesView_ != "grid") out << "favoritesView=" << favoritesView_ << "\n";

@@ -487,10 +487,10 @@ void ControllersScreen::renderInputTest(Canvas &canvas, const Rect &area) {
         theme.regular().drawCentered(canvas, frame, label, theme.sizeBody(),
                                      pressed ? theme.textPrimary : theme.textPrimary.withAlpha(230));
     };
-    drawFaceButton(diamondCx, diamondCy - diamondR, "Y", input_.keyState(slot, BTN_WEST));
-    drawFaceButton(diamondCx - diamondR, diamondCy, "X", input_.keyState(slot, BTN_NORTH));
-    drawFaceButton(diamondCx + diamondR, diamondCy, "B", input_.keyState(slot, BTN_EAST));
-    drawFaceButton(diamondCx, diamondCy + diamondR, "A", input_.keyState(slot, BTN_SOUTH));
+    drawFaceButton(diamondCx, diamondCy - diamondR, "Y", input_.logicalKeyState(slot, BTN_WEST));
+    drawFaceButton(diamondCx - diamondR, diamondCy, "X", input_.logicalKeyState(slot, BTN_NORTH));
+    drawFaceButton(diamondCx + diamondR, diamondCy, "B", input_.logicalKeyState(slot, BTN_EAST));
+    drawFaceButton(diamondCx, diamondCy + diamondR, "A", input_.logicalKeyState(slot, BTN_SOUTH));
 
     // The Sega six-button display toggle is disabled for now (see docs/CONTROLLER.md's own open
     // questions): dropped rather than left in as dead, unreachable code now that nothing can
@@ -498,8 +498,8 @@ void ControllersScreen::renderInputTest(Canvas &canvas, const Rect &area) {
 
     // Shoulders — digital, or a fill bar if the pad reports it as an analogue trigger.
     y += theme.px(220);
-    drawButton(body.x, y, colWidth, "L", input_.keyState(slot, BTN_TL));
-    drawButton(faceX, y, colWidth, "R", input_.keyState(slot, BTN_TR));
+    drawButton(body.x, y, colWidth, "L", input_.logicalKeyState(slot, BTN_TL));
+    drawButton(faceX, y, colWidth, "R", input_.logicalKeyState(slot, BTN_TR));
 
     auto drawTrigger = [&](int x, const std::string &label, uint16_t absCode,
                            uint16_t digitalCode) {
@@ -513,7 +513,7 @@ void ControllersScreen::renderInputTest(Canvas &canvas, const Rect &area) {
                                    theme.accent);
             theme.regular().drawCentered(canvas, frame, label, theme.sizeSmall(), theme.textPrimary);
         } else {
-            drawButton(x, y + theme.px(52), colWidth, label, input_.keyState(slot, digitalCode));
+            drawButton(x, y + theme.px(52), colWidth, label, input_.logicalKeyState(slot, digitalCode));
         }
     };
     drawTrigger(body.x, buttonName("L2"), ABS_Z, BTN_TL2);
@@ -521,8 +521,8 @@ void ControllersScreen::renderInputTest(Canvas &canvas, const Rect &area) {
 
     // Select / Start / Home
     y += theme.px(112);
-    drawButton(body.x, y, colWidth, buttonName("Select"), input_.keyState(slot, BTN_SELECT));
-    drawButton(faceX, y, colWidth, buttonName("Start"), input_.keyState(slot, BTN_START));
+    drawButton(body.x, y, colWidth, buttonName("Select"), input_.logicalKeyState(slot, BTN_SELECT));
+    drawButton(faceX, y, colWidth, buttonName("Start"), input_.logicalKeyState(slot, BTN_START));
     drawButton(faceX + colWidth + gap, y, colWidth, "Home", input_.keyState(slot, BTN_MODE));
 
     // Sticks — a small square standing in for the circle this renderer has no dedicated

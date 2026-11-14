@@ -8,7 +8,8 @@
 #include <unordered_set>
 #include <vector>
 
-// An in-memory list of the file names in every box-art directory, read once.
+// An in-memory list of the file names in every box-art directory, read once. A completed
+// library reload also stores this list under MISTER_PAT_ROOT for the next launch.
 //
 // exFAT finds a file by scanning its directory entry by entry. A system's media folder can
 // hold tens of thousands of files (Game Boy Advance: about 17,000), so every lookup, and above
@@ -16,9 +17,9 @@
 // CPU. The image loader tries several candidate names per cover; with this index it asks the
 // list first and opens only files that are really there. See docs/BOXART.md.
 //
-// The index is built at startup while the splash screen is up and dropped and rebuilt on a
-// library reload. It never writes anything. A directory that is not indexed, or a name the
-// index cannot judge, answers "Unknown" and the caller falls back to asking the file system.
+// At startup a saved index is loaded if it is valid; otherwise the current directory scan is
+// used. A directory that is not indexed, or a name the index cannot judge, answers "Unknown"
+// and the caller falls back to asking the file system.
 class ArtworkIndex {
 public:
     enum class Presence { Unknown, Present, Absent };
@@ -28,10 +29,13 @@ public:
 
     // Reads each directory once, in order, pausing between directories so a burst of reads does
     // not pile onto the storage at once. Replaces what was indexed before. Blocks until done.
-    void build(const std::vector<std::string> &directories);
+    void build(const std::vector<std::string> &directories, bool persistWhenDone = false);
     // Same, on a background thread (used on reload so the screen stays responsive). The old
     // contents are dropped first; until the new ones arrive every answer is "Unknown".
     void buildAsync(std::vector<std::string> directories);
+    // Load the saved index if it is valid for the current library. Returns false on a missing,
+    // unsupported, malformed, or incompatible file so the caller can use build() as fallback.
+    bool loadPersistent(const std::vector<std::string> &directories);
     void clear();
 
     Presence lookup(const std::string &filePath) const;
@@ -40,7 +44,9 @@ public:
 
 private:
     void stopWorker();
-    void scan(const std::vector<std::string> &directories, unsigned generation);
+    void scan(const std::vector<std::string> &directories, unsigned generation,
+              bool persistWhenDone);
+    bool savePersistent() const;
 
     mutable std::mutex mutex_;
     std::unordered_map<std::string, std::unordered_set<std::string>> directories_;

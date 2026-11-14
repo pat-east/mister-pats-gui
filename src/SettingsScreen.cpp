@@ -59,13 +59,13 @@ bool internetRouteAvailable() {
 
 std::string settingHelp(const std::string &label) {
     if (label == "TheGamesDB")
-        return "Looks up box art, screenshots and release year for PlayStation and Saturn discs. Add your API key to /media/fat/mister-pat/thegamesdb-settings.ini as apikey=\"YOUR_KEY\", then select this row to test it. Without a key or a matching result, artwork falls back to Libretro.";
+        return "Looks up box art, screenshots and release year for PlayStation and Saturn discs, and up to four screenshots for games. Add your API key to /media/fat/mister-pat/thegamesdb-settings.ini as apikey=\"YOUR_KEY\", then select this row to test it. Without a key, game options use local images or one Libretro screenshot.";
     if (label == "Build game list")
         return "Search connected drives for games and save a list the menus can load quickly. Run this after adding or removing games.";
     if (label == "Prepare box art")
         return "Download missing covers and make copies sized for each view. Covers already on your drives are kept.";
     if (label == "Reload saved game list")
-        return "Reload the saved game list. This does not search the drives or find newly added games.";
+        return "Reload the saved game list and rebuild the box-art index for the next startup. This does not search for newly added games.";
     if (label == "Organize game-versions")
         return "Group ROMs with region, revision or language suffixes under one title.";
     if (label == "Manage systems")
@@ -86,8 +86,14 @@ std::string settingHelp(const std::string &label) {
         return "Show or hide the tab that lists playable Arcade games.";
     if (label == "Show Arcade in Consoles")
         return "Add Arcade to the Consoles grid. The Arcade tab has its own list either way.";
+    if (label == "Start tab")
+        return "Choose the tab the GUI opens on when it starts. A tab that is turned off or has no games falls back to Home.";
     if (label == "Tab display")
         return "Choose whether the top navigation shows tab names, icons, or both.";
+    if (label == "Color theme")
+        return "Choose the colors for the normal interface background, surfaces and highlights. High contrast keeps its separate highlight color.";
+    if (label == "Dark mode")
+        return "Use dark backgrounds when On. Turn it Off for light backgrounds and dark text. High contrast keeps its black background.";
     if (label == "Show box art")
         return "Show or hide cover pictures while browsing games.";
     if (label == "Load small boxarts in grid-view")
@@ -112,6 +118,12 @@ std::string settingHelp(const std::string &label) {
         return "Choose whether the clock uses 24-hour time or 12-hour time with AM and PM.";
     if (label == "Time zone")
         return "Choose the local time zone used by the clock and the MiSTer system.";
+    if (label == "Screensaver")
+        return "Choose how long the GUI waits without controller input before the screensaver starts.";
+    if (label == "Screensaver style")
+        return "Choose a dimmed screen or a black screen that shows random box art. Any controller input wakes the screen.";
+    if (label == "Back up GUI settings")
+        return "Save your personal GUI settings as a backup on a connected USB drive. Restore a backup from the console.";
     if (label == "Info")
         return "View details about this MiSTer, its hardware, storage, network and software.";
     if (label == "Download missing icons")
@@ -194,7 +206,8 @@ SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
                                std::function<std::string()> spaceGroteskStatus,
                                std::function<void()> onSpaceGrotesk,
                                std::function<bool()> onShowChangelog,
-                               std::function<void()> onReboot)
+                               std::function<void()> onReboot,
+                               std::function<void()> onBackupSettings)
     : context_(context), onReload_(std::move(onReload)),
       onBuildDatabase_(std::move(onBuildDatabase)),
       onFetchArtwork_(std::move(onFetchArtwork)),
@@ -218,7 +231,8 @@ SettingsScreen::SettingsScreen(Context &context, std::function<void()> onReload,
       onRestartAfterUpdate_(std::move(onRestartAfterUpdate)),
       spaceGroteskStatus_(std::move(spaceGroteskStatus)),
       onSpaceGrotesk_(std::move(onSpaceGrotesk)),
-      onShowChangelog_(std::move(onShowChangelog)), onReboot_(std::move(onReboot)) {
+      onShowChangelog_(std::move(onShowChangelog)), onReboot_(std::move(onReboot)),
+      onBackupSettings_(std::move(onBackupSettings)) {
     buildRows();
 }
 
@@ -317,6 +331,24 @@ void SettingsScreen::buildRows() {
                              !context_.preferences.showArcadeInConsoles());
                      }});
 
+    interface.push_back({"Start tab",
+                     [this] {
+                         const std::string &tab = context_.preferences.startTab();
+                         if (tab == "favorites") return std::string("Favorites");
+                         if (tab == "systems") return std::string("Consoles");
+                         if (tab == "games") return std::string("Games");
+                         if (tab == "arcade") return std::string("Arcade");
+                         return std::string("Home");
+                     },
+                     [this] {
+                         static const char *const order[] = {"home", "favorites", "systems",
+                                                             "games", "arcade"};
+                         const std::string &tab = context_.preferences.startTab();
+                         size_t index = 0;
+                         for (size_t i = 0; i < 5; ++i) if (tab == order[i]) index = i;
+                         context_.preferences.setStartTab(order[(index + 1) % 5]);
+                     }});
+
     interface.push_back({"Tab display",
                      [this] {
                          switch (context_.preferences.tabDisplay()) {
@@ -331,6 +363,26 @@ void SettingsScreen::buildRows() {
                          const TabDisplay next = current == TabDisplay::Names ? TabDisplay::Icons
                              : current == TabDisplay::Icons ? TabDisplay::Both : TabDisplay::Names;
                          context_.preferences.setTabDisplay(next);
+                     }});
+
+    interface.push_back({"Color theme",
+                     [this] { return std::string(Theme::colorThemeName(
+                         context_.preferences.colorTheme())); },
+                     [this] {
+                         const int next = (context_.preferences.colorTheme() + 1) %
+                                          Theme::colorThemeCount();
+                         context_.preferences.setColorTheme(next);
+                         context_.theme.setColorTheme(next);
+                         if (context_.onThemeChanged) context_.onThemeChanged();
+                     }});
+
+    interface.push_back({"Dark mode",
+                     [this] { return std::string(context_.preferences.darkMode() ? "On" : "Off"); },
+                     [this] {
+                         const bool enabled = !context_.preferences.darkMode();
+                         context_.preferences.setDarkMode(enabled);
+                         context_.theme.setDarkMode(enabled);
+                         if (context_.onThemeChanged) context_.onThemeChanged();
                      }});
 
     interface.push_back({"Show box art",
@@ -503,6 +555,31 @@ void SettingsScreen::buildRows() {
                                  if (timeZoneRegions_[i] == current) timeZoneCursor_ = int(i);
                          }
                      }});
+
+    system.push_back({"Screensaver",
+                     [this] {
+                         const int seconds = context_.preferences.screensaverDelay();
+                         if (seconds == 0) return std::string("Disabled");
+                         if (seconds == 30) return std::string("30 seconds");
+                         return std::to_string(seconds / 60) + " minutes";
+                     },
+                     [this] {
+                         const int values[] = {0, 30, 300, 600, 1200, 1800, 3600};
+                         int current = 0;
+                         while (current < 6 && values[current] != context_.preferences.screensaverDelay())
+                             ++current;
+                         context_.preferences.setScreensaverDelay(values[(current + 1) % 7]);
+                     }});
+    system.push_back({"Screensaver style",
+                     [this] { return context_.preferences.screensaverStyle() == "boxart"
+                                      ? std::string("Boxart") : std::string("Dimmed"); },
+                     [this] {
+                         context_.preferences.setScreensaverStyle(
+                             context_.preferences.screensaverStyle() == "dimmed"
+                                 ? "boxart" : "dimmed");
+                     }});
+    system.push_back({"Back up GUI settings", [] { return std::string("A"); },
+                      [this] { onBackupSettings_(); }});
 
     // This project itself.
     categories_[4].rows.push_back({"Check for updates automatically",
@@ -1024,7 +1101,8 @@ void SettingsScreen::renderCoreUpdater(Canvas &canvas, const Rect &area) {
     const int contentRight = panel.right() - margin;
     int y = panel.y + margin;
     const int titleSize = theme.sizeHeading();
-    auto line = [&](const std::string &text, Color color = Color::rgb(0xFFFFFF), int size = 0) {
+    auto line = [&](const std::string &text, Color color = Color{0, 0, 0, 0}, int size = 0) {
+        if (color.a == 0) color = theme.textPrimary;
         const int fontSize = size ? size : theme.sizeBody();
         theme.regular().draw(canvas, left, y, theme.regular().elide(text, fontSize, contentRight-left), fontSize, color);
         y += theme.regular().lineHeight(fontSize) + theme.px(9);
@@ -1044,7 +1122,7 @@ void SettingsScreen::renderCoreUpdater(Canvas &canvas, const Rect &area) {
         line("The check reads the installed files and does not change them.", theme.textMuted);
         y += theme.px(14);
         if (coreUpdaterOnline_) {
-            line("Network connected", theme.accent);
+            line("Network connected", theme.success);
         } else {
             line("No internet connection", theme.warning);
             line("Connect this MiSTer to a network first, for example under Settings → System → Connect to Wi-Fi.",
@@ -2128,31 +2206,31 @@ void SettingsScreen::renderDiscDriveSettings(Canvas &canvas, const Rect &area) {
         y += theme.px(38);
     };
     line("Drive", drive.device.empty() ? "Not available" : drive.device + "  " + drive.model,
-         drive.device.empty() ? theme.warning : theme.accent);
+         drive.device.empty() ? theme.warning : theme.success);
     line("Disc status", DiscDriveService::stateName(drive.state), theme.textMuted);
     line("Physical-Disc Main", !cores.alternateMainInstalled ? "Missing" :
              cores.alternateMainVerified
                  ? std::string("MiSTer-disc v") + DiscCorePackage::kVersion + " verified"
                  : "Present, unverified",
-         cores.alternateMainVerified ? theme.accent : theme.warning);
+         cores.alternateMainVerified ? theme.success : theme.warning);
     line("Scoped [CD-*] setting", cores.scopedMainConfigured ? "Configured" : "Missing",
-         cores.scopedMainConfigured ? theme.accent : theme.warning);
+         cores.scopedMainConfigured ? theme.success : theme.warning);
     line("PlayStation MGL", !cores.psxMglInstalled ? "Missing" :
              !cores.psxMglCompatible ? "Incompatible" :
              cores.psxMglVerified
                  ? std::string("v") + DiscCorePackage::kVersion + " verified"
                  : "Compatible, unverified",
-         cores.psxMglVerified ? theme.accent : theme.warning);
+         cores.psxMglVerified ? theme.success : theme.warning);
     line("PlayStation RBF", cores.psxCoreInstalled ? "Installed" : "Missing",
-         cores.psxCoreInstalled ? theme.accent : theme.warning);
+         cores.psxCoreInstalled ? theme.success : theme.warning);
     line("Saturn MGL", !cores.saturnMglInstalled ? "Missing" :
              !cores.saturnMglCompatible ? "Incompatible" :
              cores.saturnMglVerified
                  ? std::string("v") + DiscCorePackage::kVersion + " verified"
                  : "Compatible, unverified",
-         cores.saturnMglVerified ? theme.accent : theme.warning);
+         cores.saturnMglVerified ? theme.success : theme.warning);
     line("Saturn RBF", cores.saturnCoreInstalled ? "Installed" : "Missing",
-         cores.saturnCoreInstalled ? theme.accent : theme.warning);
+         cores.saturnCoreInstalled ? theme.success : theme.warning);
     y += theme.px(12);
     theme.regular().draw(canvas, panel.x + margin, y,
         "Use Install/update Disc cores in Settings to install or repair the scoped package. Global [MiSTer] main stays untouched.",

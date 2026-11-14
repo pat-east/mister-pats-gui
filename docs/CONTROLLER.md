@@ -282,6 +282,16 @@ noting — the pairing survives a reboot on its own, with no re-pairing step nee
   `EVIOCGID`, as everywhere else in this document) is what decides whether a `.map` file
   already exists for it.
 
+## Simple joystick-style pads
+
+Some older pads (confirmed from a bug report: iBuffalo Super Famicom pad, `0583:2060`) report
+their eight buttons as `BTN_TRIGGER`..`BTN_BASE2` (0x120-0x127) and have no gamepad buttons such
+as `BTN_SOUTH`; the D-pad is `ABS_X`/`ABS_Y`. The GUI treats such a pad as a generic eight-button
+pad and maps by physical position: button 0 (bottom) confirms, 1 (right) goes back, 2 (left) is
+the X position, 3 (top) cycles the view, 4/5 are the shoulders, 6 is Select and 7 is Start. The
+button-mapping wizard still records the raw codes, because that is what MiSTer needs. Not yet
+confirmed on hardware.
+
 ## Non-goals for v1
 
 - **Per-core mapping overrides.** Only the menu-wide default. A per-core override is a

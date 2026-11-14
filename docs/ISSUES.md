@@ -38,6 +38,25 @@ the log reports the library and 204 favourites as loaded.
 - The GUI runs on tty2 (`stdin`/`stdout` are `/dev/tty2`, the console guard holds `/dev/tty0`),
   started by the patched Main_MiSTer through agetty.
 
+### Reproduced (2026-10-25, v0.8.4)
+
+The same blank Home screen was captured on a live MiSTer before restarting it:
+
+- `debug.log` records the GUI entering its frame loop at kernel uptime 13.9 s, a full redraw at
+  13.9 s, and the delayed full redraw at 16.0 s.
+- At kernel uptime 165.5 s, the framebuffer diagnostic records `res_count 2 -> 5` while Home
+  (tab 1) is active. `dmesg` has three matching `MiSTer_fb` mode-application lines at uptime
+  164.820–164.835 s.
+- The system log in `/tmp/messages` has those same three kernel lines and no recorded userspace
+  event at that time. Its next event is an Xbox 360 receiver input-device registration at 178.9 s;
+  the available logs do not identify what requested the mode application.
+- A read-only `/dev/fb0` capture at uptime 224.7 s showed alpha 0 across the entire main content
+  area (y=260–1007); the top bar, Home title, search field and footer remained visible.
+
+This confirms that a `MiSTer_fb` mode reapplication happened after the last full redraw and that
+the main content area was subsequently cleared. It confirms the observed failure mechanism; the
+exact cause of the late mode reapplication is still unknown.
+
 ### Hypothesis
 
 Main_MiSTer re-applies the framebuffer mode on a cold start well after the GUI has painted
@@ -54,16 +73,16 @@ in this repository), what triggers the write at 35.8 s, and why a warm start avo
 Comparing sampled framebuffer pixels with the canvas about once a second and redrawing on a
 mismatch. It was tried before and caused constant redraws and flicker.
 
-### Planned measure (not implemented)
+### Recovery measure (implemented)
 
-Make the kernel's own signal the trigger: read `res_count` every few seconds (a sysfs read of
-kernel memory, no storage access) and request one full redraw only when it changes. A redraw
-does not change the counter, so this cannot loop or flicker. It would also cover later mode
-changes, such as returning from a core.
+The GUI reads `res_count` every two seconds (a sysfs read of kernel memory, with no storage
+access). When a valid previously observed count changes, it requests one full redraw and saves
+the new count. Further checks with the same count do not request another redraw. This also covers
+later mode changes, such as returning from a core.
 
-### Diagnostic logging (implemented, logging only)
+### Diagnostic logging (implemented)
 
-The GUI never redraws because of it. Lines in `/media/fat/mister-pat/logs/debug.log`:
+Counter changes are logged in `/media/fat/mister-pat/logs/debug.log`:
 
 - `framebuffer: MiSTer_fb res_count A -> B (kernel uptime T s, tab=N)` every time the counter
   differs from the last read (checked every 2 s, at most 20 lines per run). The first line shows

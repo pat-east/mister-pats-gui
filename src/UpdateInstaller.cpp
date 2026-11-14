@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/statvfs.h>
+#include <utility>
 #include <unistd.h>
 
 #include "UpdateFiles.h"
@@ -126,6 +127,8 @@ public:
     std::string library() const { return path_ + "/library.so"; }
     std::string discIndex() const { return path_ + "/disc-index.tsv"; }
     std::string discIndexSource() const { return path_ + "/DISC-INDEX-SOURCE.txt"; }
+    std::string backupScript() const { return path_ + "/backup-mister-pat.sh"; }
+    std::string restoreScript() const { return path_ + "/restore-mister-pat.sh"; }
 private:
     std::string path_;
 };
@@ -200,6 +203,31 @@ InstallResult UpdateInstaller::install(const ReleaseCandidate &candidate,
         return result(InstallResult::Code::RepairRequired, "missing disc index or attribution hash");
     Stage stage;
     if (!stage.create(error)) return result(InstallResult::Code::RetryableError, error);
+    const auto backupHash = candidate.hashes.find("backup-mister-pat.sh");
+    const auto restoreHash = candidate.hashes.find("restore-mister-pat.sh");
+    const bool hasBackupScripts = backupHash != candidate.hashes.end() &&
+                                  restoreHash != candidate.hashes.end();
+    if ((backupHash == candidate.hashes.end()) != (restoreHash == candidate.hashes.end()))
+        return result(InstallResult::Code::RepairRequired, "incomplete backup script metadata");
+    if (hasBackupScripts) {
+        for (const auto &script : {std::pair<std::string, std::string>("backup-mister-pat.sh", stage.backupScript()),
+                                   std::pair<std::string, std::string>("restore-mister-pat.sh", stage.restoreScript())}) {
+            const std::string expectedHash = script.first == "backup-mister-pat.sh"
+                                                 ? backupHash->second : restoreHash->second;
+            const std::string url = "https://raw.githubusercontent.com/pat-east/mister-pats-gui/" +
+                                    candidate.tag + "/tools/" + script.first;
+            DownloadResult transfer = downloader.fetch(url, script.second, 16u * 1024u, 20, cancel, {});
+            if (!transfer.ok() || !UpdateFiles::sameHash(script.second, expectedHash, error, &cancel))
+                return result(cancel.load() ? InstallResult::Code::Cancelled
+                                            : InstallResult::Code::RetryableError,
+                              error.empty() ? transfer.error : error);
+            std::ifstream input(script.second.c_str());
+            std::string firstLine;
+            std::getline(input, firstLine);
+            if (firstLine != "#!/bin/sh")
+                return result(InstallResult::Code::RetryableError, "invalid backup script");
+        }
+    }
     DownloadResult indexTransfer;
     for (int attempt = 0; attempt < 2; ++attempt) {
         indexTransfer = downloader.fetch(
@@ -251,8 +279,37 @@ InstallResult UpdateInstaller::install(const ReleaseCandidate &candidate,
         }
         return true;
     };
+    const auto installBackupScripts = [&]() {
+        if (!hasBackupScripts) return true;
+        const std::string tools = kRoot + "/tools";
+        if (mkdir(tools.c_str(), 0755) != 0 && errno != EEXIST) {
+            error = "cannot create tools directory";
+            return false;
+        }
+        struct stat toolsStat {};
+        if (lstat(tools.c_str(), &toolsStat) != 0 || !S_ISDIR(toolsStat.st_mode)) {
+            error = "unsafe tools directory";
+            return false;
+        }
+        for (const auto &script : {std::pair<std::string, std::string>("backup-mister-pat.sh", stage.backupScript()),
+                                   std::pair<std::string, std::string>("restore-mister-pat.sh", stage.restoreScript())}) {
+            const std::string destination = tools + "/" + script.first;
+            const std::string temporary = destination + ".new-" + std::to_string(getpid());
+            const std::string expectedHash = script.first == "backup-mister-pat.sh"
+                                                 ? backupHash->second : restoreHash->second;
+            unlink(temporary.c_str());
+            if (!UpdateFiles::copyFile(script.second, temporary, 0755, error) ||
+                !UpdateFiles::sameHash(temporary, expectedHash, error) ||
+                rename(temporary.c_str(), destination.c_str()) != 0) {
+                unlink(temporary.c_str());
+                if (error.empty()) error = "cannot install " + script.first;
+                return false;
+            }
+        }
+        return true;
+    };
     if (libraryAlreadyInstalled) {
-        if (!installDiscAssets())
+        if (!installDiscAssets() || !installBackupScripts())
             return result(cancel.load() ? InstallResult::Code::Cancelled
                                         : InstallResult::Code::RetryableError, error);
         return result(InstallResult::Code::Installed,
@@ -300,7 +357,7 @@ InstallResult UpdateInstaller::install(const ReleaseCandidate &candidate,
         return result(InstallResult::Code::RepairRequired,
                       "library name became occupied: " + destination, {destination});
     }
-    if (!installDiscAssets()) {
+    if (!installDiscAssets() || !installBackupScripts()) {
         unlink(temporary.c_str());
         return result(cancel.load() ? InstallResult::Code::Cancelled
                                     : InstallResult::Code::RetryableError, error);

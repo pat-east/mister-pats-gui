@@ -10,9 +10,8 @@ version, follow [Building from source](#building-from-source).
 > **What it changes.** The fresh-card installer creates `/media/fat/mister-pat`, installs the
 > GUI, configures the `[MiSTer]` startup entries and restarts MiSTer. The existing-install
 > procedure installs or updates the GUI files but leaves
-> `MiSTer.ini` unchanged; you add the boot-path lines yourself. Both procedures leave
-> `/etc/inittab` and the stock MiSTer binary untouched. Uninstalling is deleting the GUI
-> directory and its two INI lines — see [Uninstalling](#uninstalling).
+> `MiSTer.ini` unchanged; you add the boot-path lines yourself. Uninstalling is deleting the
+> GUI directory and its two INI lines — see [Uninstalling](#uninstalling).
 
 | | |
 | --- | --- |
@@ -33,34 +32,25 @@ version, follow [Building from source](#building-from-source).
 
 ## Fresh MiSTer Fusion card
 
-For a first setup, use a new SD card with **at least 32 GB** of capacity, prepared with MiSTer
-Fusion. Keep the card in your computer after writing it. Copy `tools/install-mister-pat.sh` from
-this project to `/Scripts/install-mister-pat.sh` on the card. The MiSTer needs internet access
-while the script runs. Connect a controller, preferably by cable, and use a TV or monitor
-capable of at least 1080p. An external USB drive is recommended for your own games and BIOS
-files; an SD card can also store games. With a PowerStation One Dock, an NVMe drive is another
-option.
+Follow these steps to install the GUI on a new MiSTer Fusion SD card:
 
-After MiSTer Fusion has completed its first boot, open **Scripts** and run `update.sh` to bring
-MiSTer up to date. Let it finish and restart MiSTer if requested. Then open **Scripts** again and
-run `install-mister-pat.sh`. It installs the latest published GUI and adds its startup entries in
-the `[MiSTer]` section of `MiSTer.ini`. If `MiSTer.ini` already exists, the script saves it as
-`MiSTer.ini.bak.mister-pat` before adding the startup entries. If it is missing, the script creates
-a minimal file containing only `[MiSTer]`, `main=mister-pat/MiSTer_gui`, and
-`gui=mister-pat/mister-gui`; it leaves `MiSTer_example.ini` unchanged. This happens after the GUI
-has installed successfully. When updating an existing file, it converts CRLF line endings to LF.
-The script opens with an ASCII version of the project logo, then shows four numbered setup steps and
-reports the GUI download, configuration and restart status. During GUI setup, a spinner names the
-file being downloaded or checksum being checked. It also names checks and downloads for optional
-system icons, tab icons and fonts. Once those files are ready, it continues with startup
-configuration and restart. It does not download cores; after the restart, the GUI onboarding
-guides the next steps. The script restarts MiSTer automatically. If the reboot command is
-unavailable or fails, it tells you to restart manually.
+1. **Prepare the card.** Use an SD card with at least 32 GB and install MiSTer Fusion. Keep the
+   card connected to your computer after writing the image.
+2. **Copy the installer.** Copy `tools/install-mister-pat.sh` from this project to the card's
+   `/Scripts/` folder. The file should be `/Scripts/install-mister-pat.sh`.
+3. **Connect MiSTer.** Insert the card, connect MiSTer to the internet, and connect a controller.
+   A display capable of at least 1080p is recommended.
+4. **Run MiSTer’s updater.** Start MiSTer and, from the Scripts menu, run `update.sh`. Let it
+   finish and restart MiSTer if requested.
+5. **Install the GUI.** From the Scripts menu, run `install-mister-pat.sh`. It installs the latest
+   published GUI, configures MiSTer to start it, and restarts the system.
+6. **Continue setup.** Follow the on-screen guide to learn the dashboard and prepare a small game
+   sample. The guide explains how to build the full game list and prepare box art later. Core
+   updates are available in Settings → Library. The installer does not download games or BIOS
+   files.
 
-If the GUI download or installation fails, the script stops before changing the startup entries.
-Run it again to retry. This fresh-card path currently does not install the optional Physical Disc
-package. For an existing MiSTer setup, use the separate SSH procedure below; fresh-card installs
-do not need to run the SSH installer manually.
+If installation stops with an error, check the internet connection and run the installer again.
+For an existing MiSTer setup, use the separate [SSH procedure](#existing-mister-setup-ssh).
 
 Replace `<mister-ip>` with your MiSTer's address in every command below.
 

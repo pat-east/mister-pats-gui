@@ -1,4 +1,5 @@
 #include "DiscArtworkService.h"
+#include "GameScreenshotService.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -11,6 +12,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <fstream>
+#include <map>
 #include <sys/stat.h>
 #include <utime.h>
 #include <unistd.h>
@@ -618,6 +620,12 @@ void pruneDiscCache(const std::string &root, const std::string &keep) {
     while (dirent *entry = readdir(directory)) {
         const std::string name = entry->d_name;
         if (name == "." || name == ".." || name == "index") continue;
+        if (root.size() >= 17 &&
+            root.compare(root.size() - 17, 17, "/game-screenshots") == 0 &&
+            (name.size() != 18 || name.compare(0, 2, "g-") != 0 ||
+             !std::all_of(name.begin() + 2, name.end(), [](unsigned char ch) {
+                 return std::isxdigit(ch) != 0;
+             }))) continue;
         const int childFd = openat(rootHandle, name.c_str(),
                                    O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
         if (childFd < 0) continue;
@@ -1512,5 +1520,316 @@ DiscArtworkService::Snapshot DiscArtworkService::fetch(const Request &request,
         boxartProvider, screenshotProvider);
     if (writeTextAtomically(metadataPath, saved)) metadata = saved;
     pruneDiscCache(cacheRoot, gameDir);
+    return out;
+}
+
+namespace {
+
+// Names are the exact platform labels shown by TheGamesDB. Unknown systems retain their
+// local screenshot fallback; a similar name on another platform is never accepted.
+const char *gamePlatformName(const std::string &key) {
+    static const std::pair<const char *, const char *> names[] = {
+        {"3DO", "3DO"}, {"AO486", "PC"}, {"Arcade", "Arcade"},
+        {"ATARI5200", "Atari 5200"}, {"ATARI7800", "Atari 7800"},
+        {"ATARI800", "Atari 800"}, {"Amiga", "Amiga"},
+        {"AmigaCD32", "Amiga CD32"}, {"Amstrad", "Amstrad CPC"},
+        {"Arcadia", "Emerson Arcadia 2001"}, {"Atari2600", "Atari 2600"},
+        {"AtariLynx", "Atari Lynx"}, {"AtariST", "Atari ST"},
+        {"C16", "Commodore 16"}, {"C64", "Commodore 64"},
+        {"CD-i", "Philips CD-i"}, {"Casio_PV-1000", "Casio PV-1000"},
+        {"ChannelF", "Fairchild Channel F"}, {"Coleco", "Colecovision"},
+        {"CreatiVision", "VTech CreatiVision"}, {"FDS", "Famicom Disk System"},
+        {"GAMEBOY", "Nintendo Game Boy"}, {"GAMEBOY2P", "Nintendo Game Boy"},
+        {"GBA", "Nintendo Game Boy Advance"}, {"GBA2P", "Nintendo Game Boy Advance"},
+        {"GBC", "Nintendo Game Boy Color"}, {"GameCom", "Game.com"},
+        {"GameGear", "Sega Game Gear"}, {"GameGear2P", "Sega Game Gear"},
+        {"Intellivision", "Intellivision"}, {"Jaguar", "Atari Jaguar"},
+        {"MSX", "MSX"}, {"MSX1", "MSX"}, {"MegaCD", "Sega CD"},
+        {"MegaDrive", "Sega Mega Drive"}, {"N64", "Nintendo 64"},
+        {"NEOGEO", "Neo Geo"}, {"NES", "Nintendo Entertainment System (NES)"},
+        {"NGPC", "Neo Geo Pocket Color"}, {"NeoGeo-CD", "Neo Geo CD"},
+        {"NeoGeoPocket", "Neo Geo Pocket"},
+        {"NeoGeoPocket-Color", "Neo Geo Pocket Color"},
+        {"ODYSSEY2", "Magnavox Odyssey 2"}, {"PCXT", "PC"},
+        {"PET2001", "Commodore PET"}, {"PSX", "Sony Playstation"},
+        {"PokemonMini", "Nintendo Pokémon Mini"}, {"S32X", "Sega 32X"},
+        {"SCV", "Epoch Super Cassette Vision"}, {"SG1000", "SEGA SG-1000"},
+        {"SGB", "Nintendo Game Boy"}, {"SMS", "Sega Master System"},
+        {"SNES", "Super Nintendo (SNES)"}, {"snes", "Super Nintendo (SNES)"},
+        {"Saturn", "Sega Saturn"}, {"Spectrum", "Sinclair ZX Spectrum"},
+        {"SuperVision", "Watara Supervision"},
+        {"TGFX16", "TurboGrafx 16"}, {"TGFX16-CD", "TurboGrafx CD"},
+        {"VECTREX", "Vectrex"}, {"Vectrex", "Vectrex"},
+        {"VIC20", "Commodore VIC-20"}, {"VirtualBoy", "Nintendo Virtual Boy"},
+        {"WonderSwan", "WonderSwan"}, {"WonderSwanColor", "WonderSwan Color"},
+        {"X68000", "Sharp X68000"}, {"ZX81", "Sinclair ZX81"},
+        {"ZXNext", "Sinclair ZX Spectrum"}
+    };
+    for (const auto &entry : names)
+        if (strcasecmp(key.c_str(), entry.first) == 0) return entry.second;
+    return nullptr;
+}
+
+std::string gameScreenshotKey(const std::string &system, const std::string &title) {
+    uint64_t hash = 14695981039346656037ull;
+    for (unsigned char ch : system + ":" + title) {
+        hash ^= ch;
+        hash *= 1099511628211ull;
+    }
+    char value[19];
+    std::snprintf(value, sizeof(value), "g-%016llx", static_cast<unsigned long long>(hash));
+    return value;
+}
+
+struct PruneGameScreenshotCache {
+    const std::string &root;
+    const std::string &directory;
+    ~PruneGameScreenshotCache() {
+        // Failed requests leave no durable files, so remove their empty directory.
+        // Saved images and negative results use the same bounded cache policy as discs.
+        if (rmdir(directory.c_str()) != 0 && errno == ENOTEMPTY)
+            pruneDiscCache(root, directory);
+    }
+};
+
+} // namespace
+
+GameScreenshotService::GameScreenshotService(TheGamesDBClient &client)
+    : client_(client), worker_(&GameScreenshotService::workerLoop, this) {}
+
+GameScreenshotService::~GameScreenshotService() {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        stopping_ = true;
+        cancel_.store(true);
+    }
+    wake_.notify_all();
+    if (worker_.joinable()) worker_.join();
+}
+
+void GameScreenshotService::request(const std::string &systemKey, const std::string &title,
+                                    const std::vector<std::string> &localCandidates) {
+    if (systemKey.empty() || title.empty()) return;
+    const std::string key = gameScreenshotKey(systemKey, title);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (snapshot_.key == key && snapshot_.state != State::Idle &&
+            !(snapshot_.state == State::Missing &&
+              (client_.configured() || std::chrono::steady_clock::now() >= retryAt_))) return;
+        cancel_.store(true);
+        pending_ = {key, systemKey, title, localCandidates};
+        hasPending_ = true;
+        snapshot_ = Snapshot();
+        snapshot_.key = key;
+        snapshot_.state = State::Searching;
+        retryAt_ = {};
+    }
+    wake_.notify_one();
+}
+
+GameScreenshotService::Snapshot GameScreenshotService::snapshot() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return snapshot_;
+}
+
+void GameScreenshotService::workerLoop() {
+    for (;;) {
+        Request request;
+        {
+            std::unique_lock<std::mutex> lock(mutex_);
+            wake_.wait(lock, [this] { return stopping_ || hasPending_; });
+            if (stopping_) return;
+            request = pending_;
+            hasPending_ = false;
+            cancel_.store(false);
+        }
+        Snapshot result = fetch(request);
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (stopping_) return;
+            if (!cancel_.load() && snapshot_.key == request.key) {
+                snapshot_ = std::move(result);
+                retryAt_ = snapshot_.state == State::Missing
+                    ? std::chrono::steady_clock::now() + std::chrono::seconds(30)
+                    : std::chrono::steady_clock::time_point{};
+            }
+        }
+    }
+}
+
+GameScreenshotService::Snapshot GameScreenshotService::fetch(const Request &request) {
+    Snapshot out;
+    out.key = request.key;
+    out.state = State::Missing;
+    const char *platformName = gamePlatformName(request.systemKey);
+    const std::string root = std::string(MISTER_PAT_ROOT) + "/game-screenshots";
+    const std::string directory = root + "/" + request.key;
+    const std::string libretroPath = directory + "/libretro-screenshot.jpg";
+    for (int i = 1; i <= 4; ++i) {
+        const std::string path = directory + "/screenshot-" + std::to_string(i) + ".jpg";
+        if (fileExists(path)) out.screenshots.push_back(path);
+    }
+    if (!out.screenshots.empty()) {
+        out.state = State::Ready;
+        return out;
+    }
+    const std::string apiKey = client_.readKey();
+    const bool hasLocalScreenshot = std::any_of(request.localCandidates.begin(),
+        request.localCandidates.end(), [](const std::string &path) { return fileExists(path); });
+    if ((apiKey.empty() || !platformName) && hasLocalScreenshot) return out;
+    if ((apiKey.empty() || !platformName) && fileExists(libretroPath)) {
+        out.screenshots.push_back(libretroPath);
+        out.state = State::Ready;
+        return out;
+    }
+    if (cancel_.load()) return out;
+    if (!ensureDirectory(MISTER_PAT_ROOT) || !ensureDirectory(root) ||
+        !ensureDirectory(directory)) return out;
+    const PruneGameScreenshotCache prune{root, directory};
+    const auto fallback = [&]() -> Snapshot {
+        if (cancel_.load()) return out;
+        if (hasLocalScreenshot) return out;
+        if (fileExists(libretroPath)) {
+            out.screenshots.push_back(libretroPath);
+            out.state = State::Ready;
+            return out;
+        }
+        const std::string platform = LibretroIndex::platformFor(request.systemKey);
+        if (platform.empty()) return out;
+        const std::string checkedPath = directory + "/libretro-checked.json";
+        const std::string checkedAt = jsonNumberAt(readText(checkedPath), "checked_at");
+        if (!checkedAt.empty()) {
+            const long long then = std::strtoll(checkedAt.c_str(), nullptr, 10);
+            const long long now = static_cast<long long>(time(nullptr));
+            if (then > 0 && (then > now || now - then < 30LL * 24 * 60 * 60)) return out;
+        }
+        const std::string indexCache = std::string(MISTER_PAT_ROOT) + "/scrape-index";
+        if (!ensureDirectory(indexCache)) return out;
+        Downloader downloader;
+        LibretroIndex index;
+        if (!index.open(platform, downloader, indexCache, "Named_Snaps", &cancel_, true)) return out;
+        std::string imageName = request.systemKey == "Arcade"
+            ? index.matchExact(request.title) : index.match(request.title);
+        if (imageName.empty()) imageName = request.systemKey == "Arcade"
+            ? index.match(request.title) : index.matchExact(request.title);
+        const auto recordMissing = [&] {
+            if (!cancel_.load()) writeTextAtomically(checkedPath,
+                "{\"checked_at\":" + std::to_string(static_cast<long long>(time(nullptr))) + "}\n");
+        };
+        if (imageName.empty()) { recordMissing(); return out; }
+        const std::string url = std::string(LibretroIndex::kHost) + "/" +
+            Downloader::encodeComponent(platform) + "/Named_Snaps/" +
+            Downloader::encodeComponent(imageName + ".png");
+        const std::string temporary = directory + "/libretro.download";
+        int status = 0;
+        const bool downloaded = downloader.fetchWithStatus(url, temporary, status, 45,
+            &cancel_, 12u * 1024u * 1024u, true);
+        if (!cancel_.load() && downloaded && status == 200 &&
+            saveJpeg(Image::load(temporary), libretroPath)) {
+            out.screenshots.push_back(libretroPath);
+            out.state = State::Ready;
+        } else if (status == 404 || status == 410) recordMissing();
+        unlink(temporary.c_str());
+        return out;
+    };
+    if (apiKey.empty() || !platformName) return fallback();
+    const std::string checkedPath = directory + "/checked.json";
+    const std::string checked = readText(checkedPath);
+    const std::string checkedAt = jsonNumberAt(checked, "checked_at");
+    if (!checkedAt.empty()) {
+        const long long timeChecked = std::strtoll(checkedAt.c_str(), nullptr, 10);
+        const long long now = static_cast<long long>(time(nullptr));
+        if (timeChecked > 0 && (timeChecked > now || now - timeChecked < 30LL * 24 * 60 * 60))
+            return fallback();
+    }
+    const std::string encodedKey = Downloader::encodeComponent(apiKey);
+    Downloader downloader;
+    const std::string responsePath = directory + "/response.json";
+    const auto fetchJson = [&](const std::string &url, size_t limit, std::string &body) {
+        int status = 0;
+        const bool ok = downloader.fetchWithStatus(url, responsePath, status, 25, &cancel_, limit, false);
+        body = ok && status == 200 ? readText(responsePath) : std::string();
+        unlink(responsePath.c_str());
+        return !cancel_.load() && ok && status == 200 &&
+            jsonNumberAt(body, "code") == "200" && jsonStringAt(body, "status") == "Success";
+    };
+    std::string platformId;
+    auto foundPlatform = platformIds_.find(request.systemKey);
+    if (foundPlatform != platformIds_.end()) platformId = foundPlatform->second;
+    else {
+        std::string body;
+        const std::string url = "https://api.thegamesdb.net/v1/Platforms/ByPlatformName?apikey=" +
+            encodedKey + "&name=" + Downloader::encodeComponent(platformName);
+        if (!fetchJson(url, 256u * 1024u, body)) return fallback();
+        for (const std::string &platform : objectsFromArray(body, "platforms")) {
+            if (jsonStringAt(platform, "name") == platformName) {
+                platformId = jsonNumberAt(platform, "id");
+                break;
+            }
+        }
+        platformIds_[request.systemKey] = platformId;
+    }
+    if (platformId.empty()) return fallback();
+
+    std::string body;
+    const std::string query = simpleTitle(request.title, DiscDriveService::System::Unknown, false);
+    if (query.empty()) return fallback();
+    const std::string searchUrl = "https://api.thegamesdb.net/v1.1/Games/ByGameName?apikey=" +
+        encodedKey + "&name=" + Downloader::encodeComponent(query) +
+        "&fields=alternates&filter%5Bplatform%5D=" + platformId;
+    if (!fetchJson(searchUrl, 512u * 1024u, body)) return fallback();
+    const std::string wanted = titleKey(query);
+    std::string gameId;
+    for (const std::string &game : objectsFromArray(body, "games")) {
+        if (jsonNumberAt(game, "platform") != platformId) continue;
+        bool titleMatches = titleKey(jsonStringAt(game, "game_title")) == wanted;
+        if (!titleMatches) {
+            for (const std::string &alternate : stringsFromArray(game, "alternates"))
+                if (titleKey(alternate) == wanted) { titleMatches = true; break; }
+        }
+        if (titleMatches) { gameId = jsonNumberAt(game, "id"); break; }
+    }
+    const auto recordMissing = [&] {
+        if (!cancel_.load()) writeTextAtomically(checkedPath,
+            "{\"checked_at\":" + std::to_string(static_cast<long long>(time(nullptr))) + "}\n");
+    };
+    if (gameId.empty()) { recordMissing(); return fallback(); }
+    const std::string imagesUrl = "https://api.thegamesdb.net/v1/Games/Images?apikey=" +
+        encodedKey + "&games_id=" + gameId + "&filter%5Btype%5D=screenshot";
+    if (!fetchJson(imagesUrl, 256u * 1024u, body)) return fallback();
+    const size_t dataPos = propertyPosition(body, "data");
+    std::string baseUrl = jsonStringAt(body, "original", dataPos == std::string::npos ? 0 : dataPos);
+    if (baseUrl.compare(0, 8, "https://") != 0) return fallback();
+    const size_t hostEnd = baseUrl.find('/', 8);
+    if (baseUrl.substr(8, hostEnd == std::string::npos ? std::string::npos : hostEnd - 8) !=
+        "cdn.thegamesdb.net") return fallback();
+    if (baseUrl.back() != '/') baseUrl.push_back('/');
+    const size_t imagesPos = propertyPosition(body, "images");
+    int attempts = 0;
+    for (const std::string &image : objectsFromArray(body, gameId,
+             imagesPos == std::string::npos ? 0 : imagesPos)) {
+        if (cancel_.load() || out.screenshots.size() >= 4 || attempts >= 12) break;
+        if (jsonStringAt(image, "type") != "screenshot") continue;
+        const std::string filename = jsonStringAt(image, "filename");
+        if (filename.empty() || filename[0] == '/' || filename.find("..") != std::string::npos)
+            continue;
+        ++attempts;
+        const std::string url = baseUrl + encodeUrlPath(filename);
+        if (!Downloader::safeUrl(url)) continue;
+        const std::string target = directory + "/screenshot-" +
+            std::to_string(out.screenshots.size() + 1) + ".jpg";
+        const std::string temporary = directory + "/image.download";
+        int status = 0;
+        const bool downloaded = downloader.fetchWithStatus(url, temporary, status, 45, &cancel_,
+                                                            12u * 1024u * 1024u);
+        if (!cancel_.load() && downloaded && status == 200 &&
+            saveJpeg(Image::load(temporary), target)) out.screenshots.push_back(target);
+        unlink(temporary.c_str());
+    }
+    if (cancel_.load()) return out;
+    if (out.screenshots.empty()) { recordMissing(); return fallback(); }
+    out.state = State::Ready;
+    DebugLog::info("game screenshots: TheGamesDB lookup finished; count=" +
+                   std::to_string(out.screenshots.size()));
     return out;
 }

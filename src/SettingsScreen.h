@@ -37,7 +37,8 @@ public:
                    std::function<std::string()> spaceGroteskStatus,
                    std::function<void()> onSpaceGrotesk,
                    std::function<bool()> onShowChangelog,
-                   std::function<void()> onReboot);
+                   std::function<void()> onReboot,
+                   std::function<void()> onBackupSettings);
 
     void setFramebufferInfo(const std::string &info) { framebufferInfo_ = info; }
     void setUpdateSnapshot(const UpdateSnapshot &snapshot);
@@ -133,6 +134,7 @@ private:
     std::function<void()> onSpaceGrotesk_;
     std::function<bool()> onShowChangelog_;
     std::function<void()> onReboot_;
+    std::function<void()> onBackupSettings_;
     UpdateSnapshot updateSnapshot_;
     std::vector<ChangelogLine> changelogLines_;
     uint32_t changelogGeneration_ = 0;

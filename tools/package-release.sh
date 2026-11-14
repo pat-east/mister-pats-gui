@@ -37,6 +37,9 @@ cp "build/$LIB" "$OUT/$LIB"
 cp "$MAIN" "$OUT/MiSTer_gui"
 cp assets/disc-index.tsv "$OUT/disc-index.tsv"
 cp assets/DISC-INDEX-SOURCE.txt "$OUT/DISC-INDEX-SOURCE.txt"
-printf 'version=%s\nloader_abi=1\ngamesdb_format=%s\n' "$VERSION" "$GAMESDB_FORMAT" > "$OUT/release-info.txt"
+BACKUP_HASH=$(sha256sum tools/backup-mister-pat.sh | awk '{print $1}')
+RESTORE_HASH=$(sha256sum tools/restore-mister-pat.sh | awk '{print $1}')
+printf 'version=%s\nloader_abi=1\ngamesdb_format=%s\nbackup_script_sha256=%s\nrestore_script_sha256=%s\n' \
+    "$VERSION" "$GAMESDB_FORMAT" "$BACKUP_HASH" "$RESTORE_HASH" > "$OUT/release-info.txt"
 (cd "$OUT" && sha256sum mister-gui MiSTer_gui "$LIB" release-info.txt > SHA256SUMS && sha256sum disc-index.tsv DISC-INDEX-SOURCE.txt > disc-index.sha256)
 printf 'Release package: %s\n' "$OUT"
