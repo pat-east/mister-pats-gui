@@ -1533,6 +1533,14 @@ int App::run() {
         // An error modal draws over whatever screen is underneath rather than replacing it,
         // so that screen must be fully repainted every frame it is up — there is no damage
         // tracking for "the same dialog is still sitting on top of you".
+        // Each Controllers view (list, input test, wizard, ...) lays out differently; a full
+        // repaint on every switch keeps pieces of the previous one from showing through.
+        if (controllersActive_) {
+            const int view = controllersScreen_->viewId();
+            if (view != controllersViewId_) { controllersViewId_ = view; needsFullRedraw_ = true; }
+        } else {
+            controllersViewId_ = -1;
+        }
         const bool full = needsFullRedraw_ || !options_.incremental || context_->errorActive ||
                           gameActionsActive_;
         if (full && !previousFrameWasFull) {

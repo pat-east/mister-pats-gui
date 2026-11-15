@@ -87,6 +87,11 @@ public:
     // Like keyState, but asks for a gamepad button (BTN_SOUTH, BTN_TL, ...) and also answers
     // for pads that report plain joystick buttons instead (see Device::genericButtons).
     bool logicalKeyState(int slot, uint16_t code) const;
+    // Deflection of ABS_X or ABS_Y as -1, 0 or +1, judged against that axis' own range — the
+    // same rule that moves the cursor. Lets the controller test light a D-pad that is an axis.
+    int axisDirection(int slot, uint16_t code) const;
+    // True for pads with no gamepad buttons (see Device::genericButtons).
+    bool isGenericPad(int slot) const;
     int32_t absValue(int slot, uint16_t code) const;
     bool absInfo(int slot, uint16_t code, int32_t &minimum, int32_t &maximum) const;
 
@@ -98,6 +103,12 @@ private:
         int hatY = 0;
         int axisX = 0;
         int axisY = 0;
+        // Centre and trigger distance of ABS_X/ABS_Y, from the axis' own range. A pad whose
+        // D-pad is an axis running 0..255 rests at 127 and never reaches +-16000.
+        int axisCenterX = 0;
+        int axisCenterY = 0;
+        int axisThresholdX = 16000;
+        int axisThresholdY = 16000;
 
         std::string name;
         uint16_t vendor = 0;
@@ -125,6 +136,7 @@ private:
     void handleAbs(Device &device, uint16_t code, int32_t value, std::vector<Action> &out);
     static void probeTrigger(int fd, uint16_t code, int &threshold);
     static bool probeGenericButtons(int fd);
+    static void probeAxis(int fd, uint16_t code, int &center, int &threshold);
     // Maps a joystick button of a generic pad to its gamepad equivalent; other codes pass through.
     static uint16_t gamepadCode(uint16_t code);
     static uint16_t joystickCode(uint16_t code);

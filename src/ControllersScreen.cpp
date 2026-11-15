@@ -457,10 +457,19 @@ void ControllersScreen::renderInputTest(Canvas &canvas, const Rect &area) {
     // D-pad — lit by either a literal BTN_DPAD_* key or a hat's digital edge: a D-pad-only
     // pad (a Saturn-style pad, for one) reports its D-pad as a hat axis, not as keys at all.
     // See docs/CONTROLLER.md and the wizard's own capture logic below for the same distinction.
-    const bool dpadUp = input_.keyState(slot, BTN_DPAD_UP) || hatEdge(slot, ABS_HAT0Y) == 1;
-    const bool dpadDown = input_.keyState(slot, BTN_DPAD_DOWN) || hatEdge(slot, ABS_HAT0Y) == 2;
-    const bool dpadLeft = input_.keyState(slot, BTN_DPAD_LEFT) || hatEdge(slot, ABS_HAT0X) == 1;
-    const bool dpadRight = input_.keyState(slot, BTN_DPAD_RIGHT) || hatEdge(slot, ABS_HAT0X) == 2;
+    // A simple pad without gamepad buttons (an iBuffalo Super Famicom pad) has its D-pad on
+    // ABS_X/ABS_Y; light the arrows for it instead of leaving them dark.
+    const bool axisDpad = input_.isGenericPad(slot);
+    const int axisH = axisDpad ? input_.axisDirection(slot, ABS_X) : 0;
+    const int axisV = axisDpad ? input_.axisDirection(slot, ABS_Y) : 0;
+    const bool dpadUp = input_.keyState(slot, BTN_DPAD_UP) || hatEdge(slot, ABS_HAT0Y) == 1 ||
+                        axisV < 0;
+    const bool dpadDown = input_.keyState(slot, BTN_DPAD_DOWN) || hatEdge(slot, ABS_HAT0Y) == 2 ||
+                          axisV > 0;
+    const bool dpadLeft = input_.keyState(slot, BTN_DPAD_LEFT) || hatEdge(slot, ABS_HAT0X) == 1 ||
+                          axisH < 0;
+    const bool dpadRight = input_.keyState(slot, BTN_DPAD_RIGHT) || hatEdge(slot, ABS_HAT0X) == 2 ||
+                           axisH > 0;
     const int arrowSize = theme.px(54);
     const int arrowGap = theme.px(6);
     const int dpadCenterX = body.x + (colWidth - arrowSize) / 2;
@@ -497,7 +506,8 @@ void ControllersScreen::renderInputTest(Canvas &canvas, const Rect &area) {
     // turn it on any more.
 
     // Shoulders — digital, or a fill bar if the pad reports it as an analogue trigger.
-    y += theme.px(220);
+    // The face-button diamond ends 224 px below its top; start the shoulders clear of it.
+    y += theme.px(268);
     drawButton(body.x, y, colWidth, "L", input_.logicalKeyState(slot, BTN_TL));
     drawButton(faceX, y, colWidth, "R", input_.logicalKeyState(slot, BTN_TR));
 
@@ -547,6 +557,19 @@ void ControllersScreen::renderInputTest(Canvas &canvas, const Rect &area) {
         }
         theme.regular().draw(canvas, frame.x, frame.bottom() + theme.px(8), label, theme.sizeBody(),
                              theme.textMuted);
+
+        // A pad with no gamepad buttons often has its D-pad on this stick, with an odd range;
+        // show the raw reading so what the pad really reports is visible, not guessed.
+        int32_t lo, hi;
+        if (codeX == ABS_X && input_.isGenericPad(slot) && input_.absInfo(slot, codeX, lo, hi) &&
+            input_.absInfo(slot, codeY, loY, hiY)) {
+            char raw[96];
+            std::snprintf(raw, sizeof(raw), "X %d (%d to %d)   Y %d (%d to %d)",
+                          int(input_.absValue(slot, codeX)), int(lo), int(hi),
+                          int(input_.absValue(slot, codeY)), int(loY), int(hiY));
+            theme.regular().draw(canvas, frame.x, frame.bottom() + theme.px(8) + theme.px(30), raw,
+                                 theme.sizeSmall(), theme.textMuted);
+        }
     };
     drawStick(body.x, ABS_X, ABS_Y, "Stick 1");
     drawStick(faceX + colWidth + gap, ABS_RX, ABS_RY, "Stick 2");

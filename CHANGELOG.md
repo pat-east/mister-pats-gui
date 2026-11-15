@@ -5,6 +5,33 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.8] - 2026-11-15
+
+### Fixed
+
+- **D-pad on simple USB gamepads.** Navigation judged a pad's D-pad axes against a fixed range, so
+  pads whose axes run 0..255 around 127 (such as the iBuffalo Super Famicom pad) never moved the
+  cursor. The centre and trigger distance now come from each axis' own range, and the controller
+  test lights the direction arrows for pads without gamepad buttons.
+  ([#2](https://github.com/pat-east/mister-pats-gui/issues/2))
+- **Controller screens left traces behind.** Switching between the controller list, the input
+  test and the other controller views now repaints the whole screen, so nothing of the previous
+  view remains visible.
+- **Input test layout.** The shoulder buttons no longer touch the A button; everything from L and R
+  downward moved lower.
+
+### Added
+
+- **Controller diagnostics.** The GUI writes one line per opened input device to `debug.log`
+  (vendor and product, hat, generic-pad detection and the range of the X and Y axes). For pads
+  without gamepad buttons, the input test shows the raw X and Y readings under Stick 1.
+
+### Known limitations
+
+- The button-mapping wizard does not yet capture a D-pad that is reported as an axis; such pads
+  navigate the GUI correctly but their D-pad steps in the wizard cannot be completed.
+- The 0.8.7 entry lists "Tab content fades in"; only the tab underline fades. The content does not.
+
 ## [0.8.7] - 2026-11-14
 
 ### Added

@@ -211,6 +211,7 @@ private:
     bool controllersActive_ = false; // Settings -> Controllers owns the screen
     bool arcadeSettingsActive_ = false; // Settings -> Manage Arcade owns the screen
     bool arcadeGamesActive_ = false;    // ...-> Arcade Games owns the screen, on top of that
+    int controllersViewId_ = -1;   // last view of the Controllers screen that was drawn
     bool detailActive_ = false;   // a system was opened from the systems tab
     bool needsFullRedraw_ = true; // set on start and whenever the screen changes
     float idleSeconds_ = 0.0f;

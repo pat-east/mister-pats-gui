@@ -33,6 +33,10 @@ public:
     // this project's own Back/Confirm handling one layer up. See ControllersScreen.cpp.
     bool wantsRawInput() const;
 
+    // Which view is showing (list, input test, ...). The app repaints the whole framebuffer
+    // when this changes, so nothing of the previous view is left behind.
+    int viewId() const { return int(mode_); }
+
     void update(float deltaSeconds) override;
     void render(Canvas &canvas, const Rect &area, bool fullRedraw) override;
     void handle(Action action) override;

@@ -1,5 +1,7 @@
 #include "Input.h"
 
+#include "DebugLog.h"
+
 #include <algorithm>
 #include <cerrno>
 #include <cstdio>
@@ -102,6 +104,25 @@ void Input::rescan() {
         probeTrigger(fd, ABS_RZ, device.triggerRightThreshold);
         device.hasHat = probeHat(fd);
         device.genericButtons = probeGenericButtons(fd);
+        probeAxis(fd, ABS_X, device.axisCenterX, device.axisThresholdX);
+        probeAxis(fd, ABS_Y, device.axisCenterY, device.axisThresholdY);
+        {
+            // One line per opened pad, so a report about a pad that behaves oddly can come with
+            // what it actually advertises (see docs/CONTROLLER.md).
+            int32_t loX = 0, hiX = 0, loY = 0, hiY = 0;
+            input_absinfo info{};
+            if (ioctl(fd, EVIOCGABS(ABS_X), &info) == 0) { loX = info.minimum; hiX = info.maximum; }
+            if (ioctl(fd, EVIOCGABS(ABS_Y), &info) == 0) { loY = info.minimum; hiY = info.maximum; }
+            char line[256];
+            std::snprintf(line, sizeof(line),
+                          "input: opened event%d \"%s\" %04x:%04x hat=%d generic-buttons=%d "
+                          "x=%d..%d (centre %d, trigger %d) y=%d..%d (centre %d, trigger %d)",
+                          i, name, unsigned(device.vendor), unsigned(device.product),
+                          device.hasHat ? 1 : 0, device.genericButtons ? 1 : 0, int(loX), int(hiX),
+                          device.axisCenterX, device.axisThresholdX, int(loY), int(hiY),
+                          device.axisCenterY, device.axisThresholdY);
+            DebugLog::info(line);
+        }
         devices_.push_back(device);
     }
 }
@@ -135,6 +156,20 @@ namespace {
 const uint16_t kGenericButtons[8] = {BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST,
                                      BTN_TL, BTN_TR, BTN_SELECT, BTN_START};
 } // namespace
+
+void Input::probeAxis(int fd, uint16_t code, int &center, int &threshold) {
+    center = 0;
+    threshold = kAxisThreshold;
+
+    input_absinfo info{};
+    if (ioctl(fd, EVIOCGABS(code), &info) < 0) return;
+    const int range = info.maximum - info.minimum;
+    if (range <= 0) return;
+
+    // About half way out from the centre — what 16000 is on the usual +-32767 stick.
+    center = info.minimum + range / 2;
+    threshold = std::max(1, int(range * 0.245));
+}
 
 bool Input::probeGenericButtons(int fd) {
     unsigned long bits[(KEY_MAX / (8 * sizeof(unsigned long))) + 1] = {};
@@ -242,8 +277,10 @@ void Input::handleKey(const Device &device, uint16_t code, int32_t value, std::v
 
 void Input::handleAbs(Device &device, uint16_t code, int32_t value, std::vector<Action> &out) {
     // D-pads arrive as a hat on most pads, analogue sticks as scaled axes.
-    auto axis = [&](int &state, Action negative, Action positive, int threshold) {
-        const int next = (value <= -threshold) ? -1 : (value >= threshold ? 1 : 0);
+    auto axis = [&](int &state, Action negative, Action positive, int threshold,
+                    int center = 0) {
+        const int offset = value - center;
+        const int next = (offset <= -threshold) ? -1 : (offset >= threshold ? 1 : 0);
         if (next == state) return;
 
         if (state == -1) emitDirection(negative, false, out);
@@ -264,8 +301,8 @@ void Input::handleAbs(Device &device, uint16_t code, int32_t value, std::vector<
     switch (code) {
     case ABS_HAT0X: axis(device.hatX, Action::Left, Action::Right, 1); break;
     case ABS_HAT0Y: axis(device.hatY, Action::Up, Action::Down, 1); break;
-    case ABS_X:     axis(device.axisX, Action::Left, Action::Right, kAxisThreshold); break;
-    case ABS_Y:     axis(device.axisY, Action::Up, Action::Down, kAxisThreshold); break;
+    case ABS_X:     axis(device.axisX, Action::Left, Action::Right, device.axisThresholdX, device.axisCenterX); break;
+    case ABS_Y:     axis(device.axisY, Action::Up, Action::Down, device.axisThresholdY, device.axisCenterY); break;
     case ABS_Z:
         if (device.triggerLeftThreshold)
             trigger(device.triggerLeft, Action::JumpPrev, device.triggerLeftThreshold);
@@ -390,6 +427,20 @@ bool Input::keyState(int slot, uint16_t code) const {
 
     const size_t bitsPerWord = 8 * sizeof(unsigned long);
     return (bits[code / bitsPerWord] >> (code % bitsPerWord)) & 1;
+}
+
+int Input::axisDirection(int slot, uint16_t code) const {
+    if (slot < 0 || slot >= int(devices_.size())) return 0;
+    const Device &device = devices_[size_t(slot)];
+    if (code != ABS_X && code != ABS_Y) return 0;
+    const int center = code == ABS_X ? device.axisCenterX : device.axisCenterY;
+    const int threshold = code == ABS_X ? device.axisThresholdX : device.axisThresholdY;
+    const int offset = absValue(slot, code) - center;
+    return offset <= -threshold ? -1 : (offset >= threshold ? 1 : 0);
+}
+
+bool Input::isGenericPad(int slot) const {
+    return slot >= 0 && slot < int(devices_.size()) && devices_[size_t(slot)].genericButtons;
 }
 
 bool Input::logicalKeyState(int slot, uint16_t code) const {

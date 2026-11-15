@@ -289,8 +289,14 @@ their eight buttons as `BTN_TRIGGER`..`BTN_BASE2` (0x120-0x127) and have no game
 as `BTN_SOUTH`; the D-pad is `ABS_X`/`ABS_Y`. The GUI treats such a pad as a generic eight-button
 pad and maps by physical position: button 0 (bottom) confirms, 1 (right) goes back, 2 (left) is
 the X position, 3 (top) cycles the view, 4/5 are the shoulders, 6 is Select and 7 is Start. The
+D-pad axes are judged against their own range (often 0..255 around 127, not +-32767). The
 button-mapping wizard still records the raw codes, because that is what MiSTer needs. Not yet
 confirmed on hardware.
+
+For diagnosing such pads, the GUI writes one line per opened input device to `debug.log`
+(`input: opened eventN ...`) with its vendor/product, whether it has a hat or was treated as a
+generic pad, and the range, centre and trigger distance of `ABS_X`/`ABS_Y`. The controller test
+also shows the raw X/Y reading and range under Stick 1 for generic pads.
 
 ## Non-goals for v1
 
