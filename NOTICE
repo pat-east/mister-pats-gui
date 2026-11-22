@@ -35,6 +35,16 @@ third_party/zlib-1.3.1, libpng-1.6.43, freetype-2.13.2, libjpeg-turbo-3.0.4
     libjpeg-turbo the IJG License / BSD-3-Clause / zlib License respectively.
     Source archives are included in third_party/.
 
+third_party/ffmpeg-prebuilt/
+    FFmpeg 8.0 (https://ffmpeg.org), the libavformat, libavcodec, libavutil, libswscale and
+    libswresample libraries, used to play ScreenScraper preview videos (H.264 video, AAC audio).
+    Licensed under the GNU Lesser General Public License v2.1 or later; this build enables no GPL
+    or non-free parts. See the license files in that directory.
+    Built from the unmodified FFmpeg 8.0 source (source archive SHA-256 in BUILD-INFO.txt) with
+    third_party/build-ffmpeg.sh as static, decoder-only libraries and linked into the binary. The
+    source archive is not kept in this repository; the script fetches it from ffmpeg.org, and it
+    can be had from there at any time.
+
 
 Fonts
 =====

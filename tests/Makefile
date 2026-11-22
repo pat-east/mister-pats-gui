@@ -25,6 +25,8 @@ ARCADESCAN := $(BUILDDIR)/arcade_scan_test
 LIBRETRO := $(BUILDDIR)/libretro_index_test
 RELEASEINFO := $(BUILDDIR)/release_info_test
 IMAGECACHE := $(BUILDDIR)/image_cache_worker_test
+SSNAMES := $(BUILDDIR)/screenscraper_names_test
+SSSTORE := $(BUILDDIR)/screenscraper_store_test
 IMAGE_LIBS := $(shell pkg-config --libs libpng libjpeg)
 IMAGE_CFLAGS := $(shell pkg-config --cflags libpng libjpeg)
 
@@ -92,7 +94,19 @@ $(IMAGECACHE): image_cache_worker_test.cpp ../src/ImageCache.cpp ../src/Image.cp
 	$(CXX) $(CXXFLAGS) $(IMAGE_CFLAGS) -I../src image_cache_worker_test.cpp \
 	    ../src/ImageCache.cpp ../src/Image.cpp $(IMAGE_LIBS) -o $@
 
-run: $(DAMAGE) $(ALPHABET) $(GAMESDB) $(MISTERINI) $(CONTROLLERMAP) $(ARCHIVE) $(MRAFILE) $(ARCADESCAN) $(LIBRETRO) $(RELEASEINFO) $(IMAGECACHE)
+$(SSNAMES): screenscraper_names_test.cpp ../src/ScreenScraperNames.cpp ../src/ScreenScraperNames.h \
+            ../src/MiniJson.cpp ../src/MiniJson.h
+	@mkdir -p $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) screenscraper_names_test.cpp ../src/ScreenScraperNames.cpp ../src/MiniJson.cpp -o $@
+
+$(SSSTORE): screenscraper_store_test.cpp ../src/ScreenScraperCache.cpp ../src/ScreenScraperCache.h \
+            ../src/ScreenScraperNames.cpp ../src/ScreenScraperSettings.cpp ../src/ScreenScraperSettings.h \
+            ../src/SafeFileWrite.cpp
+	@mkdir -p $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) screenscraper_store_test.cpp ../src/ScreenScraperCache.cpp ../src/ScreenScraperNames.cpp \
+		../src/ScreenScraperSettings.cpp ../src/SafeFileWrite.cpp -o $@
+
+run: $(DAMAGE) $(ALPHABET) $(GAMESDB) $(MISTERINI) $(CONTROLLERMAP) $(ARCHIVE) $(MRAFILE) $(ARCADESCAN) $(LIBRETRO) $(RELEASEINFO) $(IMAGECACHE) $(SSNAMES) $(SSSTORE)
 	@$(DAMAGE)
 	@echo
 	@$(ALPHABET)
@@ -114,6 +128,10 @@ run: $(DAMAGE) $(ALPHABET) $(GAMESDB) $(MISTERINI) $(CONTROLLERMAP) $(ARCHIVE) $
 	@$(RELEASEINFO)
 	@echo
 	@$(IMAGECACHE)
+	@echo
+	@$(SSNAMES)
+	@echo
+	@$(SSSTORE)
 
 clean:
 	rm -rf $(BUILDDIR)

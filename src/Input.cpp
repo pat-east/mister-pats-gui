@@ -194,6 +194,7 @@ uint16_t Input::joystickCode(uint16_t code) {
 void Input::emitDirection(Action action, bool pressed, std::vector<Action> &out) {
     if (pressed) {
         if (favoriteDeviceIndex_ >= 0) favoriteCanceled_ = true;
+        if (removeDeviceIndex_ >= 0) removeCanceled_ = true;
         out.push_back(action);
         heldDirection_ = action;
         heldSince_ = nowMs();
@@ -222,6 +223,23 @@ void Input::handleKey(const Device &device, uint16_t code, int32_t value, std::v
         return;
     }
     if (value == 1 && favoriteDeviceIndex_ >= 0) favoriteCanceled_ = true;
+
+    // B: Back right away, and a hold timer beside it.
+    if (code == BTN_EAST || code == KEY_ESC || code == KEY_BACKSPACE) {
+        if (value == 1) {
+            if (removeDeviceIndex_ < 0) {
+                removeDeviceIndex_ = device.index;
+                removeSince_ = nowMs();
+                removeTriggered_ = false;
+                removeCanceled_ = false;
+            }
+            out.push_back(Action::Back);
+        } else if (value == 0 && removeDeviceIndex_ == device.index) {
+            removeDeviceIndex_ = -1;
+        }
+        return;
+    }
+    if (value == 1 && removeDeviceIndex_ >= 0) removeCanceled_ = true;
 
     // Some pads report the D-pad as BTN_DPAD_* keys in addition to the ABS_HAT0X/Y axes
     // handled in handleAbs; acting on both would move the cursor twice per press.
@@ -337,6 +355,17 @@ float Input::favoriteHoldProgress() const {
 
 void Input::cancelFavoriteHold() { favoriteCanceled_ = true; }
 
+bool Input::removeHoldActive() const {
+    return removeDeviceIndex_ >= 0 && !removeCanceled_ && !removeTriggered_;
+}
+
+float Input::removeHoldProgress() const {
+    if (!removeHoldActive()) return 0.0f;
+    return std::min(1.0f, float(nowMs() - removeSince_) / kRemoveHoldMs);
+}
+
+void Input::cancelRemoveHold() { removeCanceled_ = true; }
+
 std::vector<Action> Input::poll(int timeoutMs) {
     std::vector<Action> out;
 
@@ -390,6 +419,10 @@ std::vector<Action> Input::poll(int timeoutMs) {
     if (favoriteHoldActive() && nowMs() - favoriteSince_ >= kFavoriteHoldMs) {
         favoriteTriggered_ = true;
         out.push_back(Action::ToggleFavorite);
+    }
+    if (removeHoldActive() && nowMs() - removeSince_ >= kRemoveHoldMs) {
+        removeTriggered_ = true;
+        out.push_back(Action::RemoveRecent);
     }
     return out;
 }

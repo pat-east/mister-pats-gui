@@ -25,6 +25,12 @@
 #include "Input.h"
 #include "LibraryScan.h"
 #include "UiSounds.h"
+#include "GamePreview.h"
+#include "PreviewDisplay.h"
+#include "Paths.h"
+#include "ScreenScraperCache.h"
+#include "ScreenScraperService.h"
+#include "VideoPlayer.h"
 #include "MediaScraper.h"
 #include "Preferences.h"
 #include "ScanScreen.h"
@@ -144,6 +150,11 @@ private:
     TheGamesDBClient theGamesDB_;
     DiscArtworkService discArtwork_;
     GameScreenshotService gameScreenshots_;
+    ScreenScraperCache screenScraperCache_{MISTER_PAT_ROOT "/screenscraper"};
+    ScreenScraperService screenScraper_{screenScraperCache_};
+    VideoPlayer videoPlayer_;
+    GamePreview gamePreview_;
+    PreviewDisplay gameOptionsPreview_{gamePreview_};   // the preview in the Game options panel
     DiscCoreInstaller discCoreInstaller_;
     DiscCoreManager::Status discCoreStatus_;
     float discCoreRefreshTimer_ = 0.0f;
@@ -167,6 +178,8 @@ private:
     Input input_;
     Screen *favoriteHoldScreen_ = nullptr;
     std::string favoriteHoldPath_;
+    Screen *removeHoldScreen_ = nullptr;
+    std::string removeHoldPath_;
     TopBar topBar_;
     Tab tab_ = Tab::Home;
 
@@ -221,9 +234,23 @@ private:
     float screensaverArtTimer_ = 0.0f;
     float screensaverArtLoadTimer_ = 0.0f;
     bool screensaverArtPending_ = false;
+    int screensaverFailures_ = 0;   // covers in a row that did not load
+    float screensaverArtAge_ = 0.0f;       // seconds since the current cover was placed
+    bool screensaverCollageDone_ = true;   // the collage cover has finished fading in
+    ImagePtr screensaverUnder_;            // collage: the pixels under the cover that is fading in
+    struct SaverSystem {                   // every game of one system, for an even random choice
+        size_t index;                      // position in library_.systems()
+        std::vector<std::string> paths;
+    };
+    std::vector<SaverSystem> screensaverGames_;
+    size_t screensaverTotal_ = 0;
     std::vector<std::string> screensaverArtCandidates_;
     ImagePtr screensaverArt_;
     Rect screensaverArtRect_{};
+    float screensaverStartX_ = 0.0f, screensaverStartY_ = 0.0f;   // where the slideshow cover began
+    float screensaverVx_ = 0.0f, screensaverVy_ = 0.0f;           // its drift, pixels per second
+    Rect screensaverDrawnRect_{};                                  // where it was drawn last frame
+    std::vector<uint32_t> screensaverPrepared_;   // the slideshow cover, rounded and on black, ready to copy
     unsigned screensaverSeed_ = 1;
 
     Options options_;

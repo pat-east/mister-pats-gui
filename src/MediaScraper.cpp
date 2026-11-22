@@ -25,9 +25,23 @@ int64_t monotonicMs() {
     return int64_t(ts.tv_sec) * 1000 + ts.tv_nsec / 1000000;
 }
 
-bool fileExists(const std::string &path) {
+bool statExists(const std::string &path) {
     struct stat st {};
     return stat(path.c_str(), &st) == 0;
+}
+
+// Asks the in-memory name list first and the file system only when the list cannot judge.
+// On exFAT every lookup scans the directory, and one for a file that is not there costs up to
+// ~80 ms in a big media folder; the scraper used to make about ten of them per game, which is
+// what made a run over an 11,000-game library take hours. Names the scraper writes are added
+// to the list by ArtworkIndex::noteFile(), so later checks in the same run stay correct.
+bool fileExists(const std::string &path) {
+    switch (ArtworkIndex::instance().lookup(path)) {
+    case ArtworkIndex::Presence::Present: return true;
+    case ArtworkIndex::Presence::Absent: return false;
+    case ArtworkIndex::Presence::Unknown: break;
+    }
+    return statExists(path);
 }
 
 bool makeDirectory(const std::string &path) {
@@ -102,7 +116,7 @@ void MediaScraper::start(const GameDatabase &database, const Options &options,
     systems_.clear();
     jobs_.clear();
     systemPosition_ = jobPosition_ = 0;
-    totalGames_ = doneGames_ = fetched_ = prepared_ = skipped_ = missing_ = 0;
+    totalGames_ = doneGames_ = fetched_ = prepared_ = skipped_ = missing_ = indexFailed_ = 0;
     startedAtMs_ = monotonicMs();
     missesOpened_ = false;
     currentSystem_.clear();
@@ -193,6 +207,13 @@ std::string MediaScraper::statusLine() const {
         std::snprintf(buffer, sizeof(buffer),
                       "Covers downloaded %zu  ·  Prepared %zu  ·  Already ready %zu  ·  Not found %zu",
                       fetched_, prepared_, skipped_, missing_);
+        if (indexFailed_) {
+            // Not "not found": nothing could be looked up for these systems at all.
+            char more[96];
+            std::snprintf(more, sizeof(more), "  ·  No cover list for %zu system%s (offline?)",
+                          indexFailed_, indexFailed_ == 1 ? "" : "s");
+            return std::string(buffer) + more;
+        }
         return buffer;
     case State::Failed:
     default:
@@ -277,8 +298,10 @@ bool MediaScraper::prepareNextSystem() {
         currentSystem_ = system.name;
 
         indexAvailable_ = index_.open(LibretroIndex::platformFor(system.key), downloader_,
-                                      options_.indexCacheDir);
+                                      options_.indexCacheDir, "Named_Boxarts", nullptr, false,
+                                      true);
         if (!indexAvailable_) {
+            ++indexFailed_;
             // Existing local artwork can still be prepared as view-sized BMPs without the
             // network. Only missing artwork needs the thumbnail index.
             std::printf("scraper: %s index unavailable, local artwork only: %s\n",
@@ -431,10 +454,7 @@ void MediaScraper::step() {
 
             if (!makeDirectory(job.mediaDir)) continue;
 
-            const std::string url = std::string(LibretroIndex::kHost) + "/" +
-                                    Downloader::encodeComponent(index_.platform()) + "/" +
-                                    kind.folder + "/" +
-                                    Downloader::encodeComponent(remote) + ".png";
+            const std::string url = index_.imageUrl(kind.folder, remote);
 
             if (fetchOne(url, base, kind.suffix[0] == '\0')) ++fetched_;
         }

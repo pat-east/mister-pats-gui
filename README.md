@@ -33,6 +33,10 @@ Every system's games in the presentation you prefer — Y cycles through them. H
 | --- | --- |
 | ![SNES, list view](screenshots/snes-list.png) | ![Choose version for Adventures of Batman & Robin on Game Gear](screenshots/select-version.png) |
 
+With video previews on, the box art turns into the game's preview video after a few seconds, taken from [ScreenScraper.fr](https://screenscraper.fr). The animation is the real video placed into a screenshot of the List view:
+
+![List view of Nintendo 64: the box art of Super Mario 64 is replaced by its preview video](screenshots/video-preview.gif)
+
 | Games |
 | --- |
 | ![Games](screenshots/games.png) |
@@ -127,6 +131,10 @@ usual toolkits and calls for careful, measured software rendering — see
   versions and up to four screenshots fetched from TheGamesDB when an API key is configured.
   Without a key or a match, it shows existing local artwork or fetches one Libretro screenshot.
   The panel starts focused on **Start game**; choose a screenshot to view it larger.
+- **Watch a preview video:** in the List view and the game's detail panel, the box art turns into
+  a short video of the game after a few seconds, fetched from ScreenScraper.fr with your own free
+  account, cached on the card and played unscaled, with optional sound. Set it up in Settings →
+  Library → ScreenScraper.fr; see [SCREENSCRAPER.md](docs/SCREENSCRAPER.md).
 - **Play Arcade games reliably:** check that the core, ROM and every required CRC are present;
   match artwork to the exact ROM revision and explain missing games in a diagnostic view.
 - **Use physical discs:** the Disc tab identifies PlayStation and Saturn discs offline, shows
@@ -275,6 +283,7 @@ third_party/      dependency sources; Main_MiSTer is cloned here when building
 | [GAME-VERSIONS.md](docs/GAME-VERSIONS.md) | Game version grouping behavior and safeguards for future parser changes |
 | [DISCDRIVE.md](docs/DISCDRIVE.md) | Physical PlayStation and Saturn disc detection, artwork lookup, safe MGL launch and remaining hardware acceptance |
 | [THEGAMEDB.md](docs/THEGAMEDB.md) | TheGamesDB API experiments, region/platform matches, screenshot coverage and scraper behavior |
+| [SCREENSCRAPER.md](docs/SCREENSCRAPER.md) | ScreenScraper.fr video previews: behavior, settings, cache, request rules and the open developer-login question |
 | [UPDATER.md](docs/UPDATER.md) | Core and MRA updates: scope, checking, verified installation, safety rules and what was verified on hardware |
 | [ISSUES.md](docs/ISSUES.md) | Known issues and open investigations, with the evidence collected so far |
 

@@ -32,7 +32,13 @@ public:
     // is cached on the card rather than fetched per game.
     bool open(const std::string &platform, Downloader &downloader, const std::string &cacheDir,
               const std::string &mediaFolder = "Named_Boxarts",
-              const std::atomic<bool> *cancel = nullptr, bool requireVerifiedTls = false);
+              const std::atomic<bool> *cancel = nullptr, bool requireVerifiedTls = false,
+              bool allowGithubFallback = false);
+
+    // Where the box art for `remoteName` (a name from match()) is downloaded from: the
+    // thumbnail server, or GitHub's mirror when the index had to come from there.
+    std::string imageUrl(const std::string &folder, const std::string &remoteName) const;
+    bool usingGithub() const { return github_; }
 
     // The server's filename for a title, or empty when no exact or known variant matches.
     std::string match(const std::string &title) const;
@@ -65,10 +71,15 @@ public:
     static int regionRank(const std::string &filename);
 
     static constexpr const char *kHost = "https://thumbnails.libretro.com";
+    // libretro also keeps every thumbnail set as a repository, one per platform. Used only when
+    // the thumbnail server cannot list or serve its files (it returned nothing on 2026-11-22).
+    static constexpr const char *kGithubApi = "https://api.github.com/repos/libretro-thumbnails";
+    static constexpr const char *kGithubRaw = "https://raw.githubusercontent.com/libretro-thumbnails";
 
 private:
     std::string platform_;
     std::map<std::string, std::string> byKey_;   // normalised title -> server filename
     std::map<std::string, std::string> byExact_; // exactKey -> server filename
     std::string error_;
+    bool github_ = false;   // the index was built from the GitHub mirror (see open())
 };

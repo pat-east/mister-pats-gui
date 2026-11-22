@@ -1,5 +1,7 @@
 #include "TopBar.h"
 
+#include <sys/statvfs.h>
+
 #include <algorithm>
 #include <arpa/inet.h>
 #include <cstdio>
@@ -94,6 +96,57 @@ void TopBar::refreshNetwork() {
     freeifaddrs(list);
 }
 
+// "7.9 / 120 GB": one unit for both numbers, chosen by the size of the volume.
+static std::string diskNumbers(unsigned long long used, unsigned long long total) {
+    const double gib = 1024.0 * 1024.0 * 1024.0, mib = 1024.0 * 1024.0;
+    const bool inGb = double(total) >= gib;
+    const double unit = inGb ? gib : mib;
+    char buffer[64];
+    const double u = double(used) / unit, t = double(total) / unit;
+    if (t >= 100.0) std::snprintf(buffer, sizeof(buffer), "%.0f / %.0f %s", u, t, inGb ? "GB" : "MB");
+    else std::snprintf(buffer, sizeof(buffer), "%.1f / %.1f %s", u, t, inGb ? "GB" : "MB");
+    return buffer;
+}
+
+// Reads the mount list (a virtual file, no storage access) and asks each of /media/fat and
+// /media/usbN for its size. statvfs answers from the file system's own counters, it does not
+// scan the card; this runs every 30 seconds, not every frame.
+void TopBar::refreshDisks() {
+    std::vector<DiskUsage> found;
+    if (std::FILE *mounts = std::fopen("/proc/mounts", "r")) {
+        char line[512];
+        while (std::fgets(line, sizeof(line), mounts)) {
+            char device[256], point[256];
+            if (std::sscanf(line, "%255s %255s", device, point) != 2) continue;
+            const std::string path = point;
+            std::string name;
+            if (path == "/media/fat") name = "fat";
+            else if (path.compare(0, 10, "/media/usb") == 0 && path.size() > 10 &&
+                     path.find_first_not_of("0123456789", 10) == std::string::npos)
+                name = path.substr(7);
+            if (name.empty()) continue;
+            struct statvfs info {};
+            if (statvfs(path.c_str(), &info) != 0 || info.f_blocks == 0) continue;
+            DiskUsage usage;
+            usage.name = name;
+            usage.total = static_cast<unsigned long long>(info.f_blocks) * info.f_frsize;
+            const unsigned long long free = static_cast<unsigned long long>(info.f_bfree) * info.f_frsize;
+            const unsigned long long available = static_cast<unsigned long long>(info.f_bavail) * info.f_frsize;
+            usage.used = usage.total > free ? usage.total - free : 0;
+            usage.warning = available * 20 <= usage.total;   // 5 % or less is left
+            usage.numbers = diskNumbers(usage.used, usage.total);
+            found.push_back(usage);
+        }
+        std::fclose(mounts);
+    }
+    // fat first, then usb0, usb1, ... in number order.
+    std::sort(found.begin(), found.end(), [](const DiskUsage &a, const DiskUsage &b) {
+        if (a.name == "fat" || b.name == "fat") return a.name == "fat" && b.name != "fat";
+        return std::atoi(a.name.c_str() + 3) < std::atoi(b.name.c_str() + 3);
+    });
+    disks_ = std::move(found);
+}
+
 void TopBar::update(float deltaSeconds, bool use24HourClock) {
     constexpr float kFadeSeconds = 0.045f;
     if (indicatorFade_ < 0) {
@@ -117,6 +170,12 @@ void TopBar::update(float deltaSeconds, bool use24HourClock) {
     if (networkTimer_ <= 0.0f) {
         refreshNetwork();
         networkTimer_ = 10.0f;
+    }
+
+    diskTimer_ -= deltaSeconds;
+    if (diskTimer_ <= 0.0f) {
+        refreshDisks();
+        diskTimer_ = 30.0f;
     }
 }
 
@@ -222,10 +281,61 @@ void TopBar::render(Canvas &canvas, Theme &theme, const Rect &area, Tab active, 
     regular.draw(canvas, right - labelWidth, networkY, label, theme.sizeBody(),
                  online ? theme.topBarMuted : theme.warning);
 
+    int networkWidth = labelWidth;
     if (online) {
         const int addressWidth = regular.measure(address_, theme.sizeSmall());
+        networkWidth = std::max(networkWidth, addressWidth);
         regular.draw(canvas, right - addressWidth,
                      networkY + regular.lineHeight(theme.sizeBody()) + theme.px(6),
                      address_, theme.sizeSmall(), theme.topBarMuted);
+    }
+
+    // Left of the network block, only while a volume is nearly full (5 % or less left):
+    //   Disk space
+    //   fat:  7.9 / 120 GB
+    //   usb0: 432 / 477 GB (!)
+    // One line per volume, the labels in one column and the numbers in another, so they line up.
+    // All volumes are listed so the warning has context; the red (!) marks the full ones. The block
+    // may use the empty margin under the bar (the app restores that strip every frame); more
+    // volumes than fit are cut with "...". It is left out when there is no room beside the tabs.
+    bool anyWarning = false;
+    for (const DiskUsage &disk : disks_) anyWarning = anyWarning || disk.warning;
+    if (anyWarning) {
+        const int small = theme.sizeSmall();
+        const int blockRight = right - networkWidth - theme.px(40);
+        const int available = blockRight - (area.x + (area.w + total) / 2 + theme.px(24));
+        const int titleHeight = regular.lineHeight(theme.sizeBody());
+        const int lineHeight = regular.lineHeight(small);
+        const int firstLineY = networkY + titleHeight + theme.px(6);
+        const int limitY = area.bottom() + theme.marginY() - theme.px(4);
+        size_t room = limitY > firstLineY ? size_t((limitY - firstLineY) / std::max(1, lineHeight)) : 0;
+        size_t count = std::min(room, disks_.size());
+        const bool cut = count < disks_.size();
+        if (cut && count > 0) --count;   // the last line says that more volumes exist
+
+        int labelWidth = 0, valueWidth = 0;
+        for (size_t i = 0; i < count; ++i) {
+            labelWidth = std::max(labelWidth, regular.measure(disks_[i].name + ":", small));
+            valueWidth = std::max(valueWidth, regular.measure(disks_[i].numbers, small) +
+                                                   (disks_[i].warning ? regular.measure(" (!)", small) : 0));
+        }
+        const int title = regular.measure("Disk space", theme.sizeBody());
+        const int columnGap = theme.px(10);
+        const int blockWidth = std::max(title, labelWidth + columnGap + valueWidth);
+        if (count > 0 && blockWidth <= available) {   // never covers a tab
+            const int blockLeft = blockRight - blockWidth;
+            regular.draw(canvas, blockLeft, networkY, "Disk space", theme.sizeBody(), theme.topBarMuted);
+            int y = firstLineY;
+            for (size_t i = 0; i < count; ++i) {
+                regular.draw(canvas, blockLeft, y, disks_[i].name + ":", small, theme.topBarMuted);
+                const int valueX = blockLeft + labelWidth + columnGap;
+                regular.draw(canvas, valueX, y, disks_[i].numbers, small, theme.topBarMuted);
+                if (disks_[i].warning)
+                    regular.draw(canvas, valueX + regular.measure(disks_[i].numbers, small), y, " (!)",
+                                 small, theme.warning);
+                y += lineHeight;
+            }
+            if (cut) regular.draw(canvas, blockLeft, y, "...", small, theme.topBarMuted);
+        }
     }
 }

@@ -23,6 +23,10 @@ APP_OBJECTS := $(patsubst src/%.cpp,build/obj/$(FLAVOR)/%.o,$(APP_SOURCES))
 EMBED_INDEX_CPP := build/$(FLAVOR)/DiscIndexData.cpp
 EMBED_INDEX_OBJ := build/obj/$(FLAVOR)/DiscIndexData.o
 APP_OBJECTS += $(EMBED_INDEX_OBJ)
+DEV_LOGIN_ENV := $(firstword $(wildcard _build/screenscraper.env .screenscraper.fr.env) _build/screenscraper.env)
+DEV_LOGIN_CPP := build/$(FLAVOR)/ScreenScraperDevLogin.cpp
+DEV_LOGIN_OBJ := build/obj/$(FLAVOR)/ScreenScraperDevLogin.o
+APP_OBJECTS += $(DEV_LOGIN_OBJ)
 DEPS := $(APP_OBJECTS:.o=.d) $(LOADER_OBJ:.o=.d)
 BUILD_CONFIG := $(CONFIG_DIR)/.build-config
 ICON_BENCH := build/icon-bench
@@ -34,13 +38,13 @@ CXXFLAGS := -std=gnu++14 $(COMMON_FLAGS) -fPIC -fvisibility=hidden -pthread \
 CFLAGS := -std=c11 $(COMMON_FLAGS) -Isrc
 LIBRARY_LDFLAGS := -shared -static-libstdc++ -static-libgcc -Wl,--build-id=sha1 \
                    -Wl,--no-undefined -L$(SYSROOT)/lib
-LIBRARY_LIBS := -lfreetype -lpng16 -ljpeg -lz -lm -pthread
+LIBRARY_LIBS := -lfreetype -lpng16 -ljpeg -lavformat -lavcodec -lswscale -lswresample -lavutil -lz -lm -pthread
 LOADER_LDFLAGS := -Wl,--build-id=sha1 -ldl
 
 DEVICE ?= root@192.168.64.163
 REMOTE ?= /media/fat/mister-pat
 
-.PHONY: all clean deps deploy run bench-icons package-release FORCE
+.PHONY: all clean deps deploy run bench-icons poc-video package-release FORCE
 
 all: $(LOADER) $(LIBRARY)
 
@@ -66,6 +70,16 @@ $(EMBED_INDEX_CPP): assets/disc-index.tsv tools/embed-disc-index.py
 $(EMBED_INDEX_OBJ): $(EMBED_INDEX_CPP) src/DiscIndexData.h $(CONFIG_HEADER) $(BUILD_CONFIG)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -MMD -MP -c $(EMBED_INDEX_CPP) -o $@
+
+# The developer login comes from the git-ignored $(DEV_LOGIN_ENV), scrambled; without it the
+# build has no login. FORCE-free on purpose: the file is rebuilt when the env file changes.
+$(DEV_LOGIN_CPP): $(wildcard $(DEV_LOGIN_ENV)) tools/embed-dev-login.py
+	@mkdir -p $(dir $@)
+	python3 tools/embed-dev-login.py $(DEV_LOGIN_ENV) $@
+
+$(DEV_LOGIN_OBJ): $(DEV_LOGIN_CPP) src/ScreenScraperDevLogin.h $(CONFIG_HEADER) $(BUILD_CONFIG)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -Isrc -MMD -MP -c $(DEV_LOGIN_CPP) -o $@
 
 build/obj/$(FLAVOR)/%.o: src/%.cpp
 	@mkdir -p $(dir $@)
@@ -112,6 +126,19 @@ $(ICON_BENCH): tools/icon_bench.cpp src/Image.cpp src/Canvas.cpp src/Image.h src
 		-static -L$(SYSROOT)/lib -lpng16 -ljpeg -lz -lm -pthread -o $@
 
 bench-icons: $(ICON_BENCH)
+
+# Video experiments (see _vnext/SCREENSCRAPER-POC.md): standalone, statically linked tools that
+# need the FFmpeg libraries from `third_party/build-ffmpeg.sh`. Not part of the GUI or its release.
+VIDEO_POC := build/poc/videobench build/poc/videoplay
+FFMPEG_LIBS := -lavformat -lavcodec -lswscale -lswresample -lavutil
+
+build/poc/%: poc/%.cpp poc/videodec.h Makefile
+	@mkdir -p $(dir $@)
+	$(CXX) -std=gnu++14 $(COMMON_FLAGS) -pthread -I$(SYSROOT)/include poc/$*.cpp \
+		-static -L$(SYSROOT)/lib $(FFMPEG_LIBS) -lm -pthread -o $@
+	$(STRIP) --strip-debug $@
+
+poc-video: $(VIDEO_POC)
 
 clean:
 	rm -rf build

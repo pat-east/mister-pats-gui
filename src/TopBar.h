@@ -31,6 +31,18 @@ public:
 private:
     void refreshClock();
     void refreshNetwork();
+    void refreshDisks();
+
+    // Used and total space of one mounted volume ("fat" or "usb0"..), read with statvfs.
+    struct DiskUsage {
+        std::string name;
+        unsigned long long total = 0;
+        unsigned long long used = 0;
+        bool warning = false;   // 5 % or less of the volume is left
+        std::string numbers;    // "7.9 / 120 GB"
+    };
+    std::vector<DiskUsage> disks_;
+    float diskTimer_ = 0.0f;        // until the next statvfs round (30 s)
 
     std::string time_ = "--:--";
     std::string date_;

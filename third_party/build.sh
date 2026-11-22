@@ -69,6 +69,11 @@ TOOLCHAIN
     -DENABLE_SHARED=0 -DENABLE_STATIC=1 -DWITH_TURBOJPEG=0 -DWITH_SIMD=1 && \
     cmake --build build-arm -j4 && cmake --install build-arm)
 
+# FFmpeg is not compiled here: its prebuilt, decoder-only libraries are kept in Git and just
+# installed. To rebuild them from source (new version or configuration), run
+# third_party/build-ffmpeg.sh and commit the refreshed third_party/ffmpeg-prebuilt/.
+"$HERE/install-ffmpeg.sh"
+
 echo
 echo "=== installed ==="
 ls -la "$PREFIX/lib"/*.a

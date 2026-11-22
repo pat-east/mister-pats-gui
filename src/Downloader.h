@@ -26,6 +26,11 @@ public:
 
     const std::string &lastError() const { return error_; }
 
+    // The certificate bundle used to check HTTPS servers, or empty when the device has none.
+    // Callers that send credentials must refuse to proceed without one (the fetch methods above
+    // fall back to an unchecked connection, which is not acceptable for a login).
+    static std::string certificateFile();
+
     // A URL is only ever handed to a shell after this says yes.
     static bool safeUrl(const std::string &url);
 

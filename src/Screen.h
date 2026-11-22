@@ -5,6 +5,7 @@
 
 #include "Favorites.h"
 #include "DiscDriveService.h"
+#include "GamePreview.h"
 #include "DiscCoreManager.h"
 #include "DiscCoreInstaller.h"
 #include "DiscArtworkService.h"
@@ -21,15 +22,25 @@
 
 class Canvas;
 
+// Whether a game counts as a favourite: its own path, or any of its versions. A title with several
+// ROM versions (Arcade revisions, regional releases) is one entry whose own path is just the
+// representative one, while the favourite may have been marked on another version.
+inline bool isFavoriteGame(const Favorites &favorites, const Game &game) {
+    if (favorites.contains(game.path)) return true;
+    for (const Game::Variant &version : game.versions)
+        if (favorites.contains(version.path)) return true;
+    return false;
+}
+
 // Shared services handed to every screen.
 struct Context {
     Context(Theme &t, Library &l, Favorites &f, Launcher &la, ImageCache &i, Icons &ic,
             History &h, HiddenSystems &hs, Preferences &p, DiscDriveService &dd,
             DiscCoreManager &dc, DiscArtworkService &da, TheGamesDBClient &tgdb,
-            DiscCoreInstaller &di)
+            DiscCoreInstaller &di, GamePreview &gp)
         : theme(t), library(l), favorites(f), launcher(la), images(i), icons(ic), history(h),
           hiddenSystems(hs), preferences(p), discDrive(dd), discCores(dc), discArtwork(da),
-          theGamesDB(tgdb), discInstaller(di) {}
+          theGamesDB(tgdb), discInstaller(di), preview(gp) {}
 
     Theme &theme;
     Library &library;
@@ -45,9 +56,14 @@ struct Context {
     DiscArtworkService &discArtwork;
     TheGamesDBClient &theGamesDB;
     DiscCoreInstaller &discInstaller;
+    GamePreview &preview;
     std::function<void()> onThemeChanged;
     std::function<void(const GameSystem &, const Game &)> onChooseGameVersion;
     std::function<void()> onGameVersionSettingChanged;
+
+    // The Game options panel is open: it shows the video preview itself, so the list under it
+    // must not start one for its own selection.
+    bool detailOpen = false;
 
     // Prepared background, for restoring the area under a changed element.
     const Canvas *background = nullptr;
@@ -102,6 +118,10 @@ public:
     // The selected game's path, if this screen can mark it as a favorite. App uses it
     // to keep a three-second hold tied to the same game from press to completion.
     virtual std::string favoritePath() const { return {}; }
+
+    // The selected game's path when it sits in a list the user may remove it from by holding
+    // B (Home: Recently played); empty otherwise.
+    virtual std::string removablePath() const { return {}; }
 
     // The selected game, when the screen's cursor is on a game rather than a group/title.
     virtual bool selectedGame(const GameSystem *&system, Game &game) const {

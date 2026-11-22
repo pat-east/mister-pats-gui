@@ -19,6 +19,8 @@ public:
     bool save() const;
 
     void remember(const std::string &system, const std::string &path, const std::string &name);
+    // Drops every entry with one of these paths. True when something was removed.
+    bool forget(const std::vector<std::string> &paths);
     std::string mostRecentVersion(const std::string &system, const std::string &name,
                                   const std::vector<std::string> &candidates) const;
 

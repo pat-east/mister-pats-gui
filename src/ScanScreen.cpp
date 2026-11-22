@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <cstdio>
 #include <ctime>
+#include <strings.h>
 
 #include "Canvas.h"
+#include "LibretroIndex.h"
 #include "LoadingIndicator.h"
 
 ScanScreen::ScanScreen(Context &context, LibraryScan &scan, MediaScraper &scraper,
@@ -25,7 +27,21 @@ void ScanScreen::reset(bool firstRun) {
     roots_ = LibraryScan::detectRoots();
 }
 
+void ScanScreen::refreshArtworkSystems() {
+    artworkSystems_.clear();
+    artworkChoice_ = 0;
+    for (const DatabaseSystem &system : context_.library.database().systems()) {
+        if (system.count == 0 || LibretroIndex::platformFor(system.key).empty()) continue;
+        artworkSystems_.push_back({system.key, system.name, system.count});
+    }
+    std::sort(artworkSystems_.begin(), artworkSystems_.end(),
+              [](const ArtworkSystem &a, const ArtworkSystem &b) {
+                  return strcasecmp(a.name.c_str(), b.name.c_str()) < 0;
+              });
+}
+
 void ScanScreen::resetForArtwork() {
+    refreshArtworkSystems();
     firstRun_ = false;
     jumpStartFlow_ = false;
     jumpStartNoGames_ = false;
@@ -76,9 +92,17 @@ void ScanScreen::handle(Action action) {
         return;
 
     case Page::ArtworkOffer:
-        if (action == Action::Confirm) {
+        if (action == Action::Left || action == Action::Right) {
+            // All, then each system: Right goes forward, Left back, both wrap around.
+            const size_t choices = artworkSystems_.size() + 1;
+            artworkChoice_ = action == Action::Right ? (artworkChoice_ + 1) % choices
+                                                     : (artworkChoice_ + choices - 1) % choices;
+        } else if (action == Action::Confirm) {
             MediaScraper::Options options;
-            scraper_.start(context_.library.database(), options);
+            std::vector<std::string> only;
+            if (artworkChoice_ > 0 && artworkChoice_ <= artworkSystems_.size())
+                only.push_back(artworkSystems_[artworkChoice_ - 1].key);
+            scraper_.start(context_.library.database(), options, only);
             page_ = Page::ArtworkWorking;
         } else if (action == Action::Back) {
             page_ = Page::Done;
@@ -138,6 +162,7 @@ void ScanScreen::update(float /*deltaSeconds*/) {
             }
         } else {
             // Artwork is only worth offering once there is a library to hang it on.
+            refreshArtworkSystems();
             page_ = Page::ArtworkOffer;
         }
         return;
@@ -374,9 +399,20 @@ void ScanScreen::renderArtworkOffer(Canvas &canvas, const Rect &panel) {
                   theme.sizeBody(), theme.textMuted, y);
 
     y += theme.px(14);
+    const bool all = artworkChoice_ == 0 || artworkChoice_ > artworkSystems_.size();
+    const std::string chosen = all ? std::string("All systems") : artworkSystems_[artworkChoice_ - 1].name;
+    const size_t games = all ? context_.library.database().totalGames()
+                             : artworkSystems_[artworkChoice_ - 1].games;
+    // Only drawn when there is something to choose between.
+    if (!artworkSystems_.empty()) {
+        theme.regular().draw(canvas, body.x, y, "System", theme.sizeSmall(), theme.textMuted);
+        y += theme.px(30);
+        theme.bold().draw(canvas, body.x, y, "<  " + chosen + "  >", theme.sizeBody(),
+                          theme.textPrimary);
+        y += theme.px(50);
+    }
     char scope[128];
-    std::snprintf(scope, sizeof(scope), "Covers checked for %zu games",
-                  context_.library.database().totalGames());
+    std::snprintf(scope, sizeof(scope), "Covers checked for %zu games", games);
     theme.regular().draw(canvas, body.x, y, scope, theme.sizeSmall(),
                          theme.textMuted.withAlpha(170));
 }
@@ -566,7 +602,7 @@ std::string ScanScreen::hints() const {
         if (!jumpStartFlow_) return "B Cancel game scan";
         return scan_.progressItems().size() > visibleProgressRows_
             ? "{DPAD} Scroll   B Cancel" : "B Cancel";
-    case Page::ArtworkOffer:   return "A Download missing covers   B Skip for now";
+    case Page::ArtworkOffer:   return "{DPAD} Choose system   A Download missing covers   B Skip for now";
     case Page::ArtworkWorking:
         if (!jumpStartFlow_) return "B Stop cover download";
         return scan_.progressItems().size() > visibleProgressRows_

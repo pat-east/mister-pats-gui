@@ -53,6 +53,18 @@ absent. The uncompressed variants can use up to about 1.7 MB per cover; keeping 
 supports older installations and covers without prepared variants. Background images remain
 JPEG/PNG. Arcade still fetches covers only, without background screenshots.
 
+## GitHub fallback
+
+`thumbnails.libretro.com` stopped listing and serving its files on 2026-11-22 (404 for every
+platform path). libretro keeps the same sets as GitHub repositories (`libretro-thumbnails/<platform>`,
+spaces as `_`). When the thumbnail server cannot give a platform's list, the scraper fetches the
+repository's file list with one GitHub API call, saves it as `<platform>-Named_Boxarts-github.html`
+in `scrape-index/`, and downloads the covers from `raw.githubusercontent.com`. After the first
+failure in a run, the remaining systems skip the thumbnail server. Without a GitHub login the API
+allows 60 calls an hour; one per platform, cached, is well within that. A repository too large for
+one API answer would give a partial list. When no source can be reached for a system, the result
+line says `No cover list for N systems (offline?)` instead of reporting nothing found.
+
 ## Directory index
 
 exFAT finds a file by scanning its directory entry by entry, so a lookup costs time in proportion
@@ -101,6 +113,10 @@ view-sized BMP is missing) as a successful result. It does not periodically deco
 again while waiting for the preferred file to appear. Explicit artwork invalidation, such as
 after scraping new art for a game, still allows the image to be loaded again. This avoids
 replacing an already displayed image and restarting its reveal while the screen is idle.
+
+**Settings → Prepare box art** offers a choice of system before it starts: *All systems* or one
+system that has games and a cover set online (Left/Right, sorted by name). With one system chosen,
+only its games are checked, which is what makes a targeted run for a single console quick.
 
 The scraper processes one game per frame. Stopping it leaves completed artwork in place;
 another run fills gaps. System files and BIOS entries are excluded. Unmatched titles are

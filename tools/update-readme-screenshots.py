@@ -33,6 +33,10 @@ GALLERY = [
              "Here, SNES in Grid, Boxart small and List:"),
     ("pair", [("snes-grid", "Grid"), ("snes-small", "Boxart small")]),
     ("pair", [("snes-list", "List"), ("select-version", "Choose version")]),
+    ("text", "With video previews on, the box art turns into the game's preview video after a few "
+             "seconds, taken from [ScreenScraper.fr](https://screenscraper.fr). The animation "
+             "is the real video placed into a screenshot of the List view:"),
+    ("animation", ("video-preview", "List view with a video preview")),
     ("single", ("games", "Games")),
     ("text", "Settings, including Interface, Accessibility, System, the Changelog, the update page and controller input test:"),
     ("pair", [("settings", "Settings"), ("settings-interface", "Interface settings")]),
@@ -42,6 +46,7 @@ GALLERY = [
 ]
 
 ALT = {
+    "video-preview": "List view of Nintendo 64: the box art of Super Mario 64 is replaced by its preview video",
     "disc": "Disc tab",
     "snes-grid": "SNES, grid view",
     "snes-small": "SNES, small box art view",
@@ -69,16 +74,23 @@ def main():
     if start < 0 or end < start:
         raise SystemExit(f"{readme}: missing the {START} / {END} markers")
 
-    def have(name):
-        if os.path.exists(os.path.join(root, "screenshots", name + ".png")):
+    def have(name, extension="png"):
+        if os.path.exists(os.path.join(root, "screenshots", name + "." + extension)):
             return True
-        print(f"  warning: screenshots/{name}.png does not exist, left out", file=sys.stderr)
+        print(f"  warning: screenshots/{name}.{extension} does not exist, left out", file=sys.stderr)
         return False
 
     blocks = []
     for kind, content in GALLERY:
         if kind == "text":
             blocks.append(content)
+            continue
+        if kind == "animation":
+            # An animated GIF, not rendered by screenshot.sh: made from a MiSTer's preview video
+            # (see docs/SCREENSCRAPER.md) and kept in screenshots/ by hand.
+            name, title = content
+            if have(name, "gif"):
+                blocks.append(f"![{ALT.get(name, title)}](screenshots/{name}.gif)")
             continue
         if kind == "single":
             name, title = content

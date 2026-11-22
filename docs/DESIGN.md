@@ -214,7 +214,7 @@ it as it is (see [BOXART.md](BOXART.md) and `Artwork.h`).
 | Panel radius | `radius` (10) |
 | Short dialog (update intro, checking, result) | 1120 × 760, centered, at most the screen minus 36 |
 | List dialog (choose, confirm) | 1812 × 860, same limits |
-| Game options panel | 1776 × 800, centered and clear of the footer; 689 × 624 fixed detail-art slot; the screenshot row ends on the same bottom line as the art slot |
+| Game options panel | 1776 × 800, centered and clear of the footer; 744 × 624 detail-art slot (cover images stay at most 689 × 624, centred in it; the extra width lets an unscaled video of up to 720 px width fit); the screenshot row ends on the same bottom line as the art slot |
 | Error dialog | 620 wide, at most the screen minus 80 |
 | Title to content | 16 below the title (error dialog: 20) |
 | Line spacing in text blocks | line height + 9 |

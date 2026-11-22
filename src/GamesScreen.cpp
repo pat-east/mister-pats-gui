@@ -86,7 +86,8 @@ const char *nameForGameView(GameView view) {
 
 const char *displayNameForGameView(GameView view) { return specFor(view).name; }
 
-GamesScreen::GamesScreen(Context &context) : context_(context) {}
+GamesScreen::GamesScreen(Context &context)
+    : context_(context), previewDisplay_(context.preview) {}
 
 void GamesScreen::setView(GameView view) {
     view_ = view;
@@ -346,6 +347,7 @@ void GamesScreen::toggleFavorite() {
 }
 
 void GamesScreen::launch() {
+    context_.preview.stop();
     const Entry *entry = current();
     if (!entry) return;
 
@@ -412,6 +414,13 @@ void GamesScreen::update(float deltaSeconds) {
         focus_[i] += (target - focus_[i]) * speed;
     }
 
+    // The video preview follows the selected game of a List view (see GamePreview).
+    {
+        const Entry *selected = current();
+        if (view_ == GameView::List && selected && selected->system && !context_.detailOpen)
+            context_.preview.focus(selected->system, &selected->game);
+    }
+
     const Entry *entry = current();
     const std::string path = entry ? entry->game.background : std::string();
     if (path != detailPath_) {
@@ -441,24 +450,27 @@ void GamesScreen::renderDetail(Canvas &canvas, const Rect &area, const Entry &en
 
     const int pad = theme.px(24);
     const int footerHeight = favoritesMode_ ? theme.px(112) : 0;
-    const Rect artArea{area.x + pad, area.y + pad,
-                       std::max(0, area.w - 2 * pad),
-                       std::max(0, area.h - 2 * pad - footerHeight)};
+    const Rect artArea = detailArtArea(area);
+    const bool videoShowing = previewDisplay_.videoShowing();
 
     // Request only the selected game's cover. Detail backgrounds are reserved for a future
     // dedicated game detail page, where they can be useful without slowing down this view.
     ImagePtr art;
-    if (context_.preferences.showBoxArt())
+    if (context_.preferences.showBoxArt() && !videoShowing)
         art = context_.images.requestAsyncCandidates(entry.game.boxartCandidates,
                                                      artArea.w, artArea.h, true);
 
-    const bool boxArtEnabled = context_.preferences.showBoxArt();
+    const bool boxArtEnabled = context_.preferences.showBoxArt() && !videoShowing;
     const bool loading = boxArtEnabled && context_.images.isPendingCandidates(
                                                entry.game.boxartCandidates,
                                                artArea.w, artArea.h);
+    // While the next cover loads, the previous one stays instead of a title or a loading text.
+    if (art) lastDetailArt_ = art;
+    else if (loading && lastDetailArt_) art = lastDetailArt_;
     const bool changed = force || !paintedDetail_ || paintedDetailPath_ != entry.game.path ||
                          paintedDetailArt_ != art.get() || paintedDetailLoading_ != loading ||
-                         paintedDetailBoxArtEnabled_ != boxArtEnabled;
+                         paintedDetailBoxArtEnabled_ != boxArtEnabled || previewDisplay_.changed();
+    detailRepainted_ = changed;
     if (!changed) return;
 
     if (context_.background) canvas.restoreFrom(*context_.background, area);
@@ -533,11 +545,32 @@ void GamesScreen::renderDetail(Canvas &canvas, const Rect &area, const Entry &en
                                      theme.textMuted.withAlpha(190));
     }
 
+    // The preview's status line, under the art (and under the favourites caption).
+    previewDisplay_.drawStatus(canvas, theme,
+                               Rect{area.x + pad, artArea.bottom() + footerHeight + theme.px(8),
+                                    std::max(0, area.w - 2 * pad),
+                                    theme.regular().lineHeight(theme.sizeBody())});
+    previewDisplay_.markPainted();
     paintedDetailPath_ = entry.game.path;
     paintedDetailArt_ = art.get();
     paintedDetailLoading_ = loading;
     paintedDetailBoxArtEnabled_ = boxArtEnabled;
     paintedDetail_ = true;
+}
+
+Rect GamesScreen::detailArtArea(const Rect &area) const {
+    Theme &theme = context_.theme;
+    const int pad = theme.px(24);
+    const int footerHeight = favoritesMode_ ? theme.px(112) : 0;
+    // One line for the preview's status text, only while a preview applies to this game.
+    const int statusHeight = previewDisplay_.statusHeight(theme);
+    return Rect{area.x + pad, area.y + pad, std::max(0, area.w - 2 * pad),
+                std::max(0, area.h - 2 * pad - footerHeight - statusHeight)};
+}
+
+// Draws the playing video where the cover art is shown (see PreviewDisplay).
+void GamesScreen::drawPreviewVideo(Canvas &canvas, const Rect &detailArea) {
+    previewDisplay_.drawVideo(canvas, detailArtArea(detailArea), detailRepainted_);
 }
 
 void GamesScreen::renderDetailBackground(Canvas &canvas, const Rect &area, const Entry &entry) {
@@ -612,7 +645,7 @@ void GamesScreen::renderList(Canvas &canvas, const Rect &area, bool fullRedraw) 
                                      theme.focus.withAlpha(uint8_t(255 * focus)));
         }
 
-        const bool isFavorite = context_.favorites.contains(entry.game.path);
+        const bool isFavorite = isFavoriteGame(context_.favorites, entry.game);
         const int textX = row.x + theme.px(20);
         const int textW = row.w - theme.px(40) - (isFavorite ? theme.px(28) : 0);
 
@@ -646,8 +679,16 @@ void GamesScreen::renderList(Canvas &canvas, const Rect &area, bool fullRedraw) 
     }
     canvas.popClip();
 
-    if (const Entry *entry = current()) renderDetail(canvas, detailArea, *entry,
-                                                      fullRedraw || needsPaint_);
+    {
+        const Rect slot = detailArtArea(detailArea);
+        // A video is never scaled, so it may use the whole cover area of the panel, not just the
+        // size of the prepared cover images (689 x 624): a 720 x 480 video fits.
+        previewDisplay_.setSlot(slot);
+    }
+    if (const Entry *entry = current()) {
+        renderDetail(canvas, detailArea, *entry, fullRedraw || needsPaint_);
+        drawPreviewVideo(canvas, detailArea);
+    }
     paintedListScrollRow_ = scrollRow_;
     paintedListCount_ = entries_.size();
     needsPaint_ = false;
@@ -807,7 +848,7 @@ void GamesScreen::renderGrid(Canvas &canvas, const Rect &area, bool fullRedraw) 
             content.compactPlaceholder = useSmallGridArt;
             content.placeholderWidth = artworkWidth;
             content.placeholderHeight = artworkHeight;
-            content.favorite = context_.favorites.contains(entry.game.path);
+            content.favorite = isFavoriteGame(context_.favorites, entry.game);
             content.image = visibleArtwork[size_t(i - first)];
             content.imageRevealPercent = entry.boxartFadeIn.revealPercent();
 

@@ -12,6 +12,7 @@
 #include "Artwork.h"
 #include "BoxartFadeIn.h"
 #include "GameSearch.h"
+#include "PreviewDisplay.h"
 #include "Screen.h"
 
 enum class GameView { List, Grid, BoxartSmall, kCount };
@@ -90,6 +91,9 @@ private:
     void renderHeader(Canvas &canvas, const Rect &area);
     void renderDetail(Canvas &canvas, const Rect &area, const Entry &entry, bool force);
     void renderDetailBackground(Canvas &canvas, const Rect &area, const Entry &entry);
+    // The part of the detail panel that holds the cover art, and the video in its place.
+    Rect detailArtArea(const Rect &area) const;
+    void drawPreviewVideo(Canvas &canvas, const Rect &detailArea);
     void toggleFavorite();
     void launch();
     void moveCursor(int dx, int dy);
@@ -136,5 +140,8 @@ private:
     bool paintedDetailBoxArtEnabled_ = false;
     bool paintedDetail_ = false;
     bool needsPaint_ = true;
+    PreviewDisplay previewDisplay_;      // the video preview's status line and video
+    bool detailRepainted_ = false;
+    ImagePtr lastDetailArt_;             // the last cover shown, kept while the next one loads
     bool keyboardWasVisible_ = false;
 };

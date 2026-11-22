@@ -28,6 +28,7 @@ public:
     void handle(Action action) override;
     std::string hints() const override;
     std::string favoritePath() const override;
+    std::string removablePath() const override;
     bool selectedGame(const GameSystem *&system, Game &game) const override;
     bool usesStartAction() const override { return search_.usesStartAction(); }
     bool hasBackOverlay() const override { return search_.wantsBack(); }
@@ -71,6 +72,7 @@ private:
     void jumpLetter(Row &row, int direction);
     void launch();
     void toggleFavorite();
+    void removeRecent();
     void renderRow(Canvas &canvas, const Rect &area, Row &row, bool active);
     void renderFavorites(Canvas &canvas, const Rect &body, int sectionY, const Metrics &m);
     bool rowChanged(const Row &row, bool active) const;

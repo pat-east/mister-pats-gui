@@ -243,6 +243,28 @@ std::string HomeScreen::favoritePath() const {
     return item ? item->game.path : std::string();
 }
 
+std::string HomeScreen::removablePath() const {
+    if (search_.hasQuery() || activeRow_ != 0 || rows_.empty()) return {};
+    const Item *item = current();
+    return item ? item->game.path : std::string();
+}
+
+void HomeScreen::removeRecent() {
+    if (search_.hasQuery() || activeRow_ != 0 || rows_.empty()) return;
+    const Item *item = current();
+    if (!item) return;
+    const std::string name = item->game.name;
+    std::vector<std::string> paths{item->game.path};
+    for (const Game::Variant &version : item->game.versions) paths.push_back(version.path);
+    if (!context_.history.forget(paths)) return;
+    context_.notify(name + " removed from Recently played");
+
+    const int previous = rows_[0].cursor;
+    refresh();
+    if (!rows_.empty())
+        rows_[0].cursor = std::min(previous, std::max(0, int(rows_[0].items.size()) - 1));
+}
+
 bool HomeScreen::selectedGame(const GameSystem *&system, Game &game) const {
     if (search_.hasQuery()) return searchResults_.selectedGame(system, game);
     const Item *item = current();
@@ -349,6 +371,9 @@ void HomeScreen::handle(Action action) {
         break;
     case Action::ToggleFavorite:
         toggleFavorite();
+        break;
+    case Action::RemoveRecent:
+        removeRecent();
         break;
     case Action::JumpPrev:
         jumpLetter(row, -1);
@@ -463,7 +488,7 @@ void HomeScreen::renderRow(Canvas &canvas, const Rect &area, Row &row, bool acti
             content.label = item.game.name;
             content.sublabel = item.system->name;
             content.coverArt = true;
-            content.favorite = context_.favorites.contains(item.game.path);
+            content.favorite = isFavoriteGame(context_.favorites, item.game);
             if (context_.preferences.showBoxArt())
                 content.image = context_.images.requestAsyncCandidates(
                     item.game.boxartCandidates, tileWidth, tileHeight);

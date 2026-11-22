@@ -18,6 +18,7 @@ enum class Action {
     Select,
     FaceXPress, // short X press for controller-management actions
     ToggleFavorite,
+    RemoveRecent,   // B held for two seconds
     CycleView,
     TabPrev,
     TabNext,
@@ -33,6 +34,7 @@ enum class Action {
 class Input {
 public:
     static constexpr int kFavoriteHoldMs = 2000;
+    static constexpr int kRemoveHoldMs = 2000;
     ~Input();
 
     // Exclusive reading keeps other readers out while the GUI runs. The app releases devices
@@ -50,6 +52,13 @@ public:
     bool favoriteHoldActive() const;
     float favoriteHoldProgress() const;
     void cancelFavoriteHold();
+
+    // B/Escape produces Back at once, as always, and RemoveRecent after a continuous
+    // two-second hold. Same rules as the favourite hold: another button, a direction or
+    // releasing early cancels it, and the App ties it to one selected game.
+    bool removeHoldActive() const;
+    float removeHoldProgress() const;
+    void cancelRemoveHold();
 
     // Hands the devices back, so a launched core receives input instead of us.
     void releaseAll();
@@ -157,6 +166,11 @@ private:
     int64_t favoriteSince_ = 0;
     bool favoriteTriggered_ = false;
     bool favoriteCanceled_ = false;
+
+    int removeDeviceIndex_ = -1;
+    int64_t removeSince_ = 0;
+    bool removeTriggered_ = false;
+    bool removeCanceled_ = false;
 };
 
 int64_t nowMs();

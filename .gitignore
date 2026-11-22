@@ -34,3 +34,10 @@ reports/
 
 # Local vNext planning notes and mockups
 _vnext/
+
+# Local credentials (for example the ScreenScraper developer login); never commit.
+*.env
+.env*
+
+# Local build inputs such as the ScreenScraper developer login (never commit)
+_build/

@@ -96,6 +96,11 @@ bool Preferences::load(const std::string &file) {
     highContrastColor_ = Theme::kDefaultHighContrastColor;
     colorTheme_ = Theme::kDefaultColorTheme;
     darkMode_ = true;
+    screenScraperEnabled_ = false;
+    screenScraperVolume_ = 0;
+    screenScraperDelay_ = 5;
+    screenScraperRegion_ = "eu";
+    screenScraperStorageMb_ = 256;
     screensaverDelay_ = 0;
     screensaverStyle_ = "dimmed";
     defaultView_ = "grid";
@@ -160,7 +165,26 @@ bool Preferences::load(const std::string &file) {
                 value == 1200 || value == 1800 || value == 3600)
                 screensaverDelay_ = value;
         }
+        else if (line == "screenScraper=1") screenScraperEnabled_ = true;
+        else if (line == "screenScraperSound=1") screenScraperVolume_ = 25;   // the first version's switch
+        else if (line.compare(0, 20, "screenScraperVolume=") == 0) {
+            const int value = std::atoi(line.c_str() + 20);
+            if (value == 0 || value == 100 || value == 75 || value == 50 || value == 25 || value == 10)
+                screenScraperVolume_ = value;
+        }
+        else if (line.compare(0, 19, "screenScraperDelay=") == 0) {
+            const int value = std::atoi(line.c_str() + 19);
+            if (value >= 5 && value <= 30 && value % 5 == 0) screenScraperDelay_ = value;
+        }
+        else if (line == "screenScraperRegion=eu" || line == "screenScraperRegion=us" ||
+                 line == "screenScraperRegion=jp") screenScraperRegion_ = line.substr(20);
+        else if (line.compare(0, 23, "screenScraperStorageMb=") == 0) {
+            const int value = std::atoi(line.c_str() + 23);
+            if (value == 0 || value == 256 || value == 512 || value == 1024 || value == 2048 ||
+                value == 4096 || value == 8192) screenScraperStorageMb_ = value;
+        }
         else if (line == "screensaverStyle=boxart") screensaverStyle_ = "boxart";
+        else if (line == "screensaverStyle=boxart-collage") screensaverStyle_ = "boxart-collage";
         else if (line == "screensaverStyle=dimmed") screensaverStyle_ = "dimmed";
         else if (line == "checkForUpdates=1") checkForUpdates_ = true;
         else if (line == "onboardingComplete=1") onboardingComplete_ = true;
@@ -299,6 +323,37 @@ void Preferences::setDarkMode(bool enabled) {
     save();
 }
 
+void Preferences::setScreenScraperEnabled(bool enabled) {
+    screenScraperEnabled_ = enabled;
+    save();
+}
+
+void Preferences::setScreenScraperVolume(int percent) {
+    if (percent != 0 && percent != 100 && percent != 75 && percent != 50 && percent != 25 &&
+        percent != 10) return;
+    screenScraperVolume_ = percent;
+    save();
+}
+
+void Preferences::setScreenScraperDelay(int seconds) {
+    if (seconds < 5 || seconds > 30 || seconds % 5 != 0) return;
+    screenScraperDelay_ = seconds;
+    save();
+}
+
+void Preferences::setScreenScraperRegion(const std::string &region) {
+    if (region != "eu" && region != "us" && region != "jp") return;
+    screenScraperRegion_ = region;
+    save();
+}
+
+void Preferences::setScreenScraperStorageLimitMb(int megabytes) {
+    if (megabytes != 0 && megabytes != 256 && megabytes != 512 && megabytes != 1024 &&
+        megabytes != 2048 && megabytes != 4096 && megabytes != 8192) return;
+    screenScraperStorageMb_ = megabytes;
+    save();
+}
+
 void Preferences::setScreensaverDelay(int seconds) {
     if (seconds != 0 && seconds != 30 && seconds != 300 && seconds != 600 &&
         seconds != 1200 && seconds != 1800 && seconds != 3600) return;
@@ -307,7 +362,7 @@ void Preferences::setScreensaverDelay(int seconds) {
 }
 
 void Preferences::setScreensaverStyle(const std::string &style) {
-    if (style != "dimmed" && style != "boxart") return;
+    if (style != "dimmed" && style != "boxart" && style != "boxart-collage") return;
     screensaverStyle_ = style;
     save();
 }
@@ -429,6 +484,11 @@ bool Preferences::save() const {
     if (colorTheme_ != Theme::kDefaultColorTheme)
         out << "colorTheme=" << Theme::colorThemeName(colorTheme_) << "\n";
     if (!darkMode_) out << "darkMode=0\n";
+    if (screenScraperEnabled_) out << "screenScraper=1\n";
+    if (screenScraperVolume_ != 0) out << "screenScraperVolume=" << screenScraperVolume_ << "\n";
+    if (screenScraperDelay_ != 5) out << "screenScraperDelay=" << screenScraperDelay_ << "\n";
+    if (screenScraperRegion_ != "eu") out << "screenScraperRegion=" << screenScraperRegion_ << "\n";
+    if (screenScraperStorageMb_ != 256) out << "screenScraperStorageMb=" << screenScraperStorageMb_ << "\n";
     if (screensaverDelay_ != 0) out << "screensaverDelay=" << screensaverDelay_ << "\n";
     if (screensaverStyle_ != "dimmed") out << "screensaverStyle=" << screensaverStyle_ << "\n";
     if (defaultView_ != "grid") out << "defaultView=" << defaultView_ << "\n";

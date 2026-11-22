@@ -61,6 +61,21 @@ render() {
     name=$1; frames=$2; out=$3; shift 3
     mkdir -p "$out"
 
+    # Safety: the copy of the GUI that draws the picture is a real GUI. A "confirm" on a game
+    # starts it, through the real MiSTer launch file, and takes the television away from whatever
+    # is running. That happened once (the select-version picture, whose key list no longer
+    # matched the library). So confirm is only allowed in Settings, where it opens rows; any
+    # other screen needs SHOT_ALLOW_LAUNCH=1, said on purpose.
+    case " $* " in
+    *" --tab settings "*) ;;
+    *confirm*)
+        if [ "${SHOT_ALLOW_LAUNCH:-0}" != 1 ]; then
+            echo "  $name: refused, its key list contains confirm outside Settings and could start a game"
+            echo "  (set SHOT_ALLOW_LAUNCH=1 only if you mean it)"
+            return 1
+        fi ;;
+    esac
+
     $SSH "$REMOTE/$GUI --frames $frames --dump /tmp/shot.raw $*" > "$out/$name.log" 2>&1 \
         || { echo "  $name: the GUI failed"; tail -5 "$out/$name.log"; return 1; }
 
@@ -77,12 +92,34 @@ downs() {
     echo "$s"
 }
 
+# Random navigation: the list, grid and Arcade pictures move the selection a few steps so the
+# picture does not always show the first game. SHOT_SEED repeats a run exactly.
+SEED=${SHOT_SEED:-$(date +%s)}
+
+pick() {   # pick LOW HIGH SALT -> a number from LOW to HIGH
+    awk -v s="$SEED" -v lo="$1" -v hi="$2" -v k="$3" 'BEGIN { srand(s + k); print lo + int(rand() * (hi - lo + 1)) }'
+}
+
+steps() {   # steps KEY COUNT -> "key,key,..." (empty for 0)
+    key=$1; n=$2; s=""
+    while [ "$n" -gt 0 ]; do s="${s:+$s,}$key"; n=$((n - 1)); done
+    echo "$s"
+}
+
+# navigate SALT MAXDOWN MAXRIGHT [MINRIGHT] -> a --press list, and says what it picked
+navigate() {
+    d=$(pick 2 "$2" "$1"); r=$(pick "${4:-0}" "$3" $(($1 + 7)))
+    echo "  navigation: $d down, $r right (seed $SEED)" >&2
+    list=$(steps down "$d"); right=$(steps right "$r")
+    echo "${list}${list:+${right:+,}}${right}"
+}
+
 # ---------------------------------------------------------------------------------------
 # set: the pictures the README uses
 # ---------------------------------------------------------------------------------------
 # arcade-games is not in the standard set: it takes several minutes on the device and the
 # README does not show it. Ask for it by name.
-STANDARD="home favorites systems disc snes snes-grid snes-small snes-list select-version arcade games settings
+STANDARD="home favorites systems disc snes snes-grid snes-small snes-list arcade games settings
 settings-interface settings-accessibility settings-system settings-updates controller-test"
 
 shot_set() {
@@ -95,16 +132,21 @@ shot_set() {
         systems)     render $name 500 "$SET_DIR" --no-grab --tab systems ;;
         disc)        render $name 150 "$SET_DIR" --no-grab --tab disc ;;
         snes)        render $name 150 "$SET_DIR" --no-grab --tab games --system SNES ;;
-        snes-grid)   render $name 150 "$SET_DIR" --no-grab --tab games --system SNES --view grid ;;
-        snes-small)  render $name 150 "$SET_DIR" --no-grab --tab games --system SNES --view small ;;
-        snes-list)   render $name 150 "$SET_DIR" --no-grab --tab games --system SNES --view list ;;
+        snes-grid)   render $name 180 "$SET_DIR" --no-grab --tab games --system SNES --view grid \
+                         --press "$(navigate 1 8 3 1)" ;;
+        snes-small)  render $name 180 "$SET_DIR" --no-grab --tab games --system SNES --view small \
+                         --press "$(navigate 2 8 3 1)" ;;
+        snes-list)   render $name 180 "$SET_DIR" --no-grab --tab games --system SNES --view list \
+                         --press "$(navigate 3 8 0)" ;;
         select-version)
-            # From Home: RB twice to Consoles, right three times to Game Gear, A to open it,
+            # Not in the standard set any more: it ends in "confirm" on a game, and render()
+            # refuses that unless SHOT_ALLOW_LAUNCH=1. From Home: RB twice to Consoles, right three times to Game Gear, A to open it,
             # right twice to Adventures of Batman & Robin, Select, down to Choose version, A.
             # The GUI is already running here, so the physical Start that launches it is implicit.
             render $name 300 "$SET_DIR" --no-grab --tab home \
                 --press "next,next,right,right,right,confirm,right,right,select,down,confirm" ;;
-        arcade)      render $name 150 "$SET_DIR" --no-grab --tab arcade ;;
+        arcade)      render $name 180 "$SET_DIR" --no-grab --tab arcade \
+                         --press "$(navigate 4 3 4)" ;;
         games)       render $name 150 "$SET_DIR" --no-grab --tab games ;;
         settings)    render $name 60 "$SET_DIR" --no-grab --tab settings --press "right,wait:5" ;;
         settings-interface)

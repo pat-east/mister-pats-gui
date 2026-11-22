@@ -87,6 +87,12 @@ std::string Downloader::encodeComponent(const std::string &text) {
     return out;
 }
 
+std::string Downloader::certificateFile() {
+    for (const char *path : kCertificates)
+        if (fileExists(path)) return path;
+    return std::string();
+}
+
 std::string Downloader::certificateArgument() {
     for (const char *path : kCertificates)
         if (fileExists(path)) return std::string(" --cacert ") + path;

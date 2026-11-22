@@ -353,3 +353,14 @@ void Canvas::drawImageReveal(const Image &img, const Rect &dst, uint8_t alpha, i
         }
     }
 }
+
+void Canvas::blit(const uint32_t *src, int srcWidth, int srcHeight, int x, int y) {
+    if (!src || srcWidth <= 0 || srcHeight <= 0) return;
+    const Rect t = Rect{x, y, srcWidth, srcHeight}.intersect(clip());
+    if (t.empty()) return;
+    markDamage(t);
+    for (int row = t.y; row < t.bottom(); ++row) {
+        const uint32_t *from = src + size_t(row - y) * size_t(srcWidth) + size_t(t.x - x);
+        std::memcpy(&pixels_[size_t(row) * width_ + t.x], from, size_t(t.w) * sizeof(uint32_t));
+    }
+}

@@ -35,6 +35,25 @@ bool folderHasGame(const std::string &path, const std::vector<std::string> &exte
     return found;
 }
 
+// The folder that holds the disc image: `path` itself, or - when someone unpacked a download
+// into a folder of the same name, Game/Game/Game.cue - the single level below it. Empty when
+// neither holds one. Only one level, for the same reason the scan never recurses.
+std::string discFolder(const std::string &path, const std::vector<std::string> &extensions) {
+    if (folderHasGame(path, extensions)) return path;
+    DIR *d = opendir(path.c_str());
+    if (!d) return std::string();
+    std::string found;
+    while (dirent *entry = readdir(d)) {
+        const std::string name = entry->d_name;
+        if (name.empty() || name[0] == '.') continue;
+        if (SystemCatalog::isIgnoredDirectory(name)) continue;
+        const std::string inner = path + "/" + name;
+        if (isDirectory(inner) && folderHasGame(inner, extensions)) { found = inner; break; }
+    }
+    closedir(d);
+    return found;
+}
+
 } // namespace
 
 void LibraryScan::start(const std::vector<std::string> &roots) {
@@ -144,7 +163,8 @@ std::vector<std::string> LibraryScan::scanOne(const CatalogEntry &system) const 
             // nothing but cd_bios.rom) looks exactly like one from the outside otherwise.
             // For everything else a folder is just how someone chose to organise their ROMs.
             if (system.discBased) {
-                if (folderHasGame(full, system.extensions)) games.push_back(full);
+                const std::string folder = discFolder(full, system.extensions);
+                if (!folder.empty()) games.push_back(folder);
             } else {
                 subdirectories.push_back(full);
             }

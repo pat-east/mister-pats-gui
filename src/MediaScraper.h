@@ -117,6 +117,7 @@ private:
     size_t prepared_ = 0;
     size_t skipped_ = 0;
     size_t missing_ = 0;
+    size_t indexFailed_ = 0;   // systems whose cover list could not be had from any source
     bool missesOpened_ = false;
     bool arcade_ = false;   // the system being worked on is Arcade — see prepareNextSystem()
     std::string error_;

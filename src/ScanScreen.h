@@ -43,6 +43,8 @@ private:
     void renderArtworkWorking(Canvas &canvas, const Rect &panel);
     void renderOverview(Canvas &canvas, const Rect &panel);
     void renderDone(Canvas &canvas, const Rect &panel);
+    // The systems the cover search can be limited to: those with games and a cover set online.
+    void refreshArtworkSystems();
     void drawParagraph(Canvas &canvas, const Rect &area, const std::vector<std::string> &lines,
                        int size, Color color, int &y) const;
 
@@ -67,4 +69,8 @@ private:
     size_t progressScroll_ = 0;
     size_t visibleProgressRows_ = 10;
     std::vector<std::string> roots_;
+
+    struct ArtworkSystem { std::string key, name; size_t games; };
+    std::vector<ArtworkSystem> artworkSystems_;   // sorted by name
+    size_t artworkChoice_ = 0;                    // 0 = all systems, n = artworkSystems_[n - 1]
 };

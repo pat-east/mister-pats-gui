@@ -49,6 +49,9 @@ public:
     static Rect shadowBounds(const Rect &r, int spread);
 
     void drawImage(const Image &img, const Rect &dst, uint8_t alpha = 255, int radius = 0);
+    // Copies an opaque ARGB32 block of srcWidth x srcHeight pixels (no padding between rows) to
+    // x, y: no scaling, no blending, honouring the clip, recording the damage. For video frames.
+    void blit(const uint32_t *src, int srcWidth, int srcHeight, int x, int y);
     // Deterministic scattered reveal used by the boxart fade-in animation.
     void drawImageReveal(const Image &img, const Rect &dst, uint8_t alpha, int radius,
                          int percent);

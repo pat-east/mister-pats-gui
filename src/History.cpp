@@ -112,6 +112,18 @@ void History::remember(const std::string &system, const std::string &path,
     save();
 }
 
+bool History::forget(const std::vector<std::string> &paths) {
+    const size_t before = entries_.size();
+    entries_.erase(std::remove_if(entries_.begin(), entries_.end(),
+                                  [&](const HistoryEntry &e) {
+                                      return std::find(paths.begin(), paths.end(), e.path) != paths.end();
+                                  }),
+                   entries_.end());
+    if (entries_.size() == before) return false;
+    save();
+    return true;
+}
+
 std::string History::mostRecentVersion(const std::string &system, const std::string &name,
                                        const std::vector<std::string> &candidates) const {
     for (const HistoryEntry &entry : entries_) {

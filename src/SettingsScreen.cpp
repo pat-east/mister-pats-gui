@@ -1,4 +1,5 @@
 #include "SettingsScreen.h"
+#include "ScreenScraperSettings.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -60,6 +61,22 @@ bool internetRouteAvailable() {
 std::string settingHelp(const std::string &label) {
     if (label == "TheGamesDB")
         return "Looks up box art, screenshots and release year for PlayStation and Saturn discs, and up to four screenshots for games. Add your API key to /media/fat/mister-pat/thegamesdb-settings.ini as apikey=\"YOUR_KEY\", then select this row to test it. Without a key, game options use local images or one Libretro screenshot.";
+    if (label == "Video previews")
+        return "Play a short video of the selected game in the List view, taken from ScreenScraper.fr. It needs a free ScreenScraper account. Off means nothing is requested from ScreenScraper.";
+    if (label == "Account")
+        return "Shows whether your ScreenScraper login works. Select to check it again. The developer login of this software is read from /media/fat/mister-pat/screenscraper-fr-settings.ini.";
+    if (label == "User name")
+        return "The user name of your own ScreenScraper account.";
+    if (label == "Password")
+        return "The password of your ScreenScraper account. It is stored in the settings file on the card, which anyone with SSH or FTP access to the MiSTer can read, so use a password you use nowhere else.";
+    if (label == "Video sound")
+        return "The volume of the video previews: Off, 100%, 75%, 50%, 25% or 10%. This lowers the sound itself; the MiSTer's own volume is not changed. It takes effect with the next video you open. Off by default, because sound starting while you browse can be annoying.";
+    if (label == "Default region")
+        return "The region whose spelling of a game title is shown when ScreenScraper knows several: EU, US or JP.";
+    if (label == "Preview delay")
+        return "How long a game must stay selected before its video is looked up, in steps of 5 seconds up to 30. Nothing is requested while you scroll.";
+    if (label == "Video storage limit")
+        return "The most space downloaded videos may use on the card. The oldest videos are deleted first when the limit is reached. Unlimited still keeps some free space on the card.";
     if (label == "Build game list")
         return "Search connected drives for games and save a list the menus can load quickly. Run this after adding or removing games.";
     if (label == "Prepare box art")
@@ -121,7 +138,7 @@ std::string settingHelp(const std::string &label) {
     if (label == "Screensaver")
         return "Choose how long the GUI waits without controller input before the screensaver starts.";
     if (label == "Screensaver style")
-        return "Choose a dimmed screen or a black screen that shows random box art. Any controller input wakes the screen.";
+        return "Dimmed darkens the screen. Boxart slideshow shows one random cover at a time. Boxart collage keeps adding random covers until the screen fills up. Any controller input wakes the screen.";
     if (label == "Back up GUI settings")
         return "Save your personal GUI settings as a backup on a connected USB drive. Restore a backup from the console.";
     if (label == "Info")
@@ -246,6 +263,14 @@ void SettingsScreen::buildRows() {
     categories_.push_back({"Updates", {}});
     categories_.push_back({"System", {}});
     auto &library = categories_[0].rows;
+    // Section titles inside the Library list: they are drawn but never selected.
+    const auto heading = [](const std::string &text) {
+        Row row;
+        row.label = text;
+        row.enabled = false;
+        row.heading = true;
+        return row;
+    };
 
     // Library and content — build and refresh the saved library, manage its views,
     // then keep version grouping and the external artwork service at the bottom.
@@ -570,13 +595,20 @@ void SettingsScreen::buildRows() {
                              ++current;
                          context_.preferences.setScreensaverDelay(values[(current + 1) % 7]);
                      }});
+    // Working names for the two box-art styles; the stored values are "boxart" (slideshow, the
+    // name kept from the first version) and "boxart-collage".
     system.push_back({"Screensaver style",
-                     [this] { return context_.preferences.screensaverStyle() == "boxart"
-                                      ? std::string("Boxart") : std::string("Dimmed"); },
                      [this] {
+                         const std::string &style = context_.preferences.screensaverStyle();
+                         if (style == "boxart") return std::string("Boxart slideshow");
+                         if (style == "boxart-collage") return std::string("Boxart collage");
+                         return std::string("Dimmed");
+                     },
+                     [this] {
+                         const std::string &style = context_.preferences.screensaverStyle();
                          context_.preferences.setScreensaverStyle(
-                             context_.preferences.screensaverStyle() == "dimmed"
-                                 ? "boxart" : "dimmed");
+                             style == "dimmed" ? "boxart"
+                             : style == "boxart" ? "boxart-collage" : "dimmed");
                      }});
     system.push_back({"Back up GUI settings", [] { return std::string("A"); },
                       [this] { onBackupSettings_(); }});
@@ -608,6 +640,180 @@ void SettingsScreen::buildRows() {
                              context_.notify("Another online task is running. Try again when it finishes.");
                          }
                      }});
+
+    // ScreenScraper.fr: video previews in the List view. Nothing is requested while this is off.
+    refreshScreenScraperLogin();
+    library.push_back(heading("ScreenScraper.fr"));
+    auto &screenScraper = library;
+    screenScraper.push_back({"Video previews",
+                     [this] { return std::string(context_.preferences.screenScraperEnabled() ? "On" : "Off"); },
+                     [this] {
+                         const bool enable = !context_.preferences.screenScraperEnabled();
+                         context_.preferences.setScreenScraperEnabled(enable);
+                         if (enable) {
+                             context_.preview.service().forgetAccount();
+                             context_.preview.service().checkAccount();
+                         } else {
+                             context_.preview.stop();
+                         }
+                     }});
+    screenScraper.push_back({"Account",
+                     [this] {
+                         const ScreenScraperService::Account account = context_.preview.service().account();
+                         switch (account.state) {
+                         case ScreenScraperService::AccountState::Unknown: return std::string("Not checked");
+                         case ScreenScraperService::AccountState::Checking: return std::string("Checking...");
+                         default: return account.detail.empty() ? std::string("Not available") : account.detail;
+                         }
+                     },
+                     [this] {
+                         context_.preview.service().forgetAccount();
+                         context_.preview.service().checkAccount();
+                     }});
+    screenScraper.push_back({"User name",
+                     [this] { return screenScraperUser_.empty() ? std::string("Not set") : screenScraperUser_; },
+                     [this] { openAccountEntry(AccountEntry::User); }});
+    screenScraper.push_back({"Password",
+                     [this] { return std::string(screenScraperPasswordSet_ ? "********" : "Not set"); },
+                     [this] { openAccountEntry(AccountEntry::Password); }});
+    screenScraper.push_back({"Video sound",
+                     [this] {
+                         const int volume = context_.preferences.screenScraperVolume();
+                         return volume == 0 ? std::string("Off") : std::to_string(volume) + "%";
+                     },
+                     [this] {
+                         static const int values[] = {0, 100, 75, 50, 25, 10};
+                         const size_t count = sizeof(values) / sizeof(values[0]);
+                         const int current = context_.preferences.screenScraperVolume();
+                         size_t index = 0;
+                         while (index + 1 < count && values[index] != current) ++index;
+                         context_.preferences.setScreenScraperVolume(values[(index + 1) % count]);
+                     }});
+    screenScraper.push_back({"Default region",
+                     [this] {
+                         const std::string &region = context_.preferences.screenScraperRegion();
+                         return std::string(region == "us" ? "US" : region == "jp" ? "JP" : "EU");
+                     },
+                     [this] {
+                         const std::string &region = context_.preferences.screenScraperRegion();
+                         context_.preferences.setScreenScraperRegion(
+                             region == "eu" ? "us" : region == "us" ? "jp" : "eu");
+                     }});
+    screenScraper.push_back({"Preview delay",
+                     [this] { return std::to_string(context_.preferences.screenScraperDelay()) + " seconds"; },
+                     [this] {
+                         const int next = context_.preferences.screenScraperDelay() + 5;
+                         context_.preferences.setScreenScraperDelay(next > 30 ? 5 : next);
+                     }});
+    screenScraper.push_back({"Video storage limit",
+                     [this] {
+                         const int mb = context_.preferences.screenScraperStorageLimitMb();
+                         if (mb == 0) return std::string("Unlimited");
+                         return mb >= 1024 ? std::to_string(mb / 1024) + " GB" : std::to_string(mb) + " MB";
+                     },
+                     [this] {
+                         static const int values[] = {256, 512, 1024, 2048, 4096, 8192, 0};
+                         const size_t count = sizeof(values) / sizeof(values[0]);
+                         const int current = context_.preferences.screenScraperStorageLimitMb();
+                         size_t index = 0;
+                         while (index + 1 < count && values[index] != current) ++index;
+                         context_.preferences.setScreenScraperStorageLimitMb(values[(index + 1) % count]);
+                     }});
+    optionCursor_ = firstSelectableRow(size_t(std::max(0, categoryCursor_)));
+}
+
+int SettingsScreen::firstSelectableRow(size_t category) const {
+    if (category >= categories_.size()) return 0;
+    const auto &rows = categories_[category].rows;
+    for (size_t i = 0; i < rows.size(); ++i)
+        if (!rows[i].heading) return int(i);
+    return 0;
+}
+
+void SettingsScreen::refreshScreenScraperLogin() {
+    const ScreenScraperCredentials login = ScreenScraperSettings::load();
+    screenScraperUser_ = login.userId;
+    screenScraperPasswordSet_ = !login.userPassword.empty();
+}
+
+void SettingsScreen::openAccountEntry(AccountEntry which) {
+    accountEntry_ = which;
+    accountKeyboard_.clear();
+    accountKeyboard_.setMasked(which == AccountEntry::Password);
+    if (which == AccountEntry::User) accountKeyboard_.setValue(screenScraperUser_);
+}
+
+void SettingsScreen::handleAccountEntry(Action action) {
+    if (action == Action::Back) {
+        accountKeyboard_.clear();
+        accountKeyboard_.setMasked(false);
+        accountEntry_ = AccountEntry::None;
+        return;
+    }
+    const OnScreenKeyboard::Result result = action == Action::Start
+        ? OnScreenKeyboard::Result::Submitted : accountKeyboard_.handle(action);
+    if (result != OnScreenKeyboard::Result::Submitted) return;
+    const bool user = accountEntry_ == AccountEntry::User;
+    const std::string value = accountKeyboard_.value();
+    accountKeyboard_.clear();
+    accountKeyboard_.setMasked(false);
+    accountEntry_ = AccountEntry::None;
+    if (!ScreenScraperSettings::save(user ? "SCREENSCRAPER_SSID" : "SCREENSCRAPER_SSPASSWORD", value)) {
+        context_.showError("Could not save the login",
+                           "Nothing was changed. The ScreenScraper settings file could not be written.");
+        return;
+    }
+    refreshScreenScraperLogin();
+    context_.preview.service().forgetAccount();
+    if (context_.preferences.screenScraperEnabled()) context_.preview.service().checkAccount();
+    context_.notify(user ? "ScreenScraper user name saved" : "ScreenScraper password saved");
+}
+
+void SettingsScreen::renderAccountEntry(Canvas &canvas, const Rect &area) {
+    Theme &theme = context_.theme;
+    canvas.fillRect(area, theme.shadow.withAlpha(215));
+    const int width = std::min(area.w - theme.px(40), theme.px(1000));
+    const int height = std::min(area.h - theme.px(40), theme.px(760));
+    const Rect panel{area.x + (area.w - width) / 2, area.y + (area.h - height) / 2, width, height};
+    canvas.fillRoundedRect(panel, theme.radius(), theme.surfaceHi);
+    const int left = panel.x + theme.px(28);
+    const int right = panel.right() - theme.px(28);
+    int y = panel.y + theme.px(24);
+    const bool password = accountEntry_ == AccountEntry::Password;
+    theme.bold().draw(canvas, left, y, password ? "ScreenScraper password" : "ScreenScraper user name",
+                      theme.sizeHeading(), theme.textPrimary);
+    y += theme.bold().lineHeight(theme.sizeHeading()) + theme.px(12);
+    theme.regular().draw(canvas, left, y,
+                         password ? "The password of your ScreenScraper account"
+                                  : "The user name of your ScreenScraper account",
+                         theme.sizeBody(), theme.textPrimary);
+    y += theme.regular().lineHeight(theme.sizeBody()) + theme.px(10);
+    const Rect field{left, y, right - left, theme.px(54)};
+    canvas.fillRoundedRect(field, theme.radius(), theme.surface);
+    canvas.strokeRoundedRect(field, theme.radius(), theme.px(2), theme.accent);
+    const std::string entered = accountKeyboard_.value();
+    const std::string display = accountKeyboard_.masked() ? std::string(entered.size(), '*') : entered;
+    const std::string fieldText = display.empty() ? std::string(password ? "Enter password…" : "Enter user name…")
+                                                  : display + "_";
+    theme.regular().draw(canvas, field.x + theme.px(16),
+        field.y + (field.h - theme.regular().lineHeight(theme.sizeBody())) / 2,
+        theme.regular().elide(fieldText, theme.sizeBody(), field.w - theme.px(32)),
+        theme.sizeBody(), display.empty() ? theme.textMuted : theme.textPrimary);
+    y += field.h + theme.px(22);
+    const int keyboardPadding = theme.px(12);
+    const Rect keyboardArea{left + keyboardPadding, y + keyboardPadding,
+                            right - left - keyboardPadding * 2,
+                            panel.bottom() - y - theme.px(48) - keyboardPadding * 2};
+    const Rect keys = accountKeyboard_.bounds(theme, keyboardArea);
+    const Rect keyboardPanel{keys.x - keyboardPadding, keys.y - keyboardPadding,
+                             keys.w + keyboardPadding * 2, keys.h + keyboardPadding * 2};
+    canvas.fillRoundedRect(keyboardPanel, theme.radius(), theme.surface.withAlpha(235));
+    accountKeyboard_.render(canvas, theme, keyboardArea);
+    theme.regular().draw(canvas, left, panel.bottom() - theme.px(34),
+                         formatButtonLabels(password
+                             ? "D-pad Choose key   A Type   Start Done   Show/Hide   B Back"
+                             : "D-pad Choose key   A Type   Start Done   X Delete   Y Space   B Back"),
+                         theme.sizeSmall(), theme.accent);
 }
 
 void SettingsScreen::buildUpdateRows() {
@@ -891,6 +1097,10 @@ void SettingsScreen::handle(Action action) {
         handleWifiFlow(action);
         return;
     }
+    if (accountEntry_ != AccountEntry::None) {
+        handleAccountEntry(action);
+        return;
+    }
     if (rebootConfirmationActive_) {
         if (action == Action::Confirm) {
             rebootConfirmationActive_ = false;
@@ -930,18 +1140,24 @@ void SettingsScreen::handle(Action action) {
     switch (action) {
     case Action::Up:
         if (optionsFocused_) {
-            if (optionCursor_ > 0) --optionCursor_;
+            const auto &rows = categories_[size_t(categoryCursor_)].rows;
+            int previous = optionCursor_ - 1;
+            while (previous >= 0 && rows[size_t(previous)].heading) --previous;   // skip titles
+            if (previous >= 0) optionCursor_ = previous;
         } else if (categoryCursor_ > 0) {
             --categoryCursor_;
-            optionCursor_ = 0; // a category always opens on its first row
+            optionCursor_ = firstSelectableRow(size_t(categoryCursor_)); // opens on its first row
         }
         break;
     case Action::Down:
         if (optionsFocused_) {
-            if (optionCursor_ + 1 < int(categories_[size_t(categoryCursor_)].rows.size())) ++optionCursor_;
+            const auto &rows = categories_[size_t(categoryCursor_)].rows;
+            int next = optionCursor_ + 1;
+            while (next < int(rows.size()) && rows[size_t(next)].heading) ++next;   // skip titles
+            if (next < int(rows.size())) optionCursor_ = next;
         } else if (categoryCursor_ + 1 < int(categories_.size())) {
             ++categoryCursor_;
-            optionCursor_ = 0; // a category always opens on its first row
+            optionCursor_ = firstSelectableRow(size_t(categoryCursor_)); // opens on its first row
         }
         break;
     case Action::Left:
@@ -949,6 +1165,12 @@ void SettingsScreen::handle(Action action) {
         break;
     case Action::Right:
         optionsFocused_ = true;
+        {
+            const auto &rows = categories_[size_t(categoryCursor_)].rows;
+            // Never rest on a section title.
+            if (optionCursor_ >= 0 && optionCursor_ < int(rows.size()) && rows[size_t(optionCursor_)].heading)
+                optionCursor_ = firstSelectableRow(size_t(categoryCursor_));
+        }
         break;
     case Action::Back:
         optionsFocused_ = false;
@@ -2052,6 +2274,17 @@ void SettingsScreen::renderOptions(Canvas &canvas, const Rect &area) {
                          area.w, rowHeight - theme.px(8)};
         if (frame.bottom() > area.bottom()) break;
 
+        if (row.heading) {
+            // A section title: bold, in the muted color, with a thin line under it.
+            const int titleY = frame.y + frame.h - theme.bold().lineHeight(theme.sizeBody()) - theme.px(6);
+            theme.bold().draw(canvas, frame.x + theme.px(18), titleY, row.label, theme.sizeBody(),
+                              theme.textMuted);
+            canvas.fillRect({frame.x + theme.px(18), frame.bottom() - theme.px(2),
+                             std::max(0, frame.w - theme.px(36)), std::max(1, theme.px(1))},
+                            theme.textMuted.withAlpha(80));
+            continue;
+        }
+
         const bool active = optionsFocused_ && int(i) == optionCursor_;
         if (int(i) == optionCursor_) {
             canvas.fillRoundedRect(frame, theme.px(8),
@@ -2462,8 +2695,8 @@ void SettingsScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*
     const int sectionTextY = body.y + (sectionHeight - theme.bold().lineHeight(theme.sizeSmall())) / 2;
     theme.bold().draw(canvas, categories.x + theme.px(10), sectionTextY, "CATEGORIES",
                       theme.sizeSmall(), theme.textMuted);
-    theme.bold().draw(canvas, options.x + theme.px(10), sectionTextY,
-                      categories_[size_t(categoryCursor_)].label, theme.sizeSmall(), theme.textMuted);
+    // (The options column has no title of its own: the selected category is already named on the
+    // left, and repeating it above the list added nothing.)
     theme.bold().draw(canvas, info.x + theme.px(24), sectionTextY, "WHAT THIS DOES",
                       theme.sizeSmall(), theme.textMuted);
 
@@ -2500,6 +2733,7 @@ void SettingsScreen::render(Canvas &canvas, const Rect &area, bool /*fullRedraw*
                              theme.accent);
     }
     if (wifiStep_ != WifiStep::None) renderWifiFlow(canvas, area);
+    if (accountEntry_ != AccountEntry::None) renderAccountEntry(canvas, area);
     if (changelogActive_) renderChangelog(canvas, area);
     if (discDriveSettingsActive_) renderDiscDriveSettings(canvas, area);
     if (discCoreInstallConfirmationActive_)
@@ -2548,6 +2782,8 @@ std::string SettingsScreen::hints() const {
         if (updateSnapshot_.changelogLoading) return "B Close";
         return "B Close   ↑/↓ Read more";
     }
+    if (accountEntry_ != AccountEntry::None)
+        return "D-pad Choose key   A Type   Start Done   X Delete   Y Space   B Back";
     if (wifiStep_ == WifiStep::Networks) return "A Join selected network   B Cancel   ↑/↓ Move";
     if (wifiStep_ == WifiStep::SsidEntry || wifiStep_ == WifiStep::PasswordEntry ||
         wifiStep_ == WifiStep::CountryEntry)

@@ -5,6 +5,53 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.9] - 2026-11-22
+
+### Added
+
+- **Video previews from ScreenScraper.fr.** In the List view and the Game options panel, a game's
+  box art is replaced by a short preview video after a delay (default 5 s). The video is
+  scraped with your own free ScreenScraper account, downloaded, verified and cached, then played
+  unscaled, three times, with optional sound. A status line under the picture says what is
+  happening or why nothing plays. Results are remembered, so a game is never looked up twice.
+  New **Library → ScreenScraper.fr** section: Video previews, Account, User name, Password,
+  Video sound, Default region, Preview delay and Video storage limit. Arcade and computer systems
+  are not scraped yet. See [SCREENSCRAPER.md](docs/SCREENSCRAPER.md).
+  ([#4](https://github.com/pat-east/mister-pats-gui/issues/4))
+- **Choose a system for Prepare box art.** Left/Right on the Prepare box art page pick *All systems*
+  or a single system, so covers for one console can be fetched without checking every game.
+- **Hold B to remove a game from Recently played.** On the Home tab, hold B for two seconds on a
+  game in the Recently played row; a progress bar shows the hold. A short press still goes back.
+- **Boxart collage screensaver** next to the Boxart slideshow.
+- **Disk space warning in the top bar** when a volume has 5 % or less free, one line per volume.
+- **Bundled FFmpeg (LGPL)** for video playback: MP4, H.264 and AAC only. See `NOTICE`.
+
+### Changed
+
+- **Boxart slideshow** shows undistorted covers, only for games that have one, chosen evenly across
+  all games, with real fades and a slow, steady drift.
+- **Library settings** are grouped under section headings, and the category title is no longer
+  repeated above the options.
+- **The Game options panel** has a wider picture area (744 px) so a 720 px video fits.
+
+### Fixed
+
+- **Saturn and other disc games in doubled folders.** A game unpacked as `Game/Game/Game.cue` was
+  not found by the library scan; the scan now also looks one folder down.
+- **Prepare box art took hours on large libraries.** Every game was checked with about ten
+  file-system lookups, each slow on exFAT. The check now uses the in-memory file list.
+- **Box art when thumbnails.libretro.com is down.** The server stopped serving its lists and images
+  on 2026-11-22. The scraper now falls back to libretro's GitHub mirror, and says
+  `No cover list for N systems (offline?)` instead of reporting nothing found.
+- **Favourite star** is shown for titles that have several versions.
+
+### Known limitations
+
+- Videos with MP3 audio play without sound; only AAC is supported.
+- Video previews need the developer login of this software, which is built into the release
+  binary. A build from source needs its own (see [SCREENSCRAPER.md](docs/SCREENSCRAPER.md)).
+- ScreenScraper has not yet confirmed that shipping the developer login this way is acceptable.
+
 ## [0.8.8] - 2026-11-15
 
 ### Fixed

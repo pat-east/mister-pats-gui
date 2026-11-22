@@ -7,6 +7,7 @@
 #include "Version.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -15,6 +16,11 @@
 #include <unistd.h>
 
 namespace {
+
+// "boxart" is the one-cover slideshow (kept under its old name so saved settings still work);
+// "boxart-collage" keeps every cover on screen.
+bool isBoxartSaver(const std::string &style) { return style == "boxart" || style == "boxart-collage"; }
+
 
 constexpr int kTargetFrameMs = 33;   // ~30 fps; the CPU renders every pixel in software
 constexpr char kDpadHintToken[] = "{DPAD}";
@@ -103,7 +109,9 @@ std::vector<std::string> artworkDirectories(const std::vector<GameSystem> &syste
 
 } // namespace
 
-App::App() : discArtwork_(theGamesDB_), gameScreenshots_(theGamesDB_) {}
+App::App()
+    : discArtwork_(theGamesDB_), gameScreenshots_(theGamesDB_),
+      gamePreview_(screenScraper_, videoPlayer_, preferences_) {}
 
 bool App::initialize(const Options &options) {
     options_ = options;
@@ -177,7 +185,8 @@ bool App::initialize(const Options &options) {
 
     context_ = std::make_unique<Context>(*theme_, library_, favorites_, launcher_, images_,
                                         icons_, history_, hiddenSystems_, preferences_, discDrive_,
-                                        discCores_, discArtwork_, theGamesDB_, discCoreInstaller_);
+                                        discCores_, discArtwork_, theGamesDB_, discCoreInstaller_,
+                                        gamePreview_);
     context_->background = background_.get();
     context_->onChooseGameVersion = [this](const GameSystem &system, const Game &game) {
         openGameVersionChooser(system, game);
@@ -756,13 +765,20 @@ void App::renderGameActions() {
     theme.bold().draw(canvas, left, y, "Game options", theme.sizeHeading(), theme.textPrimary);
     y += theme.px(48);
 
-    const int artW = theme.px(689);
+    // The cover slot is a little wider than the prepared covers (689 px) so that a video of up to
+    // 720 px width, which is common, fits in it unscaled.
+    const int artW = theme.px(744);
     const int gap = theme.px(36);
     const Rect artBox{left, y, artW, theme.px(624)};
     canvas.fillRoundedRect(artBox, theme.px(8), theme.surface);
-    ImagePtr boxart = context_->images.requestAsyncCandidates(gameActionGame_.boxartCandidates,
-                                                               artBox.w, artBox.h, true);
-    if (boxart) {
+    gameOptionsPreview_.setSlot(artBox);
+    const bool videoShowing = gameOptionsPreview_.videoShowing();
+    ImagePtr boxart = videoShowing ? nullptr
+        : context_->images.requestAsyncCandidates(gameActionGame_.boxartCandidates,
+                                                  artBox.w, artBox.h, true);
+    if (videoShowing) {
+        // The video takes the cover's place; it is drawn below, after the panel is complete.
+    } else if (boxart) {
         const int x = artBox.x + (artBox.w - boxart->width()) / 2;
         const int imageY = artBox.y + (artBox.h - boxart->height()) / 2;
         canvas.drawImage(*boxart, {x, imageY, boxart->width(), boxart->height()}, 255,
@@ -774,6 +790,12 @@ void App::renderGameActions() {
             pending ? "Loading box art…" : "No box art available",
             theme.sizeBody(), theme.textMuted);
     }
+    // The preview's video (the panel is repainted every frame, so the last frame is drawn again
+    // each time) and its status line under the cover slot.
+    gameOptionsPreview_.drawVideo(canvas, artBox, true);
+    gameOptionsPreview_.drawStatus(canvas, theme,
+                                   Rect{artBox.x, artBox.bottom() + theme.px(8), artBox.w,
+                                        theme.regular().lineHeight(theme.sizeBody())});
 
     const int rightX = artBox.right() + gap;
     const int rightW = panel.right() - pad - rightX;
@@ -1133,6 +1155,8 @@ void App::renderBottomBar(const Rect &area) {
     const bool favoriteHolding = input_.favoriteHoldActive() &&
                                  favoriteHoldScreen_ == activeScreen() &&
                                  !favoriteHoldPath_.empty();
+    const bool removeHolding = !favoriteHolding && input_.removeHoldActive() &&
+                               removeHoldScreen_ == activeScreen() && !removeHoldPath_.empty();
     std::string activeHints = activeScreen()->hints();
     if (gameActionsActive_) {
         if (gameActionScreenshotOverlay_)
@@ -1178,6 +1202,16 @@ void App::renderBottomBar(const Rect &area) {
         const int filled = std::max(1, int(barWidth * input_.favoriteHoldProgress()));
         canvas.fillRoundedRect({track.x, track.y, filled, track.h}, theme.px(3),
                                theme.favorite);
+    } else if (removeHolding) {
+        const int x = area.x + theme.marginX();
+        theme.regular().draw(canvas, x, area.y + theme.px(9),
+                             formatButtonLabels("Hold B for 2s to remove from Recently played"),
+                             theme.sizeSmall(), theme.textPrimary);
+        const int barWidth = std::min(theme.px(480), area.w / 2);
+        const Rect track{x, area.bottom() - theme.px(16), barWidth, theme.px(6)};
+        canvas.fillRoundedRect(track, theme.px(3), theme.surfaceHi);
+        const int filled = std::max(1, int(barWidth * input_.removeHoldProgress()));
+        canvas.fillRoundedRect({track.x, track.y, filled, track.h}, theme.px(3), theme.accent);
     } else if (theme.highContrast()) {
         const int x = area.x + theme.marginX();
         const int textWidth = hintTextWidth(theme.bold(), hints, hintSize, iconSize,
@@ -1210,7 +1244,7 @@ void App::renderBottomBar(const Rect &area) {
                          updateAvailable ? theme.accent.withAlpha(200)
                                          : theme.textMuted.withAlpha(155));
 
-    if (!favoriteHolding && context_->messageTimer > 0.0f && !context_->message.empty()) {
+    if (!favoriteHolding && !removeHolding && context_->messageTimer > 0.0f && !context_->message.empty()) {
         // Sits to the left of the version string so the two never overlap.
         const int width = theme.regular().measure(context_->message, theme.sizeSmall());
         const uint8_t alpha = uint8_t(std::min(1.0f, context_->messageTimer) * 235);
@@ -1276,6 +1310,9 @@ int App::run() {
                 screensaverActive_ = false;
                 screensaverDrawn_ = false;
                 screensaverArt_.reset();
+                screensaverUnder_.reset();
+                std::vector<SaverSystem>().swap(screensaverGames_);   // give the memory back
+                screensaverTotal_ = 0;
                 needsFullRedraw_ = true;
                 actions.clear();
             }
@@ -1296,8 +1333,27 @@ int App::run() {
                 }
             }
 
+            // The B hold: only a press that began on a game in Recently played counts, and only
+            // while that very game stays selected. The first frame decides: B pressed on another
+            // tab (which Back sends Home) never turns into a removal.
+            if (input_.removeHoldActive()) {
+                Screen *screen = activeScreen();
+                const std::string path = screen->removablePath();
+                if (path.empty() ||
+                    (removeHoldScreen_ && (removeHoldScreen_ != screen || removeHoldPath_ != path))) {
+                    input_.cancelRemoveHold();
+                } else if (!removeHoldScreen_) {
+                    removeHoldScreen_ = screen;
+                    removeHoldPath_ = path;
+                }
+            }
+
             for (Action action : actions) {
-                if (action == Action::ToggleFavorite) {
+                if (action == Action::RemoveRecent) {
+                    if (removeHoldScreen_ == activeScreen() && !removeHoldPath_.empty() &&
+                        removeHoldPath_ == activeScreen()->removablePath())
+                        dispatch(action);
+                } else if (action == Action::ToggleFavorite) {
                     // The input layer emits this only after 2 seconds. Check the exact
                     // selected path again before a removal can happen.
                     if (favoriteHoldScreen_ == activeScreen() &&
@@ -1314,6 +1370,11 @@ int App::run() {
             }
         } else {
             input_.cancelFavoriteHold();
+            input_.cancelRemoveHold();
+        }
+        if (!input_.removeHoldActive()) {
+            removeHoldScreen_ = nullptr;
+            removeHoldPath_.clear();
         }
         if (!input_.favoriteHoldActive()) {
             favoriteHoldScreen_ = nullptr;
@@ -1444,9 +1505,20 @@ int App::run() {
             screensaverArtTimer_ = 0.0f;
             screensaverArtPending_ = false;
             screensaverNeedsBlackout_ = true;
+            screensaverUnder_.reset();
+            screensaverCollageDone_ = true;
+            screensaverArtAge_ = 0.0f;
+            screensaverFailures_ = 0;
         }
         topBar_.update(dt, preferences_.use24HourClock());
         activeScreen()->update(dt);
+        // The video preview follows the screen's selection and stops when nothing selects a game
+        // this frame (another tab, a dialog) or the screensaver has the screen.
+        // While the Game options panel is open it shows the preview of its own game and the list
+        // under it stays out of the way.
+        context_->detailOpen = gameActionsActive_;
+        if (gameActionsActive_ && gameActionSystem_) gamePreview_.focus(gameActionSystem_, &gameActionGame_);
+        gamePreview_.update(dt, screensaverActive_ || context_->errorActive);
         if (context_->messageTimer > 0.0f) context_->messageTimer -= dt;
         const auto backup = backupTask_.snapshot();
         if (backup.state != backupStateReported_ && backup.state != BackupTask::State::Running) {
@@ -1470,48 +1542,164 @@ int App::run() {
         // actually feels like while browsing a freshly opened system.
         images_.beginFrame(32);
 
-        if (screensaverActive_ && preferences_.screensaverStyle() == "boxart") {
+        if (screensaverActive_ && isBoxartSaver(preferences_.screensaverStyle())) {
+            // Two styles. The slideshow shows one large cover at a time and fades it in and out.
+            // The collage shows many smaller covers that fade in, pile up and stay.
+            // In both, a cover is drawn at its own size (the prepared 1080p variant, aspect ratio
+            // kept), never stretched, at a random spot that keeps it fully on screen.
+            const bool collage = preferences_.screensaverStyle() == "boxart-collage";
+            const ArtworkVariant variant = collage ? ArtworkVariant::Grid : ArtworkVariant::Detail;
+            const ArtworkBounds bounds = artworkBounds(variant);
+            const int requestW = theme.px(bounds.width);
+            const int requestH = theme.px(bounds.height);
+            const float coverSeconds = collage ? 1.5f : 6.0f;   // slideshow: whole life of a cover
+
+            const auto nextRandom = [this]() {
+                screensaverSeed_ = screensaverSeed_ * 1664525u + 1013904223u;
+                return screensaverSeed_ >> 8;
+            };
+            const auto placeArt = [&]() {
+                const int w = screensaverArt_->width(), h = screensaverArt_->height();
+                const int margin = theme.px(40);
+                const int maxX = std::max(margin, canvas_->width() - w - margin);
+                const int maxY = std::max(margin, canvas_->height() - h - margin);
+                screensaverArtRect_ = {margin + int(nextRandom() % unsigned(maxX - margin + 1)),
+                                       margin + int(nextRandom() % unsigned(maxY - margin + 1)), w, h};
+                screensaverArtAge_ = 0.0f;
+                screensaverCollageDone_ = false;
+                screensaverDrawnRect_ = Rect{};
+                // The slideshow cover drifts slowly and steadily in one direction while it is shown.
+                screensaverStartX_ = float(screensaverArtRect_.x);
+                screensaverStartY_ = float(screensaverArtRect_.y);
+                screensaverVx_ = screensaverVy_ = 0.0f;
+                screensaverPrepared_.clear();
+                if (!collage) {
+                    // The cover with its rounded corners on black, drawn once, so that while it
+                    // drifts every frame only copies finished pixels (about 1 ms instead of a
+                    // per-pixel blend of the whole cover).
+                    Canvas prepared(w, h);
+                    prepared.clear(Color::rgb(0x000000));
+                    prepared.drawImage(*screensaverArt_, Rect{0, 0, w, h}, 255, theme.px(12));
+                    screensaverPrepared_.assign(prepared.row(0), prepared.row(0) + size_t(w) * size_t(h));
+                    const float speed = float(theme.px(16));            // design pixels per second
+                    const float angle = float(nextRandom() % 3600) / 10.0f * 0.0174533f;
+                    float vx = std::cos(angle) * speed, vy = std::sin(angle) * speed;
+                    const float travel = 6.0f;                           // seconds on screen
+                    const auto inside = [&](float x, float y) {
+                        return x >= float(margin) && x <= float(maxX) && y >= float(margin) &&
+                               y <= float(maxY);
+                    };
+                    // Turn around if the drift would carry the cover off the screen; stand still
+                    // if it cannot drift either way (a cover as large as the screen).
+                    if (!inside(screensaverStartX_ + vx * travel, screensaverStartY_ + vy * travel)) {
+                        vx = -vx;
+                        vy = -vy;
+                        if (!inside(screensaverStartX_ + vx * travel, screensaverStartY_ + vy * travel)) {
+                            if (!inside(screensaverStartX_ + vx * travel, screensaverStartY_)) vx = 0.0f;
+                            if (!inside(screensaverStartX_, screensaverStartY_ + vy * travel)) vy = 0.0f;
+                        }
+                    }
+                    screensaverVx_ = vx;
+                    screensaverVy_ = vy;
+                }
+                if (collage) {
+                    // What is under the new cover, so it can fade in over it frame after frame.
+                    const Rect r = screensaverArtRect_.intersect(canvas_->bounds());
+                    auto under = std::make_shared<Image>(r.w, r.h);
+                    // The very first cover is placed before the screen is blacked out, so the
+                    // canvas still shows the interface: its background is plain black.
+                    const bool blackFirst = !screensaverDrawn_ || screensaverNeedsBlackout_;
+                    for (int y = 0; y < r.h; ++y) {
+                        uint32_t *row = under->row(y);
+                        if (blackFirst) {
+                            for (int x = 0; x < r.w; ++x) row[x] = 0xFF000000u;
+                        } else {
+                            std::memcpy(row, canvas_->row(r.y + y) + r.x, size_t(r.w) * 4);
+                        }
+                    }
+                    screensaverUnder_ = under;
+                }
+            };
+            // A random game, equally likely for every game in the library, whose cover file is
+            // known to exist. The artwork index answers from memory, so no storage is touched.
+            // (Choosing a system first and then a game, as before, showed the only game of a small
+            // system as often as one of thousands; choosing any game mostly hit games without a
+            // cover and left the screen black.)
+            const auto chooseCover = [&]() {
+                const auto &systems = library_.systems();
+                if (screensaverGames_.empty()) {
+                    screensaverTotal_ = 0;
+                    for (size_t i = 0; i < systems.size(); ++i) {
+                        std::vector<std::string> paths = library_.pathsOf(systems[i]);
+                        if (paths.empty()) continue;
+                        screensaverTotal_ += paths.size();
+                        screensaverGames_.push_back({i, std::move(paths)});
+                    }
+                }
+                if (screensaverTotal_ == 0) return false;
+                std::vector<std::string> unjudged;   // covers the index could not judge
+                for (int attempt = 0; attempt < 60; ++attempt) {
+                    size_t pick = size_t((uint64_t(nextRandom()) << 24 | nextRandom()) % screensaverTotal_);
+                    for (const SaverSystem &entry : screensaverGames_) {
+                        if (pick >= entry.paths.size()) { pick -= entry.paths.size(); continue; }
+                        if (entry.index >= systems.size()) break;
+                        Game game = Library::makeGame(systems[entry.index], entry.paths[pick], variant);
+                        bool present = false, unknown = false;
+                        for (const std::string &candidate : game.boxartCandidates) {
+                            const ArtworkIndex::Presence known = ArtworkIndex::instance().lookup(candidate);
+                            if (known == ArtworkIndex::Presence::Present) { present = true; break; }
+                            if (known == ArtworkIndex::Presence::Unknown) unknown = true;
+                        }
+                        if (present) {
+                            screensaverArtCandidates_ = std::move(game.boxartCandidates);
+                            return true;
+                        }
+                        if (unknown && unjudged.empty()) unjudged = game.boxartCandidates;
+                        break;
+                    }
+                }
+                if (unjudged.empty()) return false;
+                screensaverArtCandidates_ = std::move(unjudged);
+                return true;
+            };
+
             screensaverArtTimer_ -= dt;
+            screensaverArtAge_ += dt;
             if (screensaverArtPending_) {
                 screensaverArtLoadTimer_ += dt;
-                screensaverArt_ = images_.requestAsyncCandidates(
-                    screensaverArtCandidates_, theme.px(250), theme.px(350));
+                screensaverArt_ = images_.requestAsyncCandidates(screensaverArtCandidates_,
+                                                                 requestW, requestH);
                 if (screensaverArt_) {
                     screensaverArtPending_ = false;
-                    screensaverArtTimer_ = 6.0f;
-                } else if (screensaverArtLoadTimer_ >= 3.0f) {
+                    screensaverArtTimer_ = coverSeconds;
+                    screensaverFailures_ = 0;
+                    placeArt();
+                } else if (screensaverArtLoadTimer_ >= 3.0f ||
+                           !images_.isPendingCandidates(screensaverArtCandidates_, requestW, requestH)) {
+                    // This cover cannot be loaded (it failed, or it took too long). Try another one
+                    // at once; only after several failures in a row wait, so a broken library
+                    // cannot spin here.
                     screensaverArtPending_ = false;
-                    screensaverArtTimer_ = 10.0f;
+                    screensaverArtTimer_ = ++screensaverFailures_ >= 5 ? 10.0f : 0.0f;
                 }
             } else if (screensaverArtTimer_ <= 0.0f) {
-                screensaverArt_.reset();
-                screensaverNeedsBlackout_ = true;
-                screensaverArtTimer_ = 10.0f;
-                const auto &systems = library_.systems();
-                if (!systems.empty()) {
-                    screensaverSeed_ = screensaverSeed_ * 1664525u + 1013904223u;
-                    const GameSystem &system = systems[screensaverSeed_ % systems.size()];
-                    const auto paths = library_.pathsOf(system);
-                    if (!paths.empty()) {
-                        screensaverSeed_ = screensaverSeed_ * 1664525u + 1013904223u;
-                        Game game = Library::makeGame(system, paths[screensaverSeed_ % paths.size()],
-                                                      ArtworkVariant::Grid);
-                        screensaverArtCandidates_ = game.boxartCandidates;
-                        screensaverArt_ = images_.requestAsyncCandidates(
-                            screensaverArtCandidates_, theme.px(250), theme.px(350));
-                        if (screensaverArt_) screensaverArtTimer_ = 6.0f;
-                        else {
-                            screensaverArtPending_ = true;
-                            screensaverArtLoadTimer_ = 0.0f;
-                        }
-                        const int margin = theme.px(50);
-                        const int maxX = std::max(margin, canvas_->width() - theme.px(300));
-                        const int maxY = std::max(margin, canvas_->height() - theme.px(400));
-                        screensaverSeed_ = screensaverSeed_ * 1664525u + 1013904223u;
-                        screensaverArtRect_ = {margin + int(screensaverSeed_ % unsigned(maxX - margin + 1)),
-                                               margin + int((screensaverSeed_ >> 8) % unsigned(maxY - margin + 1)),
-                                               theme.px(250), theme.px(350)};
+                if (!collage) {
+                    if (screensaverArt_) screensaverNeedsBlackout_ = true;
+                    screensaverArt_.reset();
+                }
+                if (chooseCover()) {
+                    screensaverArt_ = images_.requestAsyncCandidates(screensaverArtCandidates_,
+                                                                     requestW, requestH);
+                    if (screensaverArt_) {
+                        screensaverArtTimer_ = coverSeconds;
+                        screensaverFailures_ = 0;
+                        placeArt();
+                    } else {
+                        screensaverArtPending_ = true;
+                        screensaverArtLoadTimer_ = 0.0f;
                     }
+                } else {
+                    screensaverArtTimer_ = 5.0f;   // no cover found: look again in a moment
                 }
             }
         }
@@ -1559,7 +1747,7 @@ int App::run() {
         if (screensaverActive_) {
             const bool fullSaver = !screensaverDrawn_;
             if ((!screensaverDrawn_ || screensaverNeedsBlackout_) &&
-                preferences_.screensaverStyle() == "boxart") {
+                isBoxartSaver(preferences_.screensaverStyle())) {
                 canvas_->clear(Color::rgb(0x000000));
                 screensaverNeedsBlackout_ = false;
             }
@@ -1581,13 +1769,61 @@ int App::run() {
                     canvas_->fillRect(canvas_->bounds(), Color::rgb(0x000000).withAlpha(190));
                 }
             } else if (screensaverArt_) {
-                const float elapsed = 6.0f - screensaverArtTimer_;
-                const float reveal = elapsed < 0.8f ? elapsed / 0.8f * 100.0f
-                                     : elapsed > 5.2f ? (6.0f - elapsed) / 0.8f * 100.0f
-                                                      : 100.0f;
-                canvas_->fillRect(screensaverArtRect_, Color::rgb(0x000000));
-                canvas_->drawImageReveal(*screensaverArt_, screensaverArtRect_, 255,
-                                         theme.px(12), int(std::max(0.0f, std::min(100.0f, reveal))));
+                // A true fade: the cover is blended over what is under it (black for the slideshow,
+                // the covers already on screen for the collage), not dissolved into scattered dots.
+                const bool collage = preferences_.screensaverStyle() == "boxart-collage";
+                float level = 1.0f;   // 0 = invisible, 1 = fully shown
+                if (collage) {
+                    level = std::min(1.0f, screensaverArtAge_ / 0.6f);   // fades in, then stays
+                } else {
+                    const float elapsed = 6.0f - screensaverArtTimer_;
+                    level = elapsed < 0.8f ? elapsed / 0.8f
+                            : elapsed > 5.2f ? (6.0f - elapsed) / 0.8f : 1.0f;
+                }
+                level = std::max(0.0f, std::min(1.0f, level));
+                if (!collage) {
+                    // Slow, steady drift: where the cover is now, from where it started.
+                    const float seconds = std::max(0.0f, std::min(6.0f, 6.0f - screensaverArtTimer_));
+                    Rect target = screensaverArtRect_;
+                    target.x = int(screensaverStartX_ + screensaverVx_ * seconds + 0.5f);
+                    target.y = int(screensaverStartY_ + screensaverVy_ * seconds + 0.5f);
+                    Rect clear = target;
+                    if (!screensaverDrawnRect_.empty()) {
+                        const int x0 = std::min(clear.x, screensaverDrawnRect_.x);
+                        const int y0 = std::min(clear.y, screensaverDrawnRect_.y);
+                        const int x1 = std::max(clear.right(), screensaverDrawnRect_.right());
+                        const int y1 = std::max(clear.bottom(), screensaverDrawnRect_.bottom());
+                        clear = Rect{x0, y0, x1 - x0, y1 - y0};
+                    }
+                    const bool settled = level >= 1.0f && !screensaverDrawnRect_.empty() &&
+                        screensaverPrepared_.size() == size_t(target.w) * size_t(target.h);
+                    if (settled) {
+                        // Fully visible: copy the prepared pixels, then black out only the thin
+                        // strips the cover has left (it moves a pixel or two per frame).
+                        canvas_->blit(screensaverPrepared_.data(), target.w, target.h, target.x, target.y);
+                        const auto black = [&](Rect strip) {
+                            if (strip.w > 0 && strip.h > 0) canvas_->fillRect(strip, Color::rgb(0x000000));
+                        };
+                        black({clear.x, clear.y, clear.w, target.y - clear.y});                    // above
+                        black({clear.x, target.bottom(), clear.w, clear.bottom() - target.bottom()}); // below
+                        black({clear.x, target.y, target.x - clear.x, target.h});                  // left
+                        black({target.right(), target.y, clear.right() - target.right(), target.h}); // right
+                    } else {
+                        // Fading in or out (or the first frame): the blended draw over black.
+                        canvas_->fillRect(clear, Color::rgb(0x000000));
+                        canvas_->drawImage(*screensaverArt_, target, uint8_t(level * 255.0f + 0.5f),
+                                           theme.px(12));
+                    }
+                    screensaverDrawnRect_ = target;
+                } else if (!screensaverCollageDone_) {
+                    if (screensaverUnder_)
+                        canvas_->drawImage(*screensaverUnder_, screensaverArtRect_, 255, 0);
+                    else
+                        canvas_->fillRect(screensaverArtRect_, Color::rgb(0x000000));
+                    canvas_->drawImage(*screensaverArt_, screensaverArtRect_,
+                                       uint8_t(level * 255.0f + 0.5f), theme.px(12));
+                    if (level >= 1.0f) screensaverCollageDone_ = true;
+                }
             }
             if (fullSaver || !canvas_->damage().empty()) framebuffer_.present(*canvas_);
             screensaverDrawn_ = true;
@@ -1604,7 +1840,8 @@ int App::run() {
         const int64_t t1 = nowMs();
 
         if (!full) {
-            canvas_->restoreFrom(*background_, top);
+            // The strip under the bar is restored too: the disk space block may reach into it.
+            canvas_->restoreFrom(*background_, Rect{top.x, top.y, top.w, top.h + theme.marginY()});
             canvas_->restoreFrom(*background_, bottom);
         }
         const auto drive = discDrive_.snapshot();

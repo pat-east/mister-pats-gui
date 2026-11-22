@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iterator>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -288,11 +289,87 @@ bool LibretroIndex::parse(const std::string &htmlPath) {
     return !byKey_.empty();
 }
 
+namespace {
+
+// The thumbnail server stopped listing and serving files on 2026-11-22. Once it has failed in
+// this run, the next systems go straight to the GitHub mirror instead of waiting for it again.
+std::atomic<bool> g_libretroServerFailed{false};
+
+std::string repositoryFor(const std::string &platform) {
+    std::string repo;
+    for (char c : platform) repo.push_back(c == ' ' ? '_' : c);
+    return repo;
+}
+
+void appendUtf8(std::string &out, unsigned cp) {
+    if (cp < 0x80) out.push_back(char(cp));
+    else if (cp < 0x800) { out.push_back(char(0xC0 | (cp >> 6))); out.push_back(char(0x80 | (cp & 0x3F))); }
+    else { out.push_back(char(0xE0 | (cp >> 12))); out.push_back(char(0x80 | ((cp >> 6) & 0x3F)));
+           out.push_back(char(0x80 | (cp & 0x3F))); }
+}
+
+// Turns GitHub's tree answer (one big JSON document) into the same kind of listing the
+// thumbnail server gives, one `<a href="...png">` per file in `folder`, so parse() reads both.
+bool writeListingFromTree(const std::string &jsonPath, const std::string &folder,
+                          const std::string &listingPath) {
+    std::ifstream in(jsonPath, std::ios::binary);
+    if (!in) return false;
+    std::string json((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::ofstream out(listingPath, std::ios::trunc);
+    if (!out) return false;
+
+    const std::string prefix = folder + "/";
+    size_t found = 0, pos = 0;
+    while ((pos = json.find("\"path\"", pos)) != std::string::npos) {
+        pos += 6;
+        // GitHub pretty-prints: "path": "Named_Boxarts/...". Allow spaces around the colon.
+        while (pos < json.size() && (json[pos] == ' ' || json[pos] == ':')) ++pos;
+        if (pos >= json.size() || json[pos] != '"') continue;
+        ++pos;
+        std::string path;
+        for (; pos < json.size() && json[pos] != '"'; ++pos) {
+            if (json[pos] != '\\' || pos + 1 >= json.size()) { path.push_back(json[pos]); continue; }
+            const char e = json[++pos];
+            if (e == 'u' && pos + 4 < json.size()) {
+                unsigned cp = 0;
+                for (int k = 1; k <= 4; ++k) {
+                    const int v = hexValue(json[pos + k]);
+                    cp = cp * 16 + (v < 0 ? 0 : unsigned(v));
+                }
+                appendUtf8(path, cp);
+                pos += 4;
+            } else if (e == 'n') path.push_back('\n');
+            else if (e == 't') path.push_back('\t');
+            else path.push_back(e);   // \" \\ \/
+        }
+        if (path.compare(0, prefix.size(), prefix) != 0 || path.size() < prefix.size() + 5 ||
+            path.compare(path.size() - 4, 4, ".png") != 0)
+            continue;
+        const std::string name = path.substr(prefix.size());
+        if (name.find('/') != std::string::npos) continue;
+        out << "<a href=\"" << Downloader::encodeComponent(name) << "\">\n";
+        ++found;
+    }
+    return found > 0;
+}
+
+} // namespace
+
+std::string LibretroIndex::imageUrl(const std::string &folder, const std::string &remoteName) const {
+    if (github_)
+        return std::string(kGithubRaw) + "/" + repositoryFor(platform_) + "/master/" + folder + "/" +
+               Downloader::encodeComponent(remoteName) + ".png";
+    return std::string(kHost) + "/" + Downloader::encodeComponent(platform_) + "/" + folder + "/" +
+           Downloader::encodeComponent(remoteName) + ".png";
+}
+
 bool LibretroIndex::open(const std::string &platform, Downloader &downloader,
                          const std::string &cacheDir, const std::string &mediaFolder,
-                         const std::atomic<bool> *cancel, bool requireVerifiedTls) {
+                         const std::atomic<bool> *cancel, bool requireVerifiedTls,
+                         bool allowGithubFallback) {
     error_.clear();
     platform_ = platform;
+    github_ = false;
     byKey_.clear();
     byExact_.clear();
 
@@ -309,6 +386,7 @@ bool LibretroIndex::open(const std::string &platform, Downloader &downloader,
     for (char c : platform) cacheName.push_back((c == '/' || c == ' ') ? '_' : c);
     const std::string cached = cacheDir + "/" + cacheName + "-" + mediaFolder +
                                (requireVerifiedTls ? "-verified" : "") + ".html";
+    const std::string cachedGithub = cacheDir + "/" + cacheName + "-" + mediaFolder + "-github.html";
 
     const auto fetchIndex = [&]() {
         const std::string url = std::string(kHost) + "/" +
@@ -330,19 +408,52 @@ bool LibretroIndex::open(const std::string &platform, Downloader &downloader,
         return false;
     };
 
+    // The same listing from GitHub's mirror: one API call for the whole repository, turned
+    // into the thumbnail server's format. At most 60 such calls an hour without a login, and
+    // each platform is fetched once and cached.
+    const auto fetchFromGithub = [&]() {
+        const char *tree = "/tmp/mister-pat-github-tree.json";
+        const std::string url = std::string(kGithubApi) + "/" + repositoryFor(platform) +
+                                "/git/trees/master?recursive=1";
+        unlink(tree);
+        const bool ok = downloader.fetch(url, tree, 120) &&
+                        writeListingFromTree(tree, mediaFolder, cachedGithub);
+        unlink(tree);
+        if (!ok) {
+            unlink(cachedGithub.c_str());
+            error_ = "the cover list could not be fetched (thumbnail server and GitHub)";
+            return false;
+        }
+        return true;
+    };
+
     if (nonEmptyFile(cached) && parse(cached)) return true;
+    if (allowGithubFallback && nonEmptyFile(cachedGithub) && parse(cachedGithub)) {
+        github_ = true;
+        return true;
+    }
 
     // A truncated or obsolete listing must not poison the local cache indefinitely. Drop
     // it and retry once from the source; network failures still leave the scrape usable via
     // other metadata providers.
     unlink(cached.c_str());
-    if (!fetchIndex()) return false;
+    if (!(allowGithubFallback && g_libretroServerFailed.load()) && fetchIndex()) {
+        if (!parse(cached)) {
+            error_ = "the index could not be read";
+            return false;
+        }
+        return true;
+    }
+    if (!allowGithubFallback) return false;
 
-    if (!parse(cached)) {
+    g_libretroServerFailed = true;
+    if (!fetchFromGithub()) return false;
+    if (!parse(cachedGithub)) {
         error_ = "the index could not be read";
         return false;
     }
-
+    github_ = true;
+    error_.clear();
     return true;
 }
 

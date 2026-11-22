@@ -67,6 +67,19 @@ public:
     void setColorTheme(int index);
     bool darkMode() const { return darkMode_; }
     void setDarkMode(bool enabled);
+    // ScreenScraper.fr video previews (Settings -> ScreenScraper.fr). Off by default.
+    bool screenScraperEnabled() const { return screenScraperEnabled_; }
+    void setScreenScraperEnabled(bool enabled);
+    // Volume of the video previews' sound in percent: 0 (off, the default), 100, 75, 50, 25 or 10.
+    int screenScraperVolume() const { return screenScraperVolume_; }
+    void setScreenScraperVolume(int percent);
+    int screenScraperDelay() const { return screenScraperDelay_; }          // seconds, 5..30 step 5
+    void setScreenScraperDelay(int seconds);
+    const std::string &screenScraperRegion() const { return screenScraperRegion_; }   // eu, us, jp
+    void setScreenScraperRegion(const std::string &region);
+    int screenScraperStorageLimitMb() const { return screenScraperStorageMb_; }  // 0 = unlimited
+    void setScreenScraperStorageLimitMb(int megabytes);
+
     int screensaverDelay() const { return screensaverDelay_; }
     void setScreensaverDelay(int seconds);
     const std::string &screensaverStyle() const { return screensaverStyle_; }
@@ -130,6 +143,11 @@ private:
     int highContrastColor_ = 2; // Theme::kDefaultHighContrastColor (Yellow)
     int colorTheme_ = 0;
     bool darkMode_ = true;
+    bool screenScraperEnabled_ = false;
+    int screenScraperVolume_ = 0;
+    int screenScraperDelay_ = 5;
+    std::string screenScraperRegion_ = "eu";
+    int screenScraperStorageMb_ = 256;
     int screensaverDelay_ = 0;
     std::string screensaverStyle_ = "dimmed";
     std::string defaultView_ = "grid";

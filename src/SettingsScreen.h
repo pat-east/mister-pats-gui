@@ -43,12 +43,16 @@ public:
     void setFramebufferInfo(const std::string &info) { framebufferInfo_ = info; }
     void setUpdateSnapshot(const UpdateSnapshot &snapshot);
     bool wantsBack() const {
-        return optionsFocused_ || wifiStep_ != WifiStep::None || timeZoneChooserActive_ ||
+        return optionsFocused_ || wifiStep_ != WifiStep::None || accountEntry_ != AccountEntry::None ||
+               timeZoneChooserActive_ ||
                rebootConfirmationActive_ || changelogActive_ || infoModalActive_ ||
                discDriveSettingsActive_ || discCoreInstallConfirmationActive_ ||
                coreUpdaterModalActive_;
     }
-    bool wantsStartForWifiPassword() const { return wifiStep_ == WifiStep::PasswordEntry; }
+    // Start submits a typed password or ScreenScraper account entry instead of acting like A.
+    bool wantsStartForWifiPassword() const {
+        return wifiStep_ == WifiStep::PasswordEntry || accountEntry_ != AccountEntry::None;
+    }
     // In the update list Start opens the review; everywhere else it still acts like A.
     bool usesStartAction() const override {
         return coreUpdaterModalActive_ && coreUpdaterDialog_ == CoreUpdaterDialog::List;
@@ -65,7 +69,10 @@ private:
         std::function<std::string()> value;
         std::function<void()> activate;
         bool enabled = true;
+        bool heading = false;   // a section title inside a list: drawn, never selected
     };
+    // The first row of a category the cursor can rest on (headings are skipped).
+    int firstSelectableRow(size_t category) const;
 
     struct Category {
         std::string label;
@@ -171,6 +178,17 @@ private:
                           TestPrompt, Testing, TestReview, TestFailed };
     Wifi wifi_;
     OnScreenKeyboard wifiKeyboard_{64};
+
+    // Typing the ScreenScraper user name or password (Settings -> ScreenScraper.fr).
+    enum class AccountEntry { None, User, Password };
+    AccountEntry accountEntry_ = AccountEntry::None;
+    OnScreenKeyboard accountKeyboard_{64};
+    std::string screenScraperUser_;        // read once, so drawing never touches the card
+    bool screenScraperPasswordSet_ = false;
+    void refreshScreenScraperLogin();
+    void openAccountEntry(AccountEntry which);
+    void handleAccountEntry(Action action);
+    void renderAccountEntry(Canvas &canvas, const Rect &area);
     WifiStep wifiStep_ = WifiStep::None;
     std::vector<Wifi::Network> wifiNetworks_;
     int wifiCursor_ = 0;
