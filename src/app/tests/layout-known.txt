@@ -1,0 +1,103 @@
+layout: first-assets: elided: "Example sy..." at 292,467 182x12
+layout: first-assets: elided: "Example sy..." at 292,776 182x12
+layout: first-assets: elided: "Example sy..." at 76,467 182x12
+layout: first-assets: elided: "Example sy..." at 76,776 182x12
+layout: first-assets: elided: "Sample t..." at 289,442 187x15
+layout: first-assets: elided: "Sample t..." at 289,751 187x15
+layout: first-assets: elided: "Sample t..." at 73,442 187x15
+layout: first-assets: elided: "Sample t..." at 73,751 187x15
+layout: lo-pseudo-controllers_bluetooth: elided: "[!! çöññéçţ ñéŵ çöñţŕöļļéŕ víá ßļúéţööţĥ ~~~ ~..." at 90,344 449x24
+layout: lo-pseudo-controllers_list: elided: "[!! çöññéçţ ñéŵ çöñţŕöļļéŕ víá ßļúéţööţĥ ~~~ ~..." at 90,344 449x24
+layout: lo-pseudo-controllers_wizard: elided: "[!! çöññéçţ ñéŵ çöñţŕöļļéŕ víá ßļúéţööţĥ ~~~ ~..." at 90,344 449x24
+layout: lo-pseudo-first-assets: elided: "[!! šéáŕçĥ áļļ ĝáméš ~~~ ..." at 716,150 476x15
+layout: lo-pseudo-first-assets: elided: "Example sy..." at 292,467 182x12
+layout: lo-pseudo-first-assets: elided: "Example sy..." at 292,776 182x12
+layout: lo-pseudo-first-assets: elided: "Example sy..." at 76,467 182x12
+layout: lo-pseudo-first-assets: elided: "Example sy..." at 76,776 182x12
+layout: lo-pseudo-first-assets: elided: "Sample t..." at 289,442 187x15
+layout: lo-pseudo-first-assets: elided: "Sample t..." at 289,751 187x15
+layout: lo-pseudo-first-assets: elided: "Sample t..." at 73,442 187x15
+layout: lo-pseudo-first-assets: elided: "Sample t..." at 73,751 187x15
+layout: lo-pseudo-library_ss.password: elided: "[!! šĥí..." at 404,646 62x20
+layout: lo-pseudo-library_ss.password: elided: "[!! šýmßöļš ~~..." at 405,696 130x20
+layout: lo-pseudo-library_ss.saveError: elided: "[!! çöúļð ñöţ šávé ţĥé ļöĝíñ ~~~ ~~~ ~~..." at 608,473 686x41
+layout: lo-pseudo-library_ss.user: elided: "[!! šĥí..." at 404,646 62x20
+layout: lo-pseudo-library_ss.user: elided: "[!! šýmßöļš ~~..." at 405,696 130x20
+layout: lo-pseudo-menu-interface: elided: "[!! ļöáð šmáļļ ßöxáŕţš íñ ĝŕíð-víé..." at 700,826 321x24
+layout: lo-pseudo-menu-interface: elided: "[!! šĥöŵ áŕçáðé íñ çöñšöļéš ~~~ ..." at 700,442 328x24
+layout: lo-pseudo-menu-library: elided: "[!! öŕĝáñížé ĝámé-véŕšíöñš ~~~ ..." at 700,570 323x24
+layout: lo-pseudo-menu-system: elided: "[!! ðöŵñļöáð m..." at 700,762 158x24
+layout: lo-pseudo-menu-system: elided: "[!! íñšţáļļ/úþðáţé ðíšç ç..." at 700,314 234x24
+layout: lo-pseudo-menu-system: elided: "[!! ţímé žöñé ~~..." at 700,506 167x24
+layout: lo-pseudo-menu-updates: elided: "[!! çĥéçķ ƒöŕ úþðáţéš áúţömáţíç..." at 700,250 320x24
+layout: lo-pseudo-menu-updates: elided: "[!! véŕšíöñ úšéð öñ ñéxţ ..." at 700,378 249x24
+layout: lo-pseudo-standard_text: elided: "[!! šĥí..." at 404,646 62x20
+layout: lo-pseudo-standard_text: elided: "[!! šýmßöļš ~~..." at 405,696 130x20
+layout: lo-pseudo-standard_text.masked: elided: "[!! šĥí..." at 404,646 62x20
+layout: lo-pseudo-standard_text.masked: elided: "[!! šýmßöļš ~~..." at 405,696 130x20
+layout: lo-pseudo-system_wifi.country: elided: "[!! ðéļéţé ~~~ ..." at 767,574 126x20
+layout: lo-pseudo-system_wifi.country: elided: "[!! míšţéŕ ðíð ñöţ ŕéþöŕţ ýöúŕ çöúñţŕý. éñţéŕ íţš ţŵö-ļéţţéŕ çöúñţŕý çöðé, ƒöŕ éxámþļé úš. ~~~ ~~~ ~~~ ~~~ ~~~ ..." at 428,313 1057x24
+layout: lo-pseudo-system_wifi.country: elided: "[!! šĥ..." at 444,524 57x20
+layout: lo-pseudo-system_wifi.country: elided: "[!! šýmßöļš ~..." at 445,574 120x20
+layout: lo-pseudo-system_wifi.password: elided: "[!! ðéļéţé ~~~ ..." at 767,574 126x20
+layout: lo-pseudo-system_wifi.password: elided: "[!! šĥ..." at 444,524 57x20
+layout: lo-pseudo-system_wifi.password: elided: "[!! šýmßöļš ~..." at 445,574 120x20
+layout: lo-pseudo-system_wifi.ssid: elided: "[!! ðéļéţé ~~~ ..." at 767,574 126x20
+layout: lo-pseudo-system_wifi.ssid: elided: "[!! šĥ..." at 444,524 57x20
+layout: lo-pseudo-system_wifi.ssid: elided: "[!! šýmßöļš ~..." at 445,574 120x20
+layout: lo-text130-first-assets: elided: "Example..." at 293,472 180x16
+layout: lo-text130-first-assets: elided: "Example..." at 293,788 180x16
+layout: lo-text130-first-assets: elided: "Example..." at 77,472 180x16
+layout: lo-text130-first-assets: elided: "Example..." at 77,788 180x16
+layout: lo-text130-first-assets: elided: "Sampl..." at 291,447 184x20
+layout: lo-text130-first-assets: elided: "Sampl..." at 291,763 184x20
+layout: lo-text130-first-assets: elided: "Sampl..." at 75,447 184x20
+layout: lo-text130-first-assets: elided: "Sampl..." at 75,763 184x20
+layout: lo-text130-first-assets.icons: elided: "Sample title 0..." at 288,464 189x31
+layout: lo-text130-first-assets.icons: elided: "Sample title 0..." at 288,813 189x31
+layout: lo-text130-first-assets.icons: elided: "Sample title 0..." at 72,464 189x31
+layout: lo-text130-first-assets.icons: elided: "Sample title 0..." at 72,813 189x31
+layout: lo-text130-first-covers: elided: "Sample title 0..." at 288,464 189x31
+layout: lo-text130-first-covers: elided: "Sample title 0..." at 288,813 189x31
+layout: lo-text130-first-covers: elided: "Sample title 0..." at 72,464 189x31
+layout: lo-text130-first-covers: elided: "Sample title 0..." at 72,813 189x31
+layout: lo-text130-first-failed: elided: "Sample title 0..." at 288,464 189x31
+layout: lo-text130-first-failed: elided: "Sample title 0..." at 288,813 189x31
+layout: lo-text130-first-failed: elided: "Sample title 0..." at 72,464 189x31
+layout: lo-text130-first-failed: elided: "Sample title 0..." at 72,813 189x31
+layout: lo-text130-first-offer: elided: "Sample title 0..." at 288,464 189x31
+layout: lo-text130-first-offer: elided: "Sample title 0..." at 288,813 189x31
+layout: lo-text130-first-offer: elided: "Sample title 0..." at 72,464 189x31
+layout: lo-text130-first-offer: elided: "Sample title 0..." at 72,813 189x31
+layout: lo-text130-first-overview: elided: "Sample title 0..." at 288,464 189x31
+layout: lo-text130-first-overview: elided: "Sample title 0..." at 288,813 189x31
+layout: lo-text130-first-overview: elided: "Sample title 0..." at 72,464 189x31
+layout: lo-text130-first-overview: elided: "Sample title 0..." at 72,813 189x31
+layout: lo-text130-first-overview.noassets: elided: "Sample title 0..." at 288,464 189x31
+layout: lo-text130-first-overview.noassets: elided: "Sample title 0..." at 288,813 189x31
+layout: lo-text130-first-overview.noassets: elided: "Sample title 0..." at 72,464 189x31
+layout: lo-text130-first-overview.noassets: elided: "Sample title 0..." at 72,813 189x31
+layout: lo-text130-first-overview.nocovers: elided: "Sample title 0..." at 288,464 189x31
+layout: lo-text130-first-overview.nocovers: elided: "Sample title 0..." at 288,813 189x31
+layout: lo-text130-first-overview.nocovers: elided: "Sample title 0..." at 72,464 189x31
+layout: lo-text130-first-overview.nocovers: elided: "Sample title 0..." at 72,813 189x31
+layout: lo-text130-first-overview.nogames: elided: "Sample title 0..." at 288,464 189x31
+layout: lo-text130-first-overview.nogames: elided: "Sample title 0..." at 288,813 189x31
+layout: lo-text130-first-overview.nogames: elided: "Sample title 0..." at 72,464 189x31
+layout: lo-text130-first-overview.nogames: elided: "Sample title 0..." at 72,813 189x31
+layout: lo-text130-first-stopped: elided: "Sample title 0..." at 288,464 189x31
+layout: lo-text130-first-stopped: elided: "Sample title 0..." at 288,813 189x31
+layout: lo-text130-first-stopped: elided: "Sample title 0..." at 72,464 189x31
+layout: lo-text130-first-stopped: elided: "Sample title 0..." at 72,813 189x31
+layout: lo-text130-first-welcome: elided: "Sample title 0..." at 288,464 189x31
+layout: lo-text130-first-welcome: elided: "Sample title 0..." at 288,813 189x31
+layout: lo-text130-first-welcome: elided: "Sample title 0..." at 72,464 189x31
+layout: lo-text130-first-welcome: elided: "Sample title 0..." at 72,813 189x31
+layout: lo-text130-first-working: elided: "Sample title 0..." at 288,464 189x31
+layout: lo-text130-first-working: elided: "Sample title 0..." at 288,813 189x31
+layout: lo-text130-first-working: elided: "Sample title 0..." at 72,464 189x31
+layout: lo-text130-first-working: elided: "Sample title 0..." at 72,813 189x31
+layout: lo-text130-menu-system: elided: "Download missing i..." at 700,758 259x31
+layout: lo-text130-menu-system: elided: "Install/update Disc co..." at 700,310 286x31
+layout: lo-text130-menu-updates: elided: "Version used on next ..." at 700,374 289x31
+layout: look-pseudo-controllers_wizard: elided: "[!! çöññéçţ ñéŵ çöñţŕöļļéŕ víá ßļúéţööţĥ ~~~ ~..." at 90,344 449x24

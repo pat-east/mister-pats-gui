@@ -61,6 +61,7 @@ int main() {
     const std::string budgetBmp1 = root + "/budget-1.bmp";
     const std::string budgetBmp2 = root + "/budget-2.bmp";
     const std::string budgetBmp3 = root + "/budget-3.bmp";
+    const std::string missingBmp = root + "/missing.bmp";
 
     check(solid(0, 0, 255)->saveJpeg(fallbackJpeg), "write JPEG fallback");
     check(solid(0, 255, 0)->saveBmp(latestBmp), "write latest BMP");
@@ -79,6 +80,30 @@ int main() {
 
     {
         ImageCache cache(8);
+
+        // An absent cover must notify an incremental screen when loading ends. On hosts
+        // without unnamed POSIX semaphores, the synchronous fallback has no loading state.
+        cache.beginFrame();
+        cache.requestAsync(missingBmp, {}, 24, 24, true);
+        if (cache.isPendingCandidates({missingBmp}, 24, 24)) {
+            const uint64_t beforeMiss = cache.generation();
+            bool missFinished = false;
+            for (int frame = 0; frame < 100; ++frame) {
+                cache.beginFrame();
+                cache.requestAsync(missingBmp, {}, 24, 24, true);
+                if (cache.generation() > beforeMiss) { missFinished = true; break; }
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            }
+            check(missFinished, "missing cover completion requests a redraw");
+            const uint64_t afterMiss = cache.generation();
+            for (int frame = 0; frame < 95; ++frame) {
+                cache.beginFrame();
+                cache.requestAsync(missingBmp, {}, 24, 24, true);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            cache.beginFrame();
+            check(cache.generation() == afterMiss, "repeated missing cover does not keep requesting redraws");
+        }
 
         // Simulate ten thousand fast letter skips. Each frame has a different focused game;
         // old queued work must not accumulate ahead of the final selection.

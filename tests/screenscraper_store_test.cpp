@@ -8,8 +8,8 @@
 #include <ctime>
 #include <unistd.h>
 
-#include "../src/ScreenScraperCache.h"
-#include "../src/ScreenScraperSettings.h"
+#include "../src/legacy/ScreenScraperCache.h"
+#include "../src/legacy/ScreenScraperSettings.h"
 
 namespace {
 int failures = 0;

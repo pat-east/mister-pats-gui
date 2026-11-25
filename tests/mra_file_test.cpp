@@ -13,8 +13,8 @@
 #include <sys/stat.h>
 #include <vector>
 
-#include "../src/Archive.h"
-#include "../src/MraFile.h"
+#include "../src/legacy/Archive.h"
+#include "../src/legacy/MraFile.h"
 
 namespace {
 

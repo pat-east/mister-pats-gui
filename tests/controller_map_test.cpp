@@ -10,8 +10,8 @@
 #include <string>
 #include <sys/stat.h>
 
-#include "../src/ControllerId.h"
-#include "../src/ControllerMap.h"
+#include "../src/legacy/ControllerId.h"
+#include "../src/legacy/ControllerMap.h"
 
 namespace {
 

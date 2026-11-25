@@ -10,7 +10,7 @@
 #include <string>
 #include <vector>
 
-#include "../src/Alphabet.h"
+#include "../src/legacy/Alphabet.h"
 
 namespace {
 

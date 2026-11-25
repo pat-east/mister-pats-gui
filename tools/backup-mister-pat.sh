@@ -9,7 +9,7 @@ command -v tar >/dev/null 2>&1 || fail 'tar is unavailable.'
 command -v date >/dev/null 2>&1 || fail 'date is unavailable.'
 
 set --
-for name in favorites.txt history.txt hidden-systems.txt preferences.txt systems.conf thegamesdb-settings.ini; do
+for name in favorites.txt history.txt hidden-systems.txt preferences.txt systems.conf thegamesdb-settings.ini screenscraper-fr-settings.ini; do
     if [ -e "$ROOT/$name" ] || [ -L "$ROOT/$name" ]; then
         [ -f "$ROOT/$name" ] && [ ! -L "$ROOT/$name" ] || fail "Unsafe settings file: $name"
         set -- "$@" "$name"

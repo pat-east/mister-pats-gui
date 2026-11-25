@@ -4,7 +4,7 @@
 CXX      := c++
 BUILDDIR := ../build/tests
 
-# src/Version.h includes a header the ARM build generates from release.mk. The host build
+# src/legacy/Version.h includes a header the ARM build generates from release.mk. The host build
 # generates the same one next to the tests, so they never depend on a cross-build having run.
 include ../release.mk
 CONFIG_HEADER := $(BUILDDIR)/gen/ReleaseConfig.h
@@ -12,7 +12,7 @@ CXXFLAGS := -std=gnu++14 -O1 -g -Wall -Wextra -I$(BUILDDIR)/gen
 
 $(CONFIG_HEADER): ../release.mk
 	@mkdir -p $(dir $@)
-	@printf '#pragma once\nconstexpr const char *kReleaseVersion = "$(VERSION)";\nconstexpr const char *kAppVersion = "$(VERSION)";\nconstexpr unsigned kGamesDbFormat = $(GAMESDB_FORMAT);\nconstexpr const char *kGamesDbHeader = "#mister-pat gamesdb $(GAMESDB_FORMAT)";\n' > $@
+	@printf '#pragma once\nconstexpr const char *kReleaseVersion = "$(VERSION)";\nconstexpr const char *kAppVersion = "$(VERSION)";\nconstexpr const char *kDisplayVersion = "$(VERSION)";\nconstexpr unsigned kGamesDbFormat = $(GAMESDB_FORMAT);\nconstexpr const char *kGamesDbHeader = "#mister-pat gamesdb $(GAMESDB_FORMAT)";\n' > $@
 
 DAMAGE   := $(BUILDDIR)/canvas_damage_test
 ALPHABET := $(BUILDDIR)/alphabet_test
@@ -27,6 +27,7 @@ RELEASEINFO := $(BUILDDIR)/release_info_test
 IMAGECACHE := $(BUILDDIR)/image_cache_worker_test
 SSNAMES := $(BUILDDIR)/screenscraper_names_test
 SSSTORE := $(BUILDDIR)/screenscraper_store_test
+UISOUNDS := $(BUILDDIR)/ui_sounds_test
 IMAGE_LIBS := $(shell pkg-config --libs libpng libjpeg)
 IMAGE_CFLAGS := $(shell pkg-config --cflags libpng libjpeg)
 
@@ -37,76 +38,82 @@ $(DAMAGE) $(ALPHABET) $(GAMESDB) $(MISTERINI) $(CONTROLLERMAP) $(ARCHIVE) $(MRAF
 
 all: run
 
-$(DAMAGE): canvas_damage_test.cpp ../src/Canvas.cpp ../src/Canvas.h ../src/Geometry.h ../src/Color.h
+$(DAMAGE): canvas_damage_test.cpp ../src/legacy/Canvas.cpp ../src/legacy/Canvas.h ../src/legacy/Geometry.h ../src/legacy/Color.h
 	@mkdir -p $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) canvas_damage_test.cpp ../src/Canvas.cpp -o $@
+	$(CXX) $(CXXFLAGS) canvas_damage_test.cpp ../src/legacy/Canvas.cpp -o $@
 
-$(ALPHABET): alphabet_test.cpp ../src/Alphabet.cpp ../src/Alphabet.h
+$(ALPHABET): alphabet_test.cpp ../src/legacy/Alphabet.cpp ../src/legacy/Alphabet.h
 	@mkdir -p $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) alphabet_test.cpp ../src/Alphabet.cpp -o $@
+	$(CXX) $(CXXFLAGS) alphabet_test.cpp ../src/legacy/Alphabet.cpp -o $@
 
-$(GAMESDB): gamesdb_test.cpp ../src/GameDatabase.cpp ../src/SystemCatalog.cpp ../src/CoreIndex.cpp \
-            ../src/Library.cpp ../src/GameIndex.cpp ../src/DebugLog.cpp \
-            ../src/GameDatabase.h ../src/SystemCatalog.h ../src/CoreIndex.h ../src/Library.h ../src/Paths.h
+$(GAMESDB): gamesdb_test.cpp ../src/legacy/GameDatabase.cpp ../src/legacy/SystemCatalog.cpp ../src/legacy/CoreIndex.cpp \
+            ../src/legacy/Library.cpp ../src/legacy/GameIndex.cpp ../src/legacy/DebugLog.cpp \
+            ../src/legacy/GameDatabase.h ../src/legacy/SystemCatalog.h ../src/legacy/CoreIndex.h ../src/legacy/Library.h ../src/legacy/Paths.h
 	@mkdir -p $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) gamesdb_test.cpp ../src/GameDatabase.cpp ../src/SystemCatalog.cpp \
-	    ../src/CoreIndex.cpp ../src/Library.cpp ../src/GameIndex.cpp ../src/DebugLog.cpp -o $@
+	$(CXX) $(CXXFLAGS) gamesdb_test.cpp ../src/legacy/GameDatabase.cpp ../src/legacy/SystemCatalog.cpp \
+	    ../src/legacy/CoreIndex.cpp ../src/legacy/Library.cpp ../src/legacy/GameIndex.cpp ../src/legacy/DebugLog.cpp -o $@
 
-$(MISTERINI): mister_ini_test.cpp ../src/MisterIni.cpp ../src/SafeFileWrite.cpp \
-              ../src/MisterIni.h ../src/SafeFileWrite.h ../src/Paths.h
+$(MISTERINI): mister_ini_test.cpp ../src/legacy/MisterIni.cpp ../src/legacy/SafeFileWrite.cpp \
+              ../src/legacy/MisterIni.h ../src/legacy/SafeFileWrite.h ../src/legacy/Paths.h
 	@mkdir -p $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) mister_ini_test.cpp ../src/MisterIni.cpp ../src/SafeFileWrite.cpp -o $@
+	$(CXX) $(CXXFLAGS) mister_ini_test.cpp ../src/legacy/MisterIni.cpp ../src/legacy/SafeFileWrite.cpp -o $@
 
-$(CONTROLLERMAP): controller_map_test.cpp ../src/ControllerMap.cpp ../src/SafeFileWrite.cpp \
-                  ../src/ControllerMap.h ../src/ControllerId.h ../src/SafeFileWrite.h
+$(CONTROLLERMAP): controller_map_test.cpp ../src/legacy/ControllerMap.cpp ../src/legacy/SafeFileWrite.cpp \
+                  ../src/legacy/ControllerMap.h ../src/legacy/ControllerId.h ../src/legacy/SafeFileWrite.h
 	@mkdir -p $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) controller_map_test.cpp ../src/ControllerMap.cpp ../src/SafeFileWrite.cpp -o $@
+	$(CXX) $(CXXFLAGS) controller_map_test.cpp ../src/legacy/ControllerMap.cpp ../src/legacy/SafeFileWrite.cpp -o $@
 
-$(ARCHIVE): archive_test.cpp ../src/Archive.cpp ../src/Archive.h
+$(ARCHIVE): archive_test.cpp ../src/legacy/Archive.cpp ../src/legacy/Archive.h
 	@mkdir -p $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) archive_test.cpp ../src/Archive.cpp -o $@
+	$(CXX) $(CXXFLAGS) archive_test.cpp ../src/legacy/Archive.cpp -o $@
 
-$(MRAFILE): mra_file_test.cpp ../src/MraFile.cpp ../src/Archive.cpp ../src/MraFile.h ../src/Archive.h
+$(MRAFILE): mra_file_test.cpp ../src/legacy/MraFile.cpp ../src/legacy/Archive.cpp ../src/legacy/MraFile.h ../src/legacy/Archive.h
 	@mkdir -p $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) mra_file_test.cpp ../src/MraFile.cpp ../src/Archive.cpp -o $@
+	$(CXX) $(CXXFLAGS) mra_file_test.cpp ../src/legacy/MraFile.cpp ../src/legacy/Archive.cpp -o $@
 
-$(ARCADESCAN): arcade_scan_test.cpp ../src/LibraryScan.cpp ../src/ArcadeScan.cpp ../src/MraFile.cpp \
-               ../src/Archive.cpp ../src/GameDatabase.cpp \
-               ../src/SystemCatalog.cpp ../src/CoreIndex.cpp ../src/DebugLog.cpp \
-               ../src/LibraryScan.h ../src/GameDatabase.h ../src/SystemCatalog.h
+$(ARCADESCAN): arcade_scan_test.cpp ../src/legacy/LibraryScan.cpp ../src/legacy/ArcadeScan.cpp ../src/legacy/MraFile.cpp \
+               ../src/legacy/Archive.cpp ../src/legacy/GameDatabase.cpp \
+               ../src/legacy/SystemCatalog.cpp ../src/legacy/CoreIndex.cpp ../src/legacy/DebugLog.cpp \
+               ../src/legacy/LibraryScan.h ../src/legacy/GameDatabase.h ../src/legacy/SystemCatalog.h
 	@mkdir -p $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) arcade_scan_test.cpp ../src/LibraryScan.cpp ../src/ArcadeScan.cpp \
-	    ../src/MraFile.cpp ../src/Archive.cpp ../src/GameDatabase.cpp \
-	    ../src/SystemCatalog.cpp ../src/CoreIndex.cpp ../src/DebugLog.cpp -o $@
+	$(CXX) $(CXXFLAGS) arcade_scan_test.cpp ../src/legacy/LibraryScan.cpp ../src/legacy/ArcadeScan.cpp \
+	    ../src/legacy/MraFile.cpp ../src/legacy/Archive.cpp ../src/legacy/GameDatabase.cpp \
+	    ../src/legacy/SystemCatalog.cpp ../src/legacy/CoreIndex.cpp ../src/legacy/DebugLog.cpp -o $@
 
-$(LIBRETRO): libretro_index_test.cpp ../src/LibretroIndex.cpp ../src/Downloader.cpp \
-             ../src/LibretroIndex.h ../src/Downloader.h
+$(LIBRETRO): libretro_index_test.cpp ../src/legacy/LibretroIndex.cpp ../src/legacy/Downloader.cpp \
+             ../src/legacy/LibretroIndex.h ../src/legacy/Downloader.h
 	@mkdir -p $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) libretro_index_test.cpp ../src/LibretroIndex.cpp ../src/Downloader.cpp -o $@
+	$(CXX) $(CXXFLAGS) libretro_index_test.cpp ../src/legacy/LibretroIndex.cpp ../src/legacy/Downloader.cpp -o $@
 
-$(RELEASEINFO): release_info_test.cpp ../src/ReleaseInfo.cpp ../src/ReleaseInfo.h
+$(RELEASEINFO): release_info_test.cpp ../src/legacy/ReleaseInfo.cpp ../src/legacy/ReleaseInfo.h
 	@mkdir -p $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) release_info_test.cpp ../src/ReleaseInfo.cpp -o $@
+	$(CXX) $(CXXFLAGS) release_info_test.cpp ../src/legacy/ReleaseInfo.cpp -o $@
 
-$(IMAGECACHE): image_cache_worker_test.cpp ../src/ImageCache.cpp ../src/Image.cpp \
-               ../src/ImageCache.h ../src/Image.h
+$(IMAGECACHE): image_cache_worker_test.cpp ../src/legacy/ImageCache.cpp ../src/legacy/Image.cpp \
+               ../src/legacy/ArtworkIndex.cpp ../src/legacy/DebugLog.cpp ../src/legacy/SafeFileWrite.cpp \
+               ../src/legacy/ImageCache.h ../src/legacy/Image.h
 	@mkdir -p $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) $(IMAGE_CFLAGS) -I../src image_cache_worker_test.cpp \
-	    ../src/ImageCache.cpp ../src/Image.cpp $(IMAGE_LIBS) -o $@
+	$(CXX) $(CXXFLAGS) $(IMAGE_CFLAGS) -I../src/legacy image_cache_worker_test.cpp \
+	    ../src/legacy/ImageCache.cpp ../src/legacy/Image.cpp ../src/legacy/ArtworkIndex.cpp \
+	    ../src/legacy/DebugLog.cpp ../src/legacy/SafeFileWrite.cpp $(IMAGE_LIBS) -o $@
 
-$(SSNAMES): screenscraper_names_test.cpp ../src/ScreenScraperNames.cpp ../src/ScreenScraperNames.h \
-            ../src/MiniJson.cpp ../src/MiniJson.h
+$(SSNAMES): screenscraper_names_test.cpp ../src/legacy/ScreenScraperNames.cpp ../src/legacy/ScreenScraperNames.h \
+            ../src/legacy/MiniJson.cpp ../src/legacy/MiniJson.h
 	@mkdir -p $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) screenscraper_names_test.cpp ../src/ScreenScraperNames.cpp ../src/MiniJson.cpp -o $@
+	$(CXX) $(CXXFLAGS) screenscraper_names_test.cpp ../src/legacy/ScreenScraperNames.cpp ../src/legacy/MiniJson.cpp -o $@
 
-$(SSSTORE): screenscraper_store_test.cpp ../src/ScreenScraperCache.cpp ../src/ScreenScraperCache.h \
-            ../src/ScreenScraperNames.cpp ../src/ScreenScraperSettings.cpp ../src/ScreenScraperSettings.h \
-            ../src/SafeFileWrite.cpp
+$(SSSTORE): screenscraper_store_test.cpp ../src/legacy/ScreenScraperCache.cpp ../src/legacy/ScreenScraperCache.h \
+            ../src/legacy/ScreenScraperNames.cpp ../src/legacy/ScreenScraperSettings.cpp ../src/legacy/ScreenScraperSettings.h \
+            ../src/legacy/SafeFileWrite.cpp
 	@mkdir -p $(BUILDDIR)
-	$(CXX) $(CXXFLAGS) screenscraper_store_test.cpp ../src/ScreenScraperCache.cpp ../src/ScreenScraperNames.cpp \
-		../src/ScreenScraperSettings.cpp ../src/SafeFileWrite.cpp -o $@
+	$(CXX) $(CXXFLAGS) screenscraper_store_test.cpp ../src/legacy/ScreenScraperCache.cpp ../src/legacy/ScreenScraperNames.cpp \
+		../src/legacy/ScreenScraperSettings.cpp ../src/legacy/SafeFileWrite.cpp -o $@
 
-run: $(DAMAGE) $(ALPHABET) $(GAMESDB) $(MISTERINI) $(CONTROLLERMAP) $(ARCHIVE) $(MRAFILE) $(ARCADESCAN) $(LIBRETRO) $(RELEASEINFO) $(IMAGECACHE) $(SSNAMES) $(SSSTORE)
+$(UISOUNDS): ui_sounds_test.cpp ../src/legacy/UiSounds.cpp ../src/legacy/UiSounds.h
+	@mkdir -p $(BUILDDIR)
+	$(CXX) $(CXXFLAGS) -pthread -I../src/legacy ui_sounds_test.cpp ../src/legacy/UiSounds.cpp -o $@
+
+run: $(UISOUNDS) $(DAMAGE) $(ALPHABET) $(GAMESDB) $(MISTERINI) $(CONTROLLERMAP) $(ARCHIVE) $(MRAFILE) $(ARCADESCAN) $(LIBRETRO) $(RELEASEINFO) $(IMAGECACHE) $(SSNAMES) $(SSSTORE)
 	@$(DAMAGE)
 	@echo
 	@$(ALPHABET)
@@ -132,6 +139,7 @@ run: $(DAMAGE) $(ALPHABET) $(GAMESDB) $(MISTERINI) $(CONTROLLERMAP) $(ARCHIVE) $
 	@$(SSNAMES)
 	@echo
 	@$(SSSTORE)
+	@$(UISOUNDS)
 
 clean:
 	rm -rf $(BUILDDIR)

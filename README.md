@@ -9,6 +9,9 @@ to maintain. Browse and start games, adjust settings, and handle common setup ta
 learning MiSTer's inner workings. When something needs attention, the GUI explains what to do.
 MiSTer still loads and runs the games; this project makes the experience around them easier.
 
+It is made for Full HD and the living-room experience: a big screen, a controller in hand, the
+couch a few metres away.
+
 <!-- screenshots:start -->
 
 | Home | Favorites |
@@ -162,6 +165,7 @@ usual toolkits and calls for careful, measured software rendering — see
 ## Requirements
 
 - A MiSTer (Terasic DE10-Nano) with a working SD card setup
+- A display connected at 1920×1080 (HDMI or a TV), which is what the interface is designed for
 - SSH access for the existing-installation procedure; a new MiSTer Fusion card can use the
   guided first-install script in [INSTALL.md](docs/INSTALL.md)
 - Your game library on the SD card or one or more USB volumes, wherever the MiSTer finds it
@@ -257,7 +261,10 @@ captured without a controller:
 ## Repository layout
 
 ```
-src/              the GUI, one class per file
+src/legacy/       the Classic GUI and its device code, one class per file
+src/ui-framework/ the UI framework of the new GUI (components, theme, renderer, host demo, docs)
+src/app/          the new GUI on the framework (tabs, settings, library interface, host runner)
+src/README.md     how the three source trees relate and which may include which
 tests/            host-side checks (damage tracking, letter jump, game database)
 tools/            deploy, screenshot and run helpers
 docs/             installation, design and performance documentation

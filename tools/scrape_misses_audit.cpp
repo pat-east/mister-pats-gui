@@ -1,7 +1,7 @@
 // Host-side audit of scrape-misses.txt against the same LibretroIndex matcher the GUI uses.
-// Build: c++ -std=gnu++14 -O2 -Isrc tools/scrape_misses_audit.cpp \
-//        src/LibretroIndex.cpp src/Downloader.cpp src/SystemCatalog.cpp \
-//        src/CoreIndex.cpp -o build/scrape-misses-audit
+// Build: c++ -std=gnu++14 -O2 -Isrc/legacy tools/scrape_misses_audit.cpp \
+//        src/legacy/LibretroIndex.cpp src/legacy/Downloader.cpp src/legacy/SystemCatalog.cpp \
+//        src/legacy/CoreIndex.cpp -o build/scrape-misses-audit
 // Run:   build/scrape-misses-audit scrape-misses.txt /tmp/mister-scrape-index \
 //        /tmp/mister-scrape-audit.tsv
 

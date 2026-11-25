@@ -11,7 +11,7 @@
 #include <algorithm>
 #include <vector>
 
-#include "../src/Canvas.h"
+#include "../src/legacy/Canvas.h"
 
 namespace {
 

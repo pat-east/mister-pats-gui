@@ -3,8 +3,8 @@
 #include <cstring>
 #include <string>
 
-#include "../src/MiniJson.h"
-#include "../src/ScreenScraperNames.h"
+#include "../src/legacy/MiniJson.h"
+#include "../src/legacy/ScreenScraperNames.h"
 
 namespace {
 int failures = 0;

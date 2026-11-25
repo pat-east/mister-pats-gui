@@ -16,7 +16,7 @@
 #include <sys/stat.h>
 #include <dirent.h>
 
-#include "../src/MisterIni.h"
+#include "../src/legacy/MisterIni.h"
 
 namespace {
 

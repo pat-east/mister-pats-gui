@@ -5,6 +5,78 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-11-25
+
+### Added
+
+- **A new interface on a UI framework of its own.** Every tab (Disc, Home, Favorites, Systems, Arcade, Games, Settings) and every
+  Settings page is drawn with the same set of components: lists, grids, dialogs, a keyboard, one result layout. It follows the colour
+  theme, text size, hint size and high-contrast settings and was checked for contrast in all 22 themes. Running text keeps a
+  comfortable line length and is centred with the same padding left and right.
+- **Sequences are step-by-step dialogs.** Build game list, Prepare box art, Core and MRA updates, Connect to Wi-Fi, Updates,
+  Time zone, Back up GUI settings, Download missing icons, Install Disc cores, Reboot, the controller button mapping and Bluetooth
+  pairing each open in one dialog that keeps its size from the first step to the result. Every ending is a result page with a
+  plain headline, what changed, what to do next and, where useful, *Try again*; failures are no longer toasts or a red frame alone.
+- **Build game list asks which drives to search.** The new Drives step lists every connected drive with its used and total
+  size; all are checked by default.
+- **Prepare box art takes several systems at once.** The system choice is a list with check marks: *All systems* is chosen by
+  default, choosing a system clears it, and clearing the last system chooses it again.
+- **First start (Jump Start).** A first start downloads the Space Grotesk font and the icons first, then takes a quick first look
+  at your games and fetches their box art; an overview says what was found and where to go next.
+- **Long waits say what is going on.** Every waiting page shows the phase, what is being worked on now, how long it has run and,
+  after a quiet moment, what it is waiting for ("Reading the Arcade games takes the longest on big collections. Nothing is stuck.").
+  The game scan has one bar for the whole job.
+- **Disk usage for every drive** at the top right: `fat:` and `usb0:` to `usbN:` with percent used and size, lined up in columns;
+  a nearly full drive is orange and marked (!).
+- **The network item says how you are connected:** Wi-Fi with its symbol, Ethernet, or Offline in the warning colour.
+- **Scraped videos** (Settings → Library → ScreenScraper.fr): the downloaded preview videos with their size and the total, deleting
+  one or all of them.
+- **Settings hints follow the row.** *Turn on / Turn off*, *Change*, *Open* or *Choose* instead of one hint for everything; a row
+  that cannot be used says why ("Not available: ..."); rows that open a page show their value next to the A symbol.
+- **Analog left and Analog right** are named under the sticks of the button mapping diagram and the input test.
+- **Letter jump in the time zone list** (LT / RT).
+- **Check for updates automatically is on for new installations.** Existing installations keep their choice.
+- **The settings backup also saves the ScreenScraper login.** The file holds the password in plain text, so the backup on the USB
+  drive does too.
+- **Developer tools:** `tools/reset-fresh-state.sh` puts the GUI's user data back to a first start (dry run by default),
+  `tools/fb-record.sh` records the screen of the MiSTer once per second over SSH, and a test suite
+  (`make -C src/app test`) plus a set of reference pictures (`make -C src/app golden-check`) cover the Settings flows and the layout.
+
+### Changed
+
+- **Settings → Updates** now contains *Read full changelog*; the centred reading column is used for long texts.
+- **B on Home does nothing** (it no longer leaves the GUI).
+- **The on-screen keyboard stops at the ends of a row** instead of jumping to the other side.
+- **Menu sounds are switched off** and the setting is gone for now (the tick came much too late); the Start sound is unchanged.
+  See [ISSUES.md](docs/ISSUES.md).
+- **Systems that hold only support files are no longer listed.** Boot ROMs (`boot*`), blank media (`Empty*`, `blank*`,
+  `BlankTape-*`), core bitstreams (`*.rbf`, `NeXT_*`), helper scripts and a list of BIOS files per system no longer count as games,
+  so Acorn Atom, ARCHIE, FM-7, PC-8801 and similar systems stop appearing with "1 game". Rebuild the game list to apply it.
+- **Version numbers:** the last part is even for a release and odd for a development version (`0.9.0`, `0.9.1`, `0.9.2`).
+- **The Settings scrollbar** has a strip of its own and no longer covers a row or its focus frame.
+- **The patched main program `MiSTer_gui`** is built from upstream Main_MiSTer `ac2e102` (2026-11-25); the patch is unchanged.
+
+### Fixed
+
+- **The GUI answered keys slowly** with Menu sounds on: every direction key copied the whole GUI process twice. Sounds now run on
+  a worker thread, and only the part of the screen that changed is redrawn and copied (a key on the keyboard repaints about
+  0.5 % of the screen instead of all of it).
+- **The Wi-Fi test status flickered** every half second.
+- **The button mapping could not capture Start** when Start had been used to begin the mapping.
+- **Return to MiSTer menu** led to the Linux console instead of the menu.
+- **A broken version pin repairs itself.** If the pinned GUI library has been deleted, the pin is removed and the newest installed
+  version is used instead of asking to reinstall the GUI.
+- **The box art step no longer flips** between two phrases for every system.
+- **Game options no longer get stuck on “Loading picture…”** when a cover is missing or unreadable. The panel now shows
+  “No picture available”, including for Arcade titles without cover art.
+
+### Known limitations
+
+- The font and icon downloads of the first start cannot be cancelled; *Back* only leaves the step.
+- At the largest text size a few Settings rows and the disk usage block at the top right are shortened.
+- The first step of the button mapping has no hint on screen (Start is the button it captures).
+- `MiSTer_gui`, the patched main program, is still installed only by a fresh installation; an update installs the new library only.
+
 ## [0.8.9] - 2026-11-22
 
 ### Added

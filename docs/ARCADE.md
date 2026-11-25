@@ -110,8 +110,8 @@ start.
 
 ## Why Arcade doesn't fit the existing model
 
-Every system this GUI already handles — `SystemCatalog`, `CoreIndex`, `Library` (`src/SystemCatalog.h`,
-`src/CoreIndex.h`, `src/Library.h`) — is built on one assumption: **one directory holds one
+Every system this GUI already handles — `SystemCatalog`, `CoreIndex`, `Library` (`src/legacy/SystemCatalog.h`,
+`src/legacy/CoreIndex.h`, `src/legacy/Library.h`) — is built on one assumption: **one directory holds one
 system's games, and one core (one `.rbf`) plays all of them.** `GameSystem::core` is a single
 path; `Launcher::launchGame` builds one `.mgl` naming that one core plus a ROM path and hands it
 to `load_core`.
@@ -225,7 +225,7 @@ dated with an 8-digit suffix (`Arcade-KillerInstinct_20260924.rbf`) reliably bea
 copy of the same core. Confirmed directly this session: both files were present and byte-identical
 on the reference device, so this did not end up mattering there, but it is exactly the same
 "dated suffix wins" convention `CoreIndex::coreNameOf` in this codebase already strips for
-matching purposes (`src/CoreIndex.cpp`) — worth keeping in mind if an Arcade RBF-availability
+matching purposes (`src/legacy/CoreIndex.cpp`) — worth keeping in mind if an Arcade RBF-availability
 check is ever added, since it should not assume the file with the plain name is the one that
 actually gets loaded.
 
@@ -342,7 +342,7 @@ part's CRC matches, and the ROM zip name(s) the `.mra` itself asks for.
 
 **New files:**
 
-- `src/MraFile.h/.cpp` — parses one `.mra` (a small hand-rolled tag scanner, not a general XML
+- `src/legacy/MraFile.h/.cpp` — parses one `.mra` (a small hand-rolled tag scanner, not a general XML
   library — deliberately, since the format's own shape is simple and fixed) into an `ArcadeEntry`
   plus its `ArcadeRomBlock`/`ArcadeRomPart` list, then resolves the two lookups from [Two
   independent root lookups](#two-independent-root-lookups--the-case-studys-actual-bug):
@@ -350,17 +350,17 @@ part's CRC matches, and the ROM zip name(s) the `.mra` itself asks for.
   lexicographically-last match) and `resolveRom()` (MiSTer's own global, USB-before-SD search
   order, via the new `misterGameSearchOrder()`). CRC verification reads a zip's central
   directory only — no decompression — via the extension to `Archive` below.
-- `src/Archive.h/.cpp` — extended (not replaced) with `Archive::list()`, returning each entry's
+- `src/legacy/Archive.h/.cpp` — extended (not replaced) with `Archive::list()`, returning each entry's
   CRC32 alongside its name; `entries()` is now built on top of it, unchanged for every existing
   caller.
-- `src/ArcadeScan.h/.cpp` — walks every mounted volume's `_Arcade` directory recursively (a real
+- `src/legacy/ArcadeScan.h/.cpp` — walks every mounted volume's `_Arcade` directory recursively (a real
   library is routinely organised into manufacturer subfolders) and resolves each `.mra` found, a
   small batch at a time per `step()` call rather than all at once — the same "do not hammer a
   marginal drive flat out" discipline `LibraryScan` already applies elsewhere in this project,
   since a full arcade set is a thousand-plus files and each resolved one can mean opening a zip.
-- `src/ArcadeGamesScreen.h/.cpp` — the table itself: a loading state while `ArcadeScan` is still
+- `src/legacy/ArcadeGamesScreen.h/.cpp` — the table itself: a loading state while `ArcadeScan` is still
   working, then a scrollable, column-based list once it is done.
-- `src/ArcadeSettingsScreen.h/.cpp` — the "Manage Arcade" menu this is reached through, with
+- `src/legacy/ArcadeSettingsScreen.h/.cpp` — the "Manage Arcade" menu this is reached through, with
   exactly one entry today and room to grow into the rest of this document's roadmap (DIP
   switches, a rescan action) without crowding the main Settings list.
 - `SettingsScreen`, `App.h/.cpp` — one new row ("Manage Arcade"), wired the same way "Manage
@@ -520,7 +520,7 @@ Two real deltas from every other system, both small and localised:
   vocabulary](#the-command-fifos-vocabulary)).
 
 Favourites and history need no changes at all: both already key on `(system, path)`
-(`FavoriteEntry` in `src/Favorites.h`) — an `.mra` path is just another path.
+(`FavoriteEntry` in `src/legacy/Favorites.h`) — an `.mra` path is just another path.
 
 This phase alone gets Arcade browsable, favouritable, and launchable, with box art absent (no
 name-normalisation to match a thumbnail source yet) and no indication of whether a game's ROMs
@@ -604,7 +604,7 @@ for whether that fallback is even worth building.
 
 ### A real problem this surfaces: today's matching would silently pick the wrong revision
 
-This is not a hypothetical. `LibretroIndex::normalise()` (`src/LibretroIndex.cpp`) strips every
+This is not a hypothetical. `LibretroIndex::normalise()` (`src/legacy/LibretroIndex.cpp`) strips every
 bracketed part of a title before matching — right for a console library, where a bracketed tag
 is almost always a region or dump-quality marker irrelevant to which cover art is correct
 (`"Super Mario Bros. 3 (USA) [!]"` and `"Super Mario Bros 3"` should both find the one cover that
@@ -650,7 +650,7 @@ other unusual case would.
 
 ### The other real problem: where scraped box art actually gets written
 
-`MediaScraper::prepareNextSystem()` (`src/MediaScraper.cpp`) computes **one** `mediaDir` per
+`MediaScraper::prepareNextSystem()` (`src/legacy/MediaScraper.cpp`) computes **one** `mediaDir` per
 system — `system.dir + "/media"` — and reuses it for every game in that system, because every
 system this project has handled so far genuinely has one game directory. Arcade does not: its
 `.mra` files are spread across every mounted volume's `_Arcade` folder (and, within that,

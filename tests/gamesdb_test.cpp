@@ -13,10 +13,10 @@
 #include <string>
 #include <vector>
 
-#include "../src/CoreIndex.h"
-#include "../src/GameDatabase.h"
-#include "../src/Library.h"
-#include "../src/SystemCatalog.h"
+#include "../src/legacy/CoreIndex.h"
+#include "../src/legacy/GameDatabase.h"
+#include "../src/legacy/Library.h"
+#include "../src/legacy/SystemCatalog.h"
 
 namespace {
 

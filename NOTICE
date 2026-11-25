@@ -17,6 +17,13 @@ third_party/Main_MiSTer/
     Modified for this project: see patches/0001-autostart-gui.patch, which adds
     a "gui=" INI key and starts the configured frontend.
 
+src/ui-framework/assets/bootstrap-icons/
+    Bootstrap Icons, the SVG icon set of the Bootstrap project.
+    https://github.com/twbs/icons
+    Copyright (c) 2019-2024 The Bootstrap Authors
+    Licensed under the MIT License; the licence text is in src/ui-framework/assets/bootstrap-icons/LICENSE.
+    Redistributed unmodified; the build embeds the SVG files in the UI framework's icon table.
+
 assets/icons/
     Console icons from "retro-game-console-icons" by KyleBing.
     https://github.com/KyleBing/retro-game-console-icons

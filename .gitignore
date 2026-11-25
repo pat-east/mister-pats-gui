@@ -1,5 +1,6 @@
-# Build output
+# Build output (also the per-tree host build dirs: src/ui-framework/build, src/app/build)
 build/
+build-*/
 
 # Static dependencies: the source archives are vendored, what they unpack and
 # compile into is not.
@@ -41,3 +42,6 @@ _vnext/
 
 # Local build inputs such as the ScreenScraper developer login (never commit)
 _build/
+
+# Screen recordings of test sessions (tools/fb-record.sh)
+/recordings/

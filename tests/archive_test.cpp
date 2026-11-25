@@ -16,7 +16,7 @@
 #include <string>
 #include <vector>
 
-#include "../src/Archive.h"
+#include "../src/legacy/Archive.h"
 
 namespace {
 

@@ -17,7 +17,7 @@ trap 'exit 1' HUP INT TERM
 
 tar -tzf "$archive" > "$stage/list" 2>/dev/null || fail 'Backup archive is invalid or damaged.'
 awk '
-    BEGIN { allowed["favorites.txt"]=1; allowed["history.txt"]=1; allowed["hidden-systems.txt"]=1; allowed["preferences.txt"]=1; allowed["systems.conf"]=1; allowed["thegamesdb-settings.ini"]=1 }
+    BEGIN { allowed["favorites.txt"]=1; allowed["history.txt"]=1; allowed["hidden-systems.txt"]=1; allowed["preferences.txt"]=1; allowed["systems.conf"]=1; allowed["thegamesdb-settings.ini"]=1; allowed["screenscraper-fr-settings.ini"]=1 }
     { if (!allowed[$0] || seen[$0]++ || $0 ~ /\//) exit 1 }
     END { if (NR==0) exit 1 }
 ' "$stage/list" || fail 'Archive contains unexpected or duplicate files.'

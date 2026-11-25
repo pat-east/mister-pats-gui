@@ -8,7 +8,7 @@
 #include <map>
 #include <string>
 
-#include "../src/ReleaseInfo.h"
+#include "../src/legacy/ReleaseInfo.h"
 
 namespace {
 

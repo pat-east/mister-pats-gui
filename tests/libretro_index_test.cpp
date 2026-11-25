@@ -8,7 +8,7 @@
 #include <fstream>
 #include <string>
 
-#include "../src/LibretroIndex.h"
+#include "../src/legacy/LibretroIndex.h"
 
 namespace {
 

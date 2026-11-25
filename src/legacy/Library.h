@@ -1,0 +1,153 @@
+#pragma once
+
+#include "Paths.h"
+#include "Artwork.h"
+
+#include <string>
+#include <map>
+#include <vector>
+
+#include "GameDatabase.h"
+#include "GameIndex.h"
+
+struct Game {
+    struct Variant { std::string path; std::string label; };
+    std::string path;        // ROM or archive on disk
+    std::string name;        // display name, extension stripped
+    std::vector<Variant> versions; // populated when several ROMs share a visible title
+    std::string boxart;      // candidate path, may not exist
+    std::string background;  // candidate "-BG" path, may not exist
+
+    // A quarter of a real library sits in subfolders — "NES/Japan/…" and the like — while
+    // the artwork stays in the system's own media folder. These are that second place to
+    // look, and are empty when the game sits directly in the system directory.
+    std::string boxartFallback;
+    std::string backgroundFallback;
+    std::vector<std::string> boxartCandidates;
+    std::vector<std::string> backgroundCandidates;
+
+    bool isArchive() const;
+};
+
+struct GameSystem {
+    std::string name;                     // e.g. "SNES"
+    std::string group;                    // e.g. "Consoles"
+    std::string core;                     // e.g. "_Console/SNES", empty when unmatched
+    std::string dbKey;                    // this system's file in the game database, if any
+    std::vector<std::string> romDirs;     // existing directories only
+    std::vector<std::string> romExts;
+    std::vector<std::string> mediaDirs;   // existing boxart directories
+    int fileIndex = 1;                    // file slot in the core menu
+    char fileType = 'f';                  // 'f' file, 's' disk slot (CD based cores)
+    bool discBased = false;               // games are folders of tracks, not single files
+
+    // Arcade is the one system with no single core: every .mra names its own, and MiSTer's
+    // own loader picks it. `core` stays empty, and launching hands the .mra straight to
+    // load_core instead of going through an .mgl (see docs/ARCADE.md).
+    bool isArcade = false;
+
+    bool launchable() const { return isArcade || !core.empty(); }
+};
+
+// The catalogue of systems and the games in them.
+//
+// Three sources, in order of preference: our own game database, Console Mode's cache, and —
+// only when the user asks — a live walk of the drives. The database is what makes the GUI
+// independent; the other two remain so that an installation without one still works.
+class Library {
+public:
+    bool load(const std::string &sectionDir = kDefaultSectionDir);
+
+    // True when the catalogue came from our own database rather than Console Mode.
+    bool usingDatabase() const { return usingDatabase_; }
+    const GameDatabase &database() const { return database_; }
+
+    const std::vector<GameSystem> &systems() const { return systems_; }
+    // Builds and caches path/name groups per system. Artwork remains unresolved until a
+    // screen needs a visible game's image; the cache is discarded when load() refreshes ROMs.
+    const std::vector<Game> &gamesOf(const GameSystem &system,
+                                     bool organizeVersions = true) const;
+    void prepareGameCache(bool organizeVersions = true) const;
+    void clearPersistentGameCache() const;
+    static std::vector<Game> organizeGames(const GameSystem &system, std::vector<Game> games);
+
+    // Just the paths. Already sorted by display name when it comes from our own database (one
+    // file, written that way); not sorted otherwise, since sorting needs each name and getting
+    // that is exactly the part being deferred.
+    std::vector<std::string> pathsOf(const GameSystem &system) const;
+
+    // True for the case above: the caller can append entries in this order as it resolves
+    // them and never needs to re-sort once every path has been turned into a Game.
+    bool pathsPreSorted(const GameSystem &system) const { return !system.dbKey.empty(); }
+
+    // Stops at the first match, so filtering the system list stays cheap.
+    bool hasGames(const GameSystem &system) const;
+
+    const GameIndex &index() const { return index_; }
+
+    // Walking the game volume is what drops a marginally powered drive off the bus,
+    // so it never happens on its own — only when the user asks for a rescan.
+    void setScanningAllowed(bool allowed) { scanningAllowed_ = allowed; }
+    bool scanningAllowed() const { return scanningAllowed_; }
+
+    const GameSystem *findSystem(const std::string &name) const;
+
+    // The Arcade system, when the library has one — what the Arcade tab browses.
+    const GameSystem *arcadeSystem() const;
+
+    // Resolves the owning system from a ROM path, for entries that only store one.
+    const GameSystem *systemForPath(const std::string &path) const;
+
+    // Rebuilds a game entry from a stored path, e.g. when restoring favourites. Artwork
+    // candidate paths are composed without touching the drive.
+    static Game makeGame(const GameSystem &system, const std::string &path,
+                         ArtworkVariant variant = ArtworkVariant::Full);
+
+    // Just the path and display name — no I/O, safe to call for every candidate in a library
+    // at once. Artwork candidates are added later for what actually gets drawn.
+    static Game makeStub(const GameSystem &system, const std::string &path);
+
+    // Just the display name makeGame() would give a path, without any of the I/O that also
+    // does — pure string work, safe to call for every candidate up front when their order
+    // needs deciding before anything about them has actually been resolved.
+    static std::string nameFor(const GameSystem &system, const std::string &path);
+
+    // Filters known boot media and utilities from both newly built and older databases.
+    static bool isSystemFile(const GameSystem &system, const std::string &path);
+
+    // Builds an ordered list of artwork paths for a specific view without filesystem I/O.
+    // The image worker tries these candidates in order so path checks never stall navigation.
+    static void resolveArtwork(const GameSystem &system, Game &game, ArtworkVariant variant);
+
+    static constexpr const char *kDefaultSectionDir =
+        "/media/fat/ConsoleMode/themeconfig/section_groups";
+
+    // Optional overrides, one system per line:  <NAME>  <index>  [f|s]
+    // The right slot depends on the core's own menu and cannot be derived from the
+    // filesystem, so it stays adjustable without rebuilding.
+    static constexpr const char *kOverridesFile = MISTER_PAT_ROOT "/systems.conf";
+
+private:
+    struct CoreEntry {
+        std::string key;      // normalised name used for matching
+        std::string relPath;  // e.g. "_Console/SNES"
+    };
+
+    void indexCores();
+    std::string matchCore(const GameSystem &system) const;
+    bool loadFromDatabase();
+    bool loadSectionFile(const std::string &file, const std::string &group);
+    void applySlotDefaults();
+    void applyOverrides();
+
+    std::vector<GameSystem> systems_;
+    std::vector<CoreEntry> cores_;
+    GameIndex index_;
+    GameDatabase database_;
+    // A system of the database whose few recorded files could all be core support files (a boot ROM, a database
+    // file) is not a system with games; answered once per system and kept (see hasGames).
+    mutable std::map<std::string, bool> dbHasGames_;
+    bool usingDatabase_ = false;
+    bool scanningAllowed_ = false;
+    mutable std::map<std::string, std::vector<Game>> gamesCache_;
+};

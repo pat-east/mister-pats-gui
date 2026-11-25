@@ -105,3 +105,48 @@ Do not restart the MiSTer first.
 What decides it: a `res_count` change after the last `full redraw begins` confirms the
 hypothesis and the planned measure applies. No change after the last redraw means something
 else cleared the memory, and the hypothesis is wrong.
+
+## Menu sounds are switched off (the tick comes much too late)
+
+**Status:** switched off for 0.9.0 (owner decision, 2026-11-24). To be redone in a later release. The Start sound is separate and
+still works.
+
+### Symptom
+
+With "Menu sounds" on, the navigation tick (and the tab-change and game-launch sounds under the same switch) arrived long after
+the key press. Earlier it also made the input feel sluggish, most clearly on the on-screen keyboard and in the Input test.
+
+### Evidence
+
+- **Sluggish input (fixed in code, kept).** The owner switched Menu sounds off and the GUI was snappy again, so the sounds were the
+  main cause. `UiSounds::playWavInBackground` did a double `fork()` of the whole GUI process for every direction key and the
+  main thread waited for the first child. `fork()` copies the page tables; the new GUI holds more memory than Classic (second
+  canvas, painter caches, image cache), so each key press cost milliseconds on the Cortex-A9, and a held key stacked up `aplay`
+  processes. It is now one long-lived worker thread that starts `aplay` with `posix_spawn`, plays at most one sound with one
+  waiting, and drops or coalesces further navigation ticks (`tests/ui_sounds_test.cpp`; the cost of the call is about 0.05 ms).
+  With that fix the owner found the GUI snappy again.
+- **Late tick (not fixed, not diagnosed).** After the fix the tick still came much too late. Suspected, not proven: starting
+  `aplay` per sound has a latency of its own (process start, opening the ALSA device, the buffer), far above the
+  ~16 ms of a frame; the one-playing-one-waiting rule can delay a tick behind a sound that is still playing; and the key repeat
+  of a held direction produces ticks faster than they can be played. The measured line `pats-gui input:` in `debug.log` reports
+  the cost of the call (`sounds N calls T ms`), not the time until the sound is audible.
+
+### What is in the code now
+
+- `Preferences::menuSoundsEnabled()` returns `false` (the saved value and the setter stay). Because of that, `App::dispatch`
+  (navigation), `App::selectTab` (tab change) and the game-launch sound do not play.
+- The "Menu sounds" row is removed from the new GUI's Settings (Interface). Classic's row still exists, without effect.
+- `UiSounds` (worker thread, `posix_spawn`, coalescing) and the sound data are unchanged and ready.
+
+### To consider when sounds come back
+
+1. **No process per sound.** Keep one audio output open (the project already has `PcmOutput` for the video sound) and mix or
+   write pre-decoded sound buffers into it; do not start `aplay` for a tick.
+2. **Measure the latency from key to audible sound**, not the cost of the call (a loopback or a log of the time the buffer is
+   handed to the device plus the buffer length). Aim well under 50 ms.
+3. **Never block or slow the frame loop**; no `fork()` of the GUI process, no waiting on a child.
+4. **Rate limit and coalesce:** a held direction must not queue ticks (one tick per N ms), and a tick must not wait behind a
+   longer sound (cut the older one or skip the new one).
+5. **One switch, three sounds today:** navigation, tab change and game launch share "Menu sounds"; decide whether they should
+   get separate switches. Bring the row back in Settings (Interface) and update the golden pictures.
+6. The Start sound, the sounds of the first-run Jump Start and the wizard flows (none exist yet) should use the same output.

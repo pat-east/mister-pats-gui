@@ -12,8 +12,8 @@
 #include <unistd.h>
 #include <vector>
 
-#include "../src/GameDatabase.h"
-#include "../src/LibraryScan.h"
+#include "../src/legacy/GameDatabase.h"
+#include "../src/legacy/LibraryScan.h"
 
 namespace {
 

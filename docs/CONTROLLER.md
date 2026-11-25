@@ -173,7 +173,7 @@ decoding the rest first. This project's own writer must therefore always read-mo
 full struct, matching MiSTer's own approach 1:1, not attempt a partial update.
 
 **This means the button-mapping screen has to capture a raw evdev event per prompt**, not run
-through this GUI's own `Action` enum (`Up`/`Down`/`Confirm`/... in `src/Input.h`) — that enum is
+through this GUI's own `Action` enum (`Up`/`Down`/`Confirm`/... in `src/legacy/Input.h`) — that enum is
 this GUI's *own*, fixed navigation scheme and is not what gets written to the `.map` file. The
 two are related only in that both, today, read the same physical pad.
 
@@ -325,7 +325,7 @@ also shows the raw X/Y reading and range under Stick 1 for generic pads.
 
 ### 1. List connected controllers
 
-Enumerates the same devices this GUI's own `Input` class already opens (`src/Input.cpp`,
+Enumerates the same devices this GUI's own `Input` class already opens (`src/legacy/Input.cpp`,
 `Input::rescan`), plus the metadata that class does not currently surface anywhere: name,
 evdev-reported vendor/product ID (**not** a USB-descriptor ID — see above), whether it has a
 hat (already probed today, for the D-pad double-count fix), and whichever `idstr` MiSTer itself
@@ -512,7 +512,7 @@ should be trivially dismissible:
 
 All mockups below use this project's existing bottom-bar hint convention (see any current
 screen) and reuse the tile-grid list style already established for
-[SystemVisibilityScreen](../src/SystemVisibilityScreen.h) ("Manage systems") — a full-height list
+[SystemVisibilityScreen](../src/legacy/SystemVisibilityScreen.h) ("Manage systems") — a full-height list
 on the left, detail/preview on the right, since a controller list is structurally the same kind
 of screen.
 

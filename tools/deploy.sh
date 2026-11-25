@@ -125,13 +125,19 @@ then
     exit 1
 fi
 stage=
-echo 'Remote files committed; rebooting MiSTer.'
-ssh $SSH_OPTS "$DEVICE" reboot 2>/dev/null || :
-n=0
-until new_boot=$(ssh $SSH_OPTS -o ConnectTimeout=5 "$DEVICE" 'cat /proc/sys/kernel/random/boot_id' 2>/dev/null) &&
-      [ -n "$new_boot" ] && [ "$new_boot" != "$old_boot" ]; do
-    n=$((n+1))
-    [ "$n" -lt 40 ] || { echo 'files committed, but MiSTer did not reconnect' >&2; exit 1; }
-    sleep 5
-done
-echo 'MiSTer is back.'
+# The normal deploy reboots the MiSTer and waits until it is back. REBOOT=0 skips that (the files are in place, the GUI and the
+# main program stay stopped; restart them yourself).
+if [ "${REBOOT:-1}" != 0 ]; then
+    echo 'Remote files committed; rebooting MiSTer.'
+    ssh $SSH_OPTS "$DEVICE" reboot 2>/dev/null || :
+    n=0
+    until new_boot=$(ssh $SSH_OPTS -o ConnectTimeout=5 "$DEVICE" 'cat /proc/sys/kernel/random/boot_id' 2>/dev/null) &&
+          [ -n "$new_boot" ] && [ "$new_boot" != "$old_boot" ]; do
+        n=$((n+1))
+        [ "$n" -lt 40 ] || { echo 'files committed, but MiSTer did not reconnect' >&2; exit 1; }
+        sleep 5
+    done
+    echo 'MiSTer is back.'
+else
+    echo 'Remote files committed. REBOOT=0: no reboot; restart the GUI or the MiSTer yourself.'
+fi
